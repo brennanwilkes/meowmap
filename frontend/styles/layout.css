@@ -10,8 +10,14 @@
   display: flex; align-items: baseline; gap: 10px;
   z-index: 30;
 }
+.cog {
+  margin-left: 6px; font-size: var(--t-lg); line-height: 1;
+  background: none; border: 0; color: var(--ink-soft); padding: 2px 4px;
+}
+.cog:active { color: var(--ink); }
 .wordmark { font-family: var(--font-stick); font-size: var(--t-xl); font-weight: 800; letter-spacing: -.02em; }
 .topbar .place { font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft); margin-left: auto; }
+.topbar .place:empty { margin-left: auto; }
 
 .stage { flex: 1 1 auto; position: relative; overflow: hidden; }
 
@@ -29,6 +35,12 @@
 .screen.live   { transform: translateX(0); opacity: 1; z-index: 2; }
 .screen.rest-l { transform: translateX(-9%); opacity: .5; z-index: 1; }
 .screen.rest-r { transform: translateX(9%);  opacity: .5; z-index: 1; }
+/* A detail view slides UP from the bottom edge and sits above the tab screens, which
+   stay exactly where they were — going deeper is not the same gesture as going sideways. */
+.screen.detail { z-index: 5; transform: translateY(0); }
+.screen.detail.set-up { transform: translateY(100%); transition: none; }
+.screen.detail.down   { transform: translateY(100%); }
+
 /* Start positions, committed with a reflow before the transition is re-enabled. */
 .screen.set-l  { transform: translateX(-100%); opacity: 1; z-index: 2; transition: none; }
 .screen.set-r  { transform: translateX(100%);  opacity: 1; z-index: 2; transition: none; }

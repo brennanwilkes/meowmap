@@ -188,3 +188,130 @@
   @keyframes pulse { 50% { opacity: .3; } }
   .suggest, .update-bar { transition: none; }
 }
+
+/* ── lists: cats, loose sightings, queue ───────────────────────────────── */
+
+.detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.detail-head .swatch {
+  margin-left: auto; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--ring); box-shadow: var(--cut), var(--lift);
+}
+
+.sec {
+  font-family: var(--font-stick); font-size: var(--t-lg); font-weight: 800;
+  margin: 0 0 2px;
+}
+.fineprint { font-size: var(--t-xs); color: var(--ink-faint); line-height: 1.6; }
+.fineprint code { font-size: var(--t-xs); word-break: break-all; }
+
+.cat-grid, .loose-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 12px; margin-top: 10px;
+}
+
+.cat-card, .loose-card {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--paper-hi); color: var(--ink); text-align: left;
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 6px;
+  box-shadow: var(--cut), var(--lift);
+  transition: transform var(--up), box-shadow var(--up);
+}
+/* Hand-stuck, not grid-aligned. nth-child rather than random so a re-render never
+   makes the whole page twitch. */
+.cat-card:nth-child(3n+1), .loose-card:nth-child(3n+1) { transform: rotate(-1.4deg); }
+.cat-card:nth-child(3n+2), .loose-card:nth-child(3n+2) { transform: rotate(1.1deg); }
+.cat-card:nth-child(3n),   .loose-card:nth-child(3n)   { transform: rotate(-.5deg); }
+.cat-card:active, .loose-card:active {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
+
+.cat-card img.cat-face, .loose-card img {
+  width: 100%; height: 88px; object-fit: cover; border-radius: var(--r-cut);
+}
+.cat-card img.cat-face { box-shadow: 0 0 0 3px var(--ring); }
+.cat-face.empty { display: block; height: 88px; background: var(--rule); border-radius: var(--r-cut); }
+.cat-card .nm { font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700; }
+.cat-card .why, .loose-card .why {
+  font-family: var(--font-hand); font-size: var(--t-xs); color: var(--ink-soft);
+}
+
+/* Unidentified sightings lie FLAT on the page until picked — the same physics the
+   chips use, so "selected" means one thing everywhere. */
+.loose-card {
+  position: relative;
+  border-style: dashed; border-color: var(--ink-faint);
+  box-shadow: none; transform: none !important;
+}
+.loose-card.picked {
+  border-style: solid; border-color: var(--ink);
+  box-shadow: var(--cut), var(--lift);
+}
+.loose-card.picked::after {
+  content: '\2713';
+  position: absolute; top: -9px; right: -9px;
+  width: 22px; height: 22px; line-height: 21px;
+  text-align: center; font-weight: 700;
+  background: var(--jade); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 50%;
+}
+
+/* ── the two action bars ───────────────────────────────────────────────── */
+
+/* Both slide up from the bottom edge and are the only fixed chrome in the app. They
+   are siblings of the scrolling .pad, so they never scroll away mid-decision. */
+.group-bar, .save-bar {
+  position: absolute; left: 12px; right: 12px; z-index: 20;
+  bottom: calc(12px + var(--safe-b));
+  display: flex; align-items: center; gap: 10px;
+  background: var(--paper-hi);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 10px 12px;
+  box-shadow: var(--lift-lg);
+  transition: transform var(--turn), opacity var(--turn);
+}
+.group-bar > span { font-family: var(--font-hand); font-size: var(--t-sm); }
+.group-bar .btn-stick, .save-bar .btn-stick { margin-left: auto; }
+.group-bar.down, .save-bar.down {
+  transform: translateY(calc(100% + 24px + var(--safe-b)));
+  opacity: 0; pointer-events: none;
+}
+
+/* ── the diagnostics list ──────────────────────────────────────────────── */
+
+.facts { margin: 8px 0 0; }
+.facts dt {
+  font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-faint); margin-top: 10px;
+}
+.facts dd { margin: 2px 0 0; font-size: var(--t-sm); }
+.facts dd em { font-style: normal; color: var(--ink-faint); }
+.facts dd.good { color: #2f7f5d; }
+.facts dd.warn { color: #a8324a; font-weight: 600; }
+
+.meter {
+  display: inline-block; vertical-align: middle;
+  width: 74px; height: 9px; margin-right: 7px;
+  background: var(--rule);
+  border: 1.5px solid var(--ink); border-radius: var(--r-cut);
+  overflow: hidden;
+}
+.meter i { display: block; height: 100%; background: var(--jade); }
+.meter[data-state="warm"] i { background: var(--marigold); }
+.meter[data-state="hot"]  i { background: var(--coral); }
+
+.queue-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 10px;
+  padding: 10px 0; border-bottom: 1px dashed var(--rule);
+}
+.q-when { font-family: var(--font-stick); font-weight: 700; font-size: var(--t-sm); }
+.q-state { grid-column: 1 / -1; font-size: var(--t-sm); color: var(--ink-soft); }
+.q-state[data-state="failed"] { color: #a8324a; }
+.q-acts { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn-ghost.sm { font-size: var(--t-sm); padding: 5px 10px; }
+.btn-ghost.danger { color: #a8324a; border-color: #a8324a; }
+
+.sheet-acts { display: flex; justify-content: flex-end; margin-top: 14px; }

@@ -1,15 +1,15 @@
 import { $, dateText, esc, whenText } from './dom.js';
 import { photoUrl } from './api.js';
 import { displayName, ringFor } from './catcolor.js';
+import { navigate } from './nav.js';
 
 /* The detail sheet. A sibling of the map div, not an L.popup — there is no L.popup or
  * L.tooltip anywhere in this codebase.
  *
- * STATE OF PLAY: this is currently READ-ONLY. Editing (toggling chips, moving the pin,
- * renaming) needs an upload pass, and the Turnstile exchange lands with the capture
- * page. Rendering chips that look tappable but silently fail would be worse than not
- * showing the unselected ones at all, so only the chosen tags are drawn — as static
- * stickers. When editing lands, the full chip row replaces this block. */
+ * THE SHEET IS A GLANCE, NOT AN EDITOR. It stays read-only on purpose: it is a peek at
+ * a pin you tapped while panning the map, and the tags render as static stickers rather
+ * than as tappable-but-dead controls. "Open" goes to `#/sighting/<id>`, which is the
+ * one place editing happens — one editor, not two that must agree. */
 
 const FILLS = ['var(--marigold)', 'var(--coral)', 'var(--jade)', 'var(--peri)'];
 const ON_DARK = new Set(['var(--coral)', 'var(--peri)']);
@@ -87,8 +87,20 @@ export function openSightingSheet(sighting, cat, members = null) {
         <div class="chiprow">
           ${others.map((o) => `<span class="chip" aria-pressed="false">${esc(whenText(o.seenAt))}</span>`).join('')}
         </div>`}
+      ${sighting.pending === true ? '' : `
+        <div class="sheet-acts">
+          <button type="button" class="btn-stick" id="sheet-open">Open</button>
+        </div>`}
     </div>
     <div style="height:14px"></div>`;
+
+  // A queued sighting has no server id yet, so there is nothing to open.
+  if (sighting.pending !== true) {
+    $('#sheet-open').addEventListener('click', () => {
+      closeSheet();
+      navigate(`#/sighting/${sighting.id}`);
+    });
+  }
 
   // --ring is read by the sheet's own sticker styling.
   sheet.style.setProperty('--ring', ring);

@@ -1,0 +1,358 @@
+import {
+  DEFAULT_TILE_ID, LS, MAX_NOTE_LEN, TILE_SOURCES,
+} from '../config.js';
+import { deleteSighting, patchSighting, photoUrl } from './api.js';
+import { catColour, displayName } from './catcolor.js';
+import { chipRows, wireChips } from './components/chips.js';
+import { getPref } from './device.js';
+import { $, dateText, esc, whenText } from './dom.js';
+import { back, navigate } from './nav.js';
+import { LOCATION_SOURCE } from './pipeline.js';
+import { reasonText, suggestCats } from './suggest.js';
+import * as store from './store.js';
+import * as turnstile from './turnstile.js';
+
+/* One sighting, fully editable: tags, note, date, pin, which cat it belongs to.
+ *
+ * EDITS ARE EXPLICIT, NOT LIVE. Every PATCH is a D1 write plus an app_meta bump against
+ * a hard 100k/day cap, and a chip row is very easy to fiddle with — autosaving each tap
+ * would turn one decision into eight writes. So changes accumulate locally and a Save
+ * button appears once something actually differs.
+ *
+ * `location_source` is stored but never displayed. Brennan: "if its just the source of
+ * the data then not required, store it, but dont display" — the only thing worth
+ * surfacing is the accuracy, and only when it is bad enough to matter.
+ */
+
+let root = null;
+let sightingId = null;
+let unsubscribe = null;
+let draft = null;        // the working copy; null means "showing server state"
+let original = null;
+let miniMap = null;
+let miniMarker = null;
+let saving = false;
+
+function dirty() {
+  if (draft === null || original === null) return false;
+  return draft.coat.join(',') !== original.coat.join(',')
+    || draft.size !== original.size
+    || draft.petted !== original.petted
+    || draft.note !== original.note
+    || draft.seenAt !== original.seenAt
+    || draft.lat !== original.lat
+    || draft.lon !== original.lon;
+}
+
+/** `<input type="datetime-local">` wants local wall time with no zone suffix. */
+function localInputValue(ms) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function render(state) {
+  // Never rebuild under an active field or an unsaved edit: both would discard work.
+  const active = document.activeElement;
+  if (active !== null && root.contains(active) && active.tagName === 'INPUT') return;
+  if (dirty()) return;
+
+  if (miniMap !== null) { miniMap.remove(); miniMap = null; miniMarker = null; }
+
+  const s = store.sightingById(sightingId, state);
+  if (s === null) {
+    root.innerHTML = `<div class="pad">
+      <p class="empty">That sighting is not here any more.</p>
+      <button type="button" class="btn-stick" id="back">Back</button></div>`;
+    $('#back', root).addEventListener('click', () => back());
+    return;
+  }
+
+  original = snapshot(s);
+  draft = snapshot(s);
+
+  const cat = store.catById(s.catId, state);
+  const colour = catColour(s.catId);
+  const ring = colour === null ? 'var(--rule)' : colour.hex;
+
+  root.innerHTML = `
+    <div class="pad" style="--ring:${esc(ring)}">
+      <div class="detail-head">
+        <button type="button" class="btn-ghost" id="back">Back</button>
+        ${cat === null ? '' : `<button type="button" class="btn-ghost" id="to-cat">${esc(displayName(cat))}</button>`}
+      </div>
+
+      <figure class="print">
+        <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
+        <img src="${esc(photoUrl(s.photoFull))}" alt="" crossorigin="anonymous"
+             style="height:230px">
+      </figure>
+      <p class="hand">${esc(whenText(s.seenAt))} &middot; ${esc(dateText(s.seenAt))}</p>
+
+      <hr class="rule">
+      ${chipRows(draft)}
+
+      <hr class="rule">
+      <label class="field">
+        <span>Note <em>(optional)</em></span>
+        <input type="text" id="f-note" maxlength="${MAX_NOTE_LEN}"
+               placeholder="asleep on the blue car" value="${esc(s.note ?? '')}">
+      </label>
+      <label class="field">
+        <span>When</span>
+        <input type="datetime-local" id="f-when" value="${esc(localInputValue(s.seenAt))}">
+      </label>
+
+      <hr class="rule">
+      <div class="loc-line">
+        <span class="sub" id="loc-line">${esc(accuracyLine(draft))}</span>
+      </div>
+      <div class="mini-map" id="pin-map"></div>
+      <p class="hand">tap or drag to move the pin</p>
+
+      ${cat === null ? linkSection(s, state) : `
+        <hr class="rule">
+        <button type="button" class="btn-ghost" id="unlink">Not ${esc(displayName(cat))}</button>`}
+
+      <hr class="rule">
+      <button type="button" class="btn-ghost danger" id="del">Delete this sighting</button>
+      <div style="height:70px"></div>
+    </div>
+
+    <!-- Outside .pad, which is the scroll container: a save bar that scrolls away
+         mid-decision is the same as not having one. -->
+    <div class="save-bar down" id="save-bar">
+      <button type="button" class="btn-ghost" id="revert">Undo</button>
+      <button type="button" class="btn-stick" id="save">Save changes</button>
+    </div>`;
+
+  wire(s);
+  drawPinMap(ring);
+}
+
+function snapshot(s) {
+  return {
+    coat: Array.isArray(s.coat) ? [...s.coat] : [],
+    size: s.size ?? null,
+    petted: s.petted ?? null,
+    note: s.note ?? null,
+    seenAt: s.seenAt,
+    lat: s.lat,
+    lon: s.lon,
+    locationSource: s.locationSource,
+    accuracyM: s.accuracyM ?? null,
+  };
+}
+
+function accuracyLine(d) {
+  if (d.locationSource === LOCATION_SOURCE.manual) return 'Placed by hand';
+  if (d.accuracyM === null) return '';
+  return `Accurate to about ${Math.round(d.accuracyM)} m`;
+}
+
+/** Offered only for an unidentified sighting, and only when there is something nearby
+ *  worth offering. Never auto-links. */
+function linkSection(s, state) {
+  const cats = store.catsWithSightings(state);
+  const candidates = suggestCats(s, cats, Date.now());
+  if (candidates.length === 0) return '';
+  const now = Date.now();
+  return `
+    <hr class="rule">
+    <h2 class="sec">Is this one of these?</h2>
+    <div class="suggest-row">
+      ${candidates.map((score) => {
+        const cat = cats.find((c) => c.id === score.catId);
+        const face = cat.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
+        return `
+        <button type="button" class="suggest" data-link="${cat.id}"
+                style="--ring:${esc(catColour(cat.id).hex)}">
+          <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
+          <span class="nm">${esc(displayName(cat))}</span>
+          <span class="why">${esc(reasonText(score, now))}</span>
+        </button>`;
+      }).join('')}
+    </div>`;
+}
+
+/* ── wiring ────────────────────────────────────────────────────────────── */
+
+function markDirty() {
+  const bar = $('#save-bar', root);
+  if (bar === null) return;
+  bar.classList.toggle('down', !dirty());
+}
+
+function wire(s) {
+  $('#back', root).addEventListener('click', () => back());
+  const toCat = $('#to-cat', root);
+  if (toCat !== null) toCat.addEventListener('click', () => navigate(`#/cat/${s.catId}`));
+
+  wireChips(root, draft, markDirty);
+
+  $('#f-note', root).addEventListener('input', (e) => {
+    draft.note = e.target.value.trim() === '' ? null : e.target.value.trim();
+    markDirty();
+  });
+  $('#f-when', root).addEventListener('change', (e) => {
+    const t = Date.parse(e.target.value);
+    // An unparseable date must not silently become "now" — that would rewrite a real
+    // capture time with a wrong one and look like it worked.
+    if (!Number.isFinite(t)) { e.target.value = localInputValue(draft.seenAt); return; }
+    draft.seenAt = t;
+    markDirty();
+  });
+
+  $('#revert', root).addEventListener('click', () => {
+    draft = null;
+    original = null;
+    render(store.get());
+  });
+  $('#save', root).addEventListener('click', () => save(s.id));
+  $('#del', root).addEventListener('click', () => remove(s.id));
+
+  const unlink = $('#unlink', root);
+  if (unlink !== null) unlink.addEventListener('click', () => link(s.id, null));
+  for (const btn of root.querySelectorAll('[data-link]')) {
+    btn.addEventListener('click', () => link(s.id, Number(btn.dataset.link)));
+  }
+}
+
+function drawPinMap(ring) {
+  const el = $('#pin-map', root);
+  if (el === null) return;
+
+  const chosen = TILE_SOURCES.find((t) => t.id === getPref(LS.tileSource, DEFAULT_TILE_ID))
+    ?? TILE_SOURCES[0];
+  miniMap = L.map(el, { preferCanvas: true, attributionControl: false, zoomControl: false })
+    .setView([draft.lat, draft.lon], 17);
+  L.tileLayer(chosen.url, {
+    subdomains: chosen.subdomains ?? 'abc',
+    maxZoom: chosen.maxZoom,
+    maxNativeZoom: chosen.maxNativeZoom,
+  }).addTo(miniMap);
+
+  miniMarker = L.marker([draft.lat, draft.lon], {
+    draggable: true,
+    icon: L.divIcon({
+      className: 'drop-pin', html: `<i style="--ring:${ring}"></i>`,
+      iconSize: [26, 34], iconAnchor: [13, 32],
+    }),
+  }).addTo(miniMap);
+
+  const moved = (lat, lon) => {
+    draft.lat = lat;
+    draft.lon = lon;
+    draft.locationSource = LOCATION_SOURCE.manual;
+    // An accuracy radius around a hand-placed pin is a lie, so it goes with the move.
+    draft.accuracyM = null;
+    $('#loc-line', root).textContent = accuracyLine(draft);
+    markDirty();
+  };
+  miniMarker.on('dragend', () => {
+    const p = miniMarker.getLatLng();
+    moved(p.lat, p.lng);
+  });
+  miniMap.on('click', (e) => {
+    miniMarker.setLatLng(e.latlng);
+    moved(e.latlng.lat, e.latlng.lng);
+  });
+
+  requestAnimationFrame(() => miniMap.invalidateSize());
+}
+
+/* ── mutations ─────────────────────────────────────────────────────────── */
+
+async function save(id) {
+  if (saving || !dirty()) return;
+  saving = true;
+  const btn = $('#save', root);
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await turnstile.ensurePass();
+    // Send only what changed: an unchanged field in the body is still a column written.
+    const patch = {};
+    if (draft.coat.join(',') !== original.coat.join(',')) patch.coat = draft.coat;
+    if (draft.size !== original.size) patch.size = draft.size;
+    if (draft.petted !== original.petted) patch.petted = draft.petted;
+    if (draft.note !== original.note) patch.note = draft.note;
+    if (draft.seenAt !== original.seenAt) patch.seenAt = draft.seenAt;
+    if (draft.lat !== original.lat || draft.lon !== original.lon) {
+      patch.lat = draft.lat;
+      patch.lon = draft.lon;
+      patch.locationSource = draft.locationSource;
+      patch.accuracyM = draft.accuracyM;
+    }
+    await patchSighting(id, patch);
+    draft = null;
+    original = null;
+    await store.refresh();
+    render(store.get());
+  } catch (err) {
+    console.error('[sighting] save failed:', err);
+    btn.disabled = false;
+    btn.textContent = 'Save changes';
+    btn.insertAdjacentHTML('afterend', `<div class="map-note">${esc(err.message)}</div>`);
+  } finally {
+    saving = false;
+  }
+}
+
+async function link(id, catId) {
+  try {
+    await turnstile.ensurePass();
+    await patchSighting(id, { catId });
+    draft = null;
+    original = null;
+    await store.refresh();
+    render(store.get());
+  } catch (err) {
+    console.error('[sighting] link failed:', err);
+  }
+}
+
+async function remove(id) {
+  const btn = $('#del', root);
+  if (btn.dataset.armed !== 'true') {
+    // Two taps, not a confirm() — the second tap is the confirmation, and a native
+    // dialog in a standalone app looks like the browser breaking through.
+    btn.dataset.armed = 'true';
+    btn.textContent = 'Really delete? Tap again';
+    setTimeout(() => {
+      if (btn.isConnected) { btn.dataset.armed = 'false'; btn.textContent = 'Delete this sighting'; }
+    }, 4000);
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await turnstile.ensurePass();
+    await deleteSighting(id);
+    draft = null;
+    original = null;
+    await store.refresh();
+    back();
+  } catch (err) {
+    console.error('[sighting] delete failed:', err);
+    btn.disabled = false;
+    btn.textContent = 'Delete this sighting';
+  }
+}
+
+export function mount(container, arg) {
+  root = container;
+  sightingId = Number(arg);
+  draft = null;
+  original = null;
+  unsubscribe = store.subscribe(render);
+}
+
+export function unmount() {
+  if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
+  if (miniMap !== null) { miniMap.remove(); miniMap = null; miniMarker = null; }
+  draft = null;
+  original = null;
+  root = null;
+  sightingId = null;
+}

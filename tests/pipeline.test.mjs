@@ -87,7 +87,9 @@ check('EXIF GPS wins outright, and carries its own accuracy', () => {
   );
   assert.strictEqual(r.source, LOCATION_SOURCE.exif);
   assert.strictEqual(r.lat, 48.42985);
-  assert.strictEqual(r.accuracyM, 9.98, 'the photo GPS accuracy, not the device fix');
+  // 9.98 rounded: the photo's accuracy, not the device fix's 20. See the whole-metres
+  // check below for why it is rounded at all.
+  assert.strictEqual(r.accuracyM, 10);
   assert.strictEqual(r.needsManual, false);
 });
 
@@ -154,6 +156,30 @@ check('the nag card is gone — no resolution mentions the picker Location toggl
   ]) {
     assert.doesNotMatch(r.notice, /Options|toggle|settings/i, `leaked a nag: ${r.notice}`);
   }
+});
+
+check('accuracy is WHOLE METRES — the Worker rejects a fraction with a 400', () => {
+  // Found while wiring the sighting editor. `int()` on the Worker throws on 9.98, the
+  // outbox classifies 400 as TERMINAL, so every single upload would have gone straight
+  // to `failed`. Both real sources are floats: EXIF gave 9.98 and coords.accuracy is a
+  // double. This is the regression guard.
+  const fromExif = resolveLocation(
+    meta({ gps: { lat: 48.4, lon: -123.3, accuracyM: 9.98 } }), null, false, NOW,
+  );
+  assert.strictEqual(fromExif.accuracyM, 10);
+  assert.ok(Number.isInteger(fromExif.accuracyM));
+
+  const fromDevice = resolveLocation(meta(), fix(20.472), true, NOW);
+  assert.strictEqual(fromDevice.accuracyM, 20);
+  assert.ok(Number.isInteger(fromDevice.accuracyM));
+});
+
+check('a missing accuracy stays null rather than becoming 0', () => {
+  // 0 metres would be a claim of perfect precision, which is a lie, not a default.
+  const r = resolveLocation(
+    meta({ gps: { lat: 48.4, lon: -123.3, accuracyM: null } }), null, false, NOW,
+  );
+  assert.strictEqual(r.accuracyM, null);
 });
 
 /* ── dates ─────────────────────────────────────────────────────────────── */

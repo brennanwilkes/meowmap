@@ -1,6 +1,6 @@
 import {
-  ACCEPT_TYPES, COAT_TAGS, DEFAULT_ZOOM, FALLBACK_CENTRE, MAX_NAME_LEN, MAX_NOTE_LEN,
-  PETTED_VALUES, SIZE_TAGS, TILE_SOURCES, DEFAULT_TILE_ID, LS,
+  ACCEPT_TYPES, DEFAULT_ZOOM, FALLBACK_CENTRE, MAX_NAME_LEN, MAX_NOTE_LEN,
+  TILE_SOURCES, DEFAULT_TILE_ID, LS,
 } from '../config.js';
 import { $, dateText, esc } from './dom.js';
 import { catColour, displayName } from './catcolor.js';
@@ -9,6 +9,7 @@ import { getPref } from './device.js';
 import { startLocating } from './geolocate.js';
 import { LOCATION_SOURCE, processPhoto, resolveLocation, resolveSeenAt } from './pipeline.js';
 import { reasonText, suggestCats } from './suggest.js';
+import { chipRows, wireChips } from './components/chips.js';
 import * as flush from './flush.js';
 import * as pwa from './pwa.js';
 import * as store from './store.js';
@@ -22,10 +23,6 @@ import * as turnstile from './turnstile.js';
  * ten cats in a park with no signal safe.
  */
 
-const PETTED_LABEL = { yes: 'petted it', no: 'did not pet it', fled: 'it fled' };
-const CHIP_FILLS = ['var(--marigold)', 'var(--coral)', 'var(--jade)', 'var(--peri)'];
-const ON_DARK = new Set(['var(--coral)', 'var(--peri)']);
-
 let root = null;
 let draft = null;
 let locating = null;     // the in-flight geolocation handle
@@ -34,15 +31,6 @@ let miniMarker = null;
 let objectUrl = null;
 
 /* ── rendering ─────────────────────────────────────────────────────────── */
-
-function chip(label, value, selected, group, i) {
-  const fill = CHIP_FILLS[i % CHIP_FILLS.length];
-  const dark = ON_DARK.has(fill) ? ' on-dark' : '';
-  const tilt = i % 2 === 0 ? '-2deg' : '1.5deg';
-  return `<button type="button" class="chip${dark}" data-group="${esc(group)}"
-    data-value="${esc(value)}" aria-pressed="${selected ? 'true' : 'false'}"
-    style="--fill:${fill};--tilt:${tilt}">${esc(label)}</button>`;
-}
 
 function idleView() {
   return `
@@ -97,15 +85,7 @@ function draftView() {
       </label>
 
       <hr class="rule">
-      <div class="chiprow" id="coat-row">
-        ${COAT_TAGS.map((t, i) => chip(t, t, draft.coat.includes(t), 'coat', i)).join('')}
-      </div>
-      <div class="chiprow" id="size-row">
-        ${SIZE_TAGS.map((t, i) => chip(t, t, draft.size === t, 'size', i + 1)).join('')}
-      </div>
-      <div class="chiprow" id="petted-row">
-        ${PETTED_VALUES.map((v, i) => chip(PETTED_LABEL[v], v, draft.petted === v, 'petted', i + 2)).join('')}
-      </div>
+      ${chipRows(draft)}
 
       <hr class="rule">
       <label class="field">
@@ -304,25 +284,7 @@ async function ingest(file, fromCamera) {
 }
 
 function wireDraft() {
-  for (const row of ['#coat-row', '#size-row', '#petted-row']) {
-    $(row, root).addEventListener('click', (e) => {
-      const btn = e.target.closest('.chip');
-      if (btn === null) return;
-      const { group, value } = btn.dataset;
-      const on = btn.getAttribute('aria-pressed') === 'true';
-
-      if (group === 'coat') {
-        draft.coat = on ? draft.coat.filter((t) => t !== value) : [...draft.coat, value].sort();
-        btn.setAttribute('aria-pressed', on ? 'false' : 'true');
-        return;
-      }
-      // size and petted are single-select, and tapping the chosen one clears it
-      draft[group] = on ? null : value;
-      for (const sib of $(row, root).querySelectorAll('.chip')) {
-        sib.setAttribute('aria-pressed', String(!on && sib.dataset.value === value));
-      }
-    });
-  }
+  wireChips(root, draft, () => {});
 
   $('#f-name', root).addEventListener('input', (e) => {
     draft.name = e.target.value.trim() === '' ? null : e.target.value.trim();

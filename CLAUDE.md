@@ -121,6 +121,10 @@ header states the two rules that erode silently. In short:
   pins are markers and `markerPane` sorts by latitude, so a `zIndexOffset` fight works by
   accident and breaks when a pin drifts north of the label.
 - Turf labels hide below zoom 16 and are tappable.
+- **The coat filter (`filter.js`) is OR, transient, and filters territory too.** OR is
+  monotone, so an extra chip can only reveal more. It is deliberately not persisted — a
+  filter surviving a relaunch looks like lost data. Filtering pins without also
+  filtering `catsWithSightings` draws a turf blob around points that are not there.
 
 ## iOS realities that shaped the build
 
@@ -191,11 +195,52 @@ both files and asserts they agree, so drift is a red test rather than a 400 at s
 - Every `<img>` at the Worker needs `crossorigin="anonymous"`, or the SW sees an opaque
   response whose padded quota accounting blows through storage.
 
+## Routing
+
+Three tabs (`#/map`, `#/snap`, `#/cats`) plus a **detail layer** (`#/cat/<id>`,
+`#/sighting/<id>`, `#/settings`) that slides UP over whichever tab is showing. The tab
+underneath stays mounted, so closing a detail never re-runs a map build. `go(next,
+keepHash)` exists for one reason: a cold load straight onto a detail URL must mount the
+tab beneath *without* writing the hash, or it navigates away before the detail opens.
+
+`nav.js` holds `back()`/`navigate()` so pages do not import the router that imports them.
+
+## Editing
+
+- **The sheet is a glance; `#/sighting/<id>` is the only editor.** Two editors that must
+  agree is a bug factory.
+- **Edits accumulate locally and save on a button**, never per tap: every PATCH is a D1
+  write plus an `app_meta` bump against a hard 100k/day cap. The body carries only the
+  fields that actually changed.
+- **Re-render is suppressed while an input has focus or an edit is unsaved** — the store
+  fires on every refresh, including the one a save triggers.
+- **Destructive actions arm on the first tap and fire on the second.** No `confirm()`:
+  a native dialog in a standalone app looks like the browser breaking through.
+- **Multi-step mutations are not atomic and must fail visibly**, not roll back. Grouping
+  is `POST /cats` + N PATCHes; ungrouping unlinks *before* deleting the cat, so a
+  part-way failure leaves loose sightings rather than dangling references.
+- **`accuracyM` must be a whole number.** The Worker validates it with `int()`, both real
+  sources are floats (EXIF 9.98, `coords.accuracy` a double), and the outbox treats a 400
+  as terminal — so an unrounded value fails every upload permanently. Rounded once in
+  `resolveLocation`; guarded by a test.
+
 ## Gotchas in this environment
 
 - **Headless Firefox screenshots hang here**, even on a trivial page — spirit-tracker's
   documented `--screenshot` trick is unavailable. Verify markup structurally instead (JS
   parses, tags balance, external URLs 200) and get Brennan to look at anything visual.
+
+## Scripts
+
+`npm run reconcile` recomputes true R2 bytes/objects from the bucket and corrects
+`app_meta` (the counters are incremental and `r2_reads_est` is 1-in-100 sampled, so they
+drift). `npm run gc` is the same script with `--gc`, which additionally deletes
+unreferenced objects. **There is no separate `r2-gc.mjs` and there should not be** — the
+reachability union lives in one place or the two copies drift. Both default to a dry run.
+
+Reachability includes soft-deleted rows: tombstones pin their bytes so undelete is free.
+The script reports `referenced − listed` (a row whose photo is gone) but never auto-fixes
+it — that needs a human.
 
 ## Reference
 

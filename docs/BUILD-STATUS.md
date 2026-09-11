@@ -66,6 +66,8 @@ to know if the install is ever unavailable again.
 | `tests/dom.test.mjs` (9) | `esc()` XSS boundary incl. ampersand ordering, relative/absolute time, timezone-independent |
 | `tests/outbox.test.mjs` (18) | Error classification, jittered backoff + cap, every state transition, **failed-is-not-deletion**, budget slow-path, banner escalation |
 | `tests/pipeline.test.mjs` (19) | fitLongEdge never upscales, halvingPlan never exceeds 2x per step, EXIF-beats-device, **an old photo never borrows the current fix**, poor-accuracy pre-opens correction, a skewed camera clock is rejected, and a guard that the nag card stays deleted |
+| `tests/pipeline.test.mjs` also | **accuracy is whole metres** — the regression guard for the 400-on-every-upload bug |
+| `tests/filter.test.mjs` (9) | OR-monotonicity (an extra chip can only show more), untagged hidden under a filter, **territory filtered too** so a blob is never drawn around hidden points, no mutation of the store |
 | `tests/vocab.test.mjs` (4) | The coat/size/petted vocabularies and length caps in `config.js` match `worker/src/constants.ts` — read from both files, because there is no bundler to share one declaration |
 
 Also structurally verified: every frontend module parses, **every relative import
@@ -96,6 +98,13 @@ frontend/
   app/geolocate.js             converging watchPosition, typed failures
   app/turnstile.js             on-demand widget -> upload pass, coalesced
   app/pwa.js                   sw registration, update bar, persist(), install hint
+  app/nav.js                   back()/navigate(), split out to avoid a router cycle
+  app/cats_page.js             cats + unidentified, multi-select grouping
+  app/cat_page.js              rename, territory map, ungroup
+  app/sighting_page.js         THE editor: tags, note, date, pin, link, delete
+  app/settings_page.js         tiles, queue, storage + cost-breaker diagnostics
+  app/components/chips.js      the coat/size/petted rows, shared by capture + editor
+  app/filter.js                coat filtering for pins AND territory (pure, tested)
   app/map_page.js              pins, turf pane, collapse-by-cat, outbox banner
   app/sheet.js                 detail sheet — READ-ONLY for now, see Next
   app/store.js                 pub/sub store + pending-vs-server dedupe
@@ -235,16 +244,65 @@ Open the console on the installed app and look for `[pwa] storage is NOT persist
    **DONE:** `sw.js` (four caches, FIFO photo cap, no auto-`skipWaiting`),
    `offline.html`, and `pwa.js` (registration, update bar, `persist()` every boot, a
    one-time iOS install hint).
-6. Remaining pages: cats, cat, sighting, settings. Cats is still a placeholder page
-   module in `main.js`.
+6. ~~Remaining pages.~~ **DONE:** `cats_page.js` (list + "these are one cat"),
+   `cat_page.js` (rename, territory, ungroup), `sighting_page.js` (the full editor),
+   `settings_page.js` (tile switcher, queue, storage + budget diagnostics). The router
+   grew a **detail layer** (`#/cat/<id>`, `#/sighting/<id>`, `#/settings`) that slides
+   UP over the tabs, so hierarchy never looks like lateral movement.
 
-**THE NEXT THING TO DO IS OPEN IT ON THE PHONE.** Roughly 1,400 lines of frontend have
+7. ~~Map filter by coat.~~ **DONE:** `filter.js` + a scrollable chip strip along the
+   bottom of the map. Multi-select is **OR**, it is **not persisted**, and it filters
+   territory as well as pins.
+8. ~~`r2-gc.mjs`.~~ **NOT WRITTEN, AND SHOULD NOT BE.** `r2-reconcile.mjs --gc` already
+   does reachability GC over the same union query; a second implementation of the same
+   reachability rule is exactly the kind of duplicated derivation that drifts. Exposed
+   as `npm run gc` in `worker/package.json`.
+
+**Every page and every scoped feature now exists.** What is left is running it.
+
+**THE NEXT THING TO DO IS OPEN IT ON THE PHONE.** Roughly 2,400 lines of frontend have
 now been written against a browser that has never run them. The tests cover the pure
 logic and the structure checks cover the wiring, but neither has ever painted a pixel.
+Expect runtime errors on the first load, and work through them before writing anything
+further.
 
 ---
 
 ## Decisions made during the build (not in the original plan)
+
+- **BUG FOUND BY WIRING, NOT BY TESTS: `accuracyM` had to be a whole number.** The
+  Worker validates it with `int()`, both real sources are floats (EXIF gave **9.98**,
+  and `coords.accuracy` is a double), and the outbox classifies a 400 as **terminal** —
+  so *every single upload* would have gone straight to `failed`, with the photo
+  recoverable only via save-to-device. Fixed by rounding in `resolveLocation`, the one
+  place a fix becomes a draft, with a regression check in `pipeline.test.mjs`. Worth
+  noting how it surfaced: writing the second consumer of the field, not writing a test.
+- **The sheet stays read-only; `#/sighting/<id>` is the only editor.** The sheet is a
+  glance at a pin tapped while panning. Two editors that must agree is a bug factory.
+- **Edits are explicit, not live.** A chip row is easy to fiddle with and every PATCH is
+  a D1 write plus an `app_meta` bump against a hard 100k/day cap, so changes accumulate
+  locally and a Save bar appears only once something differs. The PATCH body carries
+  only the fields that actually changed.
+- **Destructive actions are two taps, not `confirm()`.** A native dialog in a standalone
+  app looks like the browser breaking through the conceit.
+- **Grouping and ungrouping are deliberately not atomic** — there is no bulk endpoint,
+  so they are N sequential PATCHes. A part-way failure leaves a real, visible,
+  hand-fixable state; "rolling back" by deleting the cat would risk destroying links
+  that did land.
+- **`ungroup` unlinks before deleting the cat**, never the reverse, so a failure leaves
+  loose sightings rather than sightings pointing at a cat that no longer exists.
+- **Re-render is suppressed while a field has focus or an edit is unsaved.** The store
+  fires on every refresh, including the one a save triggers, and rebuilding under the
+  user drops what she is typing.
+- **The coat filter is OR, and is not persisted.** OR is monotone — every extra chip
+  can only show more — which is a model you can hold while walking; AND of two optional,
+  often-partial tags matches almost nothing and looks broken. Not persisting it avoids
+  opening the app tomorrow to a map missing most of her cats with nothing explaining why,
+  and a visible note always states what is hidden.
+- **No separate `r2-gc.mjs`.** `r2-reconcile.mjs --gc` already walks the same
+  reachability union; two implementations of one rule drift. `npm run gc` aliases it.
+- **`location_source` is stored and never shown**, per Brennan. Only accuracy surfaces,
+  and a hand-placed pin nulls it — a radius around a dragged pin is a lie.
 
 - **The vocabularies are declared twice and asserted equal.** `COAT_TAGS` etc. live in
   both `frontend/config.js` and `worker/src/constants.ts` because there is no bundler

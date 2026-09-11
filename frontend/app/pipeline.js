@@ -20,6 +20,20 @@ export const FRESH_PHOTO_WINDOW_MS = 10 * 60_000;
 
 export const LOCATION_SOURCE = { exif: 'exif', device: 'device', manual: 'manual' };
 
+/**
+ * The Worker validates accuracyM with `int()` and rejects a fraction with a 400 — which
+ * the outbox classifies as TERMINAL, so the row would go straight to `failed` and the
+ * photo would only survive via save-to-device. Both real sources are floats (measured:
+ * EXIF GPSHPositioningError 9.98, and coords.accuracy is a double), so every upload
+ * would have failed. Rounding here, at the one place a fix becomes a draft, keeps whole
+ * metres a property of the data rather than a thing each caller must remember.
+ */
+function wholeMetres(v) {
+  if (v === null || v === undefined) return null;
+  if (!Number.isFinite(v)) throw new Error(`accuracy is not a number: ${v}`);
+  return Math.max(0, Math.round(v));
+}
+
 /* ── location resolution (pure) ────────────────────────────────────────── */
 
 /**
@@ -42,7 +56,7 @@ export function resolveLocation(meta, deviceFix, fromCamera, now) {
     return {
       lat: meta.gps.lat,
       lon: meta.gps.lon,
-      accuracyM: meta.gps.accuracyM,
+      accuracyM: wholeMetres(meta.gps.accuracyM),
       source: LOCATION_SOURCE.exif,
       needsManual: false,
       notice: null,
@@ -69,7 +83,7 @@ export function resolveLocation(meta, deviceFix, fromCamera, now) {
     return {
       lat: deviceFix.lat,
       lon: deviceFix.lon,
-      accuracyM: deviceFix.accuracyM,
+      accuracyM: wholeMetres(deviceFix.accuracyM),
       source: LOCATION_SOURCE.device,
       // A bad fix is worse than no fix, because it looks authoritative. Pre-open the
       // correction step rather than quietly accepting it.
@@ -87,7 +101,7 @@ export function resolveLocation(meta, deviceFix, fromCamera, now) {
     return {
       lat: deviceFix.lat,
       lon: deviceFix.lon,
-      accuracyM: deviceFix.accuracyM,
+      accuracyM: wholeMetres(deviceFix.accuracyM),
       source: LOCATION_SOURCE.device,
       needsManual: false,
       // Labelled, never silent: she is being told we guessed, and on what grounds.

@@ -83,3 +83,31 @@
   font-size: var(--t-sm); box-shadow: var(--cut), var(--lift);
 }
 .outbox-banner.stale { background: var(--coral); color: #fff; }
+
+/* The coat filter: a strip of chips along the bottom of the map, above the nav.
+   Horizontally scrollable rather than wrapped — seven chips wrapping to two rows would
+   eat a third of a phone screen that is supposed to be a map. */
+.coat-filter {
+  position: absolute; left: 0; right: 0; z-index: 620;
+  bottom: 10px;
+  display: flex; gap: 8px;
+  padding: 6px max(12px, var(--safe-l)) 8px max(12px, var(--safe-r));
+  overflow-x: auto; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.coat-filter::-webkit-scrollbar { display: none; }
+.coat-filter .chip { flex: 0 0 auto; }
+/* Unselected chips sit on the map rather than on paper, so they need their own ground
+   to stay legible over tiles — the flat-on-the-page treatment assumes paper behind it. */
+.coat-filter .chip[aria-pressed="false"] {
+  background: rgba(244, 240, 230, .92);
+}
+
+.filter-note {
+  position: absolute; left: 12px; right: 12px; z-index: 620;
+  bottom: 58px;
+  font-family: var(--font-hand); font-size: var(--t-sm); text-align: center;
+  color: var(--ink); background: rgba(244, 240, 230, .92);
+  border: 1.5px dashed var(--ink-faint); border-radius: var(--r-cut);
+  padding: 4px 10px;
+}

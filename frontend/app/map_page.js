@@ -1,5 +1,5 @@
 import {
-  DEFAULT_TILE_ID, DEFAULT_ZOOM, FALLBACK_CENTRE, LS, TILE_SOURCES,
+  COAT_TAGS, DEFAULT_TILE_ID, DEFAULT_ZOOM, FALLBACK_CENTRE, LS, TILE_SOURCES,
 } from '../config.js';
 import { esc } from './dom.js';
 import { getJsonPref, getPref, setJsonPref } from './device.js';
@@ -9,6 +9,7 @@ import { ringFor } from './catcolor.js';
 import { TURF_MIN_ZOOM, shouldDrawTurf, turfRing } from './turf.js';
 import { displayName } from './catcolor.js';
 import { openSightingSheet } from './sheet.js';
+import { filterCats, filterSightings, filterSummary } from './filter.js';
 
 /* The map.
  *
@@ -27,6 +28,10 @@ const markers = new Map();
 let turfLayers = [];
 /** Every object URL we mint, revoked on unmount. Leaking these OOMs an iPhone. */
 const objectUrls = new Set();
+/* The coat filter. Module state rather than a pref ON PURPOSE — see filter.js: a
+ * filter that survives a relaunch means opening the app tomorrow to a map missing most
+ * of her cats, with nothing on screen explaining why. */
+const activeCoats = new Set();
 
 function tileSource() {
   const id = getPref(LS.tileSource, DEFAULT_TILE_ID);
@@ -88,7 +93,9 @@ function clearTurf() {
 
 function drawTurf(state) {
   clearTurf();
-  for (const cat of store.catsWithSightings(state)) {
+  // Filtered here as well as in drawPins: a turf blob computed from points that are not
+  // drawn is a shaded zone with nothing inside it.
+  for (const cat of filterCats(store.catsWithSightings(state), activeCoats)) {
     const pts = cat.sightings.map((s) => [s.lat, s.lon]);
     const ring = ringFor(cat.id);
 
@@ -137,7 +144,7 @@ function updateTurfLabels() {
 }
 
 function drawPins(state) {
-  const groups = collapse(store.renderableSightings(state));
+  const groups = collapse(filterSightings(store.renderableSightings(state), activeCoats));
   const seen = new Set();
 
   for (const g of groups) {
@@ -181,6 +188,13 @@ function renderBanner(state) {
 export function mount(el) {
   el.innerHTML = `
     <div id="map"></div>
+    <div class="coat-filter" id="coatFilter">
+      ${COAT_TAGS.map((t, i) => `
+        <button type="button" class="chip" data-coat="${esc(t)}" aria-pressed="false"
+                style="--fill:var(--marigold);--tilt:${i % 2 === 0 ? '-2deg' : '1.5deg'}"
+                >${esc(t)}</button>`).join('')}
+    </div>
+    <div class="filter-note" id="filterNote" style="display:none"></div>
     <div class="outbox-banner" id="outboxBanner" style="display:none"></div>`;
 
   const view = getJsonPref(LS.lastView, null);
@@ -213,12 +227,35 @@ export function mount(el) {
     setJsonPref(LS.lastView, { lat: c.lat, lon: c.lng, zoom: map.getZoom() });
   });
 
-  unsubscribe = store.subscribe((state) => {
-    if (map === null) return;
-    drawTurf(state);
-    drawPins(state);
-    renderBanner(state);
+  document.getElementById('coatFilter').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-coat]');
+    if (btn === null) return;
+    const tag = btn.dataset.coat;
+    if (activeCoats.has(tag)) activeCoats.delete(tag); else activeCoats.add(tag);
+    btn.setAttribute('aria-pressed', activeCoats.has(tag) ? 'true' : 'false');
+    redraw(store.get());
   });
+
+  unsubscribe = store.subscribe(redraw);
+}
+
+function redraw(state) {
+  if (map === null) return;
+  drawTurf(state);
+  drawPins(state);
+  renderFilterNote(state);
+  renderBanner(state);
+}
+
+/** A filter must never be silent: hidden pins with no explanation read as data loss. */
+function renderFilterNote(state) {
+  const el = document.getElementById('filterNote');
+  if (el === null) return;
+  const all = store.renderableSightings(state);
+  const text = filterSummary(activeCoats, filterSightings(all, activeCoats).length, all.length);
+  if (text === null) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.textContent = text;
 }
 
 export function onShown() {
@@ -227,6 +264,7 @@ export function onShown() {
 
 export function unmount() {
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
+  activeCoats.clear();
   for (const url of objectUrls) URL.revokeObjectURL(url);
   objectUrls.clear();
   markers.clear();

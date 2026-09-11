@@ -2,6 +2,10 @@ import { $ } from './dom.js';
 import * as store from './store.js';
 import * as mapPage from './map_page.js';
 import * as capturePage from './capture_page.js';
+import * as catsPage from './cats_page.js';
+import * as catPage from './cat_page.js';
+import * as sightingPage from './sighting_page.js';
+import * as settingsPage from './settings_page.js';
 import * as turnstile from './turnstile.js';
 import * as flush from './flush.js';
 import * as pwa from './pwa.js';
@@ -20,20 +24,28 @@ const TITLES = {
   cats: ['Cats', ''],
 };
 
-// Cats is still a placeholder; keeping it as a real page module from the start means
-// the router never needs changing when it lands.
-const placeholder = (text) => ({
-  mount(el) { el.innerHTML = `<div class="pad"><p class="empty">${text}</p></div>`; },
-  unmount() {},
-});
-
 const PAGES = {
   map: mapPage,
   snap: capturePage,
-  cats: placeholder('Your cats will appear here.'),
+  cats: catsPage,
+};
+
+/* Detail routes live on their own layer over the tabs. Each takes the trailing hash
+ * segment as its argument; settings takes none. */
+const DETAILS = {
+  cat: catPage,
+  sighting: sightingPage,
+  settings: settingsPage,
+};
+
+const DETAIL_TITLES = {
+  cat: ['Meowmap', 'a cat'],
+  sighting: ['Meowmap', 'one sighting'],
+  settings: ['Settings', ''],
 };
 
 let current = null;
+let detail = null;   // { name, arg } or null
 
 function screenEl(name) {
   return $(`#s-${name}`);
@@ -44,7 +56,7 @@ function screenEl(name) {
  * transitions OFF, a reflow commits that position, then the transition is re-enabled —
  * without the forced reflow the browser coalesces both states and nothing animates.
  */
-function go(next) {
+function go(next, keepHash = false) {
   if (next === current) return;
   const to = screenEl(next);
   const from = current === null ? null : screenEl(current);
@@ -77,13 +89,60 @@ function go(next) {
   }
 
   current = next;
-  location.hash = `#/${next}`;
+  // keepHash is for a cold load straight onto a detail URL: the tab underneath must be
+  // mounted, but writing the hash here would navigate away from the detail route before
+  // it ever opened.
+  if (!keepHash && location.hash !== `#/${next}`) location.hash = `#/${next}`;
   if (PAGES[next].onShown !== undefined) PAGES[next].onShown();
 }
 
-function screenFromHash() {
-  const name = location.hash.replace(/^#\/?/, '').split('/')[0];
-  return SCREENS.includes(name) ? name : 'map';
+/* ── the detail layer ──────────────────────────────────────────────────── */
+
+function openDetail(name, arg) {
+  const el = $('#s-detail');
+  if (detail !== null) DETAILS[detail.name].unmount();
+  DETAILS[name].mount(el, arg);
+
+  el.classList.remove('hide', 'down');
+  if (detail === null) {
+    el.classList.add('set-up');
+    void el.offsetWidth;          // commit the off-screen position before transitioning
+    el.classList.remove('set-up');
+  }
+  detail = { name, arg };
+  $('#wordmark').textContent = DETAIL_TITLES[name][0];
+  $('#place').textContent = DETAIL_TITLES[name][1];
+  if (DETAILS[name].onShown !== undefined) DETAILS[name].onShown();
+}
+
+function closeDetail() {
+  if (detail === null) return;
+  const el = $('#s-detail');
+  DETAILS[detail.name].unmount();
+  detail = null;
+  // Restore the tab's own title: the detail layer borrowed the topbar, it does not own it.
+  if (current !== null) {
+    $('#wordmark').textContent = TITLES[current][0];
+    $('#place').textContent = TITLES[current][1];
+  }
+  el.classList.add('down');
+  setTimeout(() => { if (detail === null) el.classList.add('hide'); }, 320);
+}
+
+/* ── routing ───────────────────────────────────────────────────────────── */
+
+function route() {
+  const parts = location.hash.replace(/^#\/?/, '').split('/');
+  const head = parts[0];
+
+  if (Object.prototype.hasOwnProperty.call(DETAILS, head)) {
+    // The tab underneath stays mounted: closing a detail must not re-run a map build.
+    if (current === null) go('map', true);
+    openDetail(head, parts[1] === undefined ? null : parts[1]);
+    return;
+  }
+  closeDetail();
+  go(SCREENS.includes(head) ? head : 'map');
 }
 
 $('#tabs').addEventListener('click', (e) => {
@@ -92,7 +151,9 @@ $('#tabs').addEventListener('click', (e) => {
   go(btn.dataset.screen);
 });
 
-window.addEventListener('hashchange', () => go(screenFromHash()));
+window.addEventListener('hashchange', route);
+
+$('#cog').addEventListener('click', () => { location.hash = '#/settings'; });
 
 // Cheap to call and a 304 costs the server one row read, so refresh on every return to
 // the app rather than polling on a timer.
@@ -101,7 +162,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('online', () => store.refresh());
 
-go(screenFromHash());
+route();
 store.refresh();
 
 // A 401 during a background flush means the pass expired, not that anything is wrong.
