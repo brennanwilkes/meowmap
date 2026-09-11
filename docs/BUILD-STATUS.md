@@ -1,12 +1,40 @@
 # Build status
 
-**Updated:** 2026-09-11, after the first round of unblocking.
+**Updated:** 2026-09-11 — FIRST DEPLOY IS LIVE AND BOTH PIPELINES ARE GREEN.
 **Read this first after a break or a context compaction.** The full design rationale lives
 in `~/.claude/plans/take-a-look-through-imperative-hejlsberg.md`; this file is only "what
 exists, what is verified, what is next".
 
-Nothing has been committed and nothing has been deployed. `git init` has run; there are no
-commits yet.
+## Live
+
+```
+App    https://brennanwilkes.github.io/meowmap/
+Probe  https://brennanwilkes.github.io/meowmap/probe.html
+API    https://meowmap-api.brennan-a53.workers.dev
+```
+
+D1 `meowmap` created, `001_initial.sql` applied, `app_meta` seeded. R2 bucket
+`meowmap-photos` created. Both Worker secrets pushed. `/health`, `/sightings` and
+`/config` all 200. Every frontend asset serves with the right content type.
+
+### First-deploy failures, and what they actually were
+
+Worth recording because none of them were what they first looked like.
+
+- **Pages 422 "Validation Failed" ×2.** Looked like an enablement race, then a
+  deployment-branch-policy problem — the API said Pages was configured and `main` was
+  allowed. The real cause: **the repo was private**, and Pages on a private repo needs
+  a paid plan. Went green immediately once it was public.
+- **Worker smoke test 500.** The app was fine; the test fired ~1s after
+  `wrangler secret put`, and every secret push creates a new Worker version, against a
+  D1 database ~30s old. Fixed by making the smoke test retry (`_smoke.sh`) rather than
+  by touching the app — a gate that goes red on a cold start trains you to ignore red.
+- **Stale GitHub Actions**, found while chasing the 422 and worth fixing regardless:
+  configure-pages v4→v6, upload-pages-artifact v3→v5 (v3's artifact backend is
+  deprecated), deploy-pages v4→v5, checkout/setup-node v4→v7. The v7 bumps also made
+  `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` redundant, so it is gone.
+- **Workflows were path-filtered to `worker/**` and `frontend/**`,** so a workflow-only
+  change triggered nothing. They now watch themselves.
 
 ---
 
