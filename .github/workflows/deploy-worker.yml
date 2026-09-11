@@ -3,7 +3,8 @@ name: Deploy Worker
 on:
   push:
     branches: [main]
-    paths: [worker/**]
+    # Also watches itself: editing the pipeline should exercise the pipeline.
+    paths: [worker/**, .github/workflows/deploy-worker.yml, .github/workflows/_smoke.sh]
   workflow_dispatch:
 
 env:
@@ -76,10 +77,9 @@ jobs:
         run: echo "${{ secrets.PASS_SIGNING_SECRET }}" | npx wrangler secret put PASS_SIGNING_SECRET
 
       # Catches the two ways this stack fails silently: a secret that never got pushed,
-      # and a stale D1 binding id.
+      # and a stale D1 binding id. Retries, because each `wrangler secret put` above
+      # creates a new Worker version and a request fired into a rollout can 500 — see
+      # the script header.
       - name: Smoke test
-        run: |
-          set -euo pipefail
-          BASE="https://meowmap-api.${{ secrets.WORKERS_SUBDOMAIN }}.workers.dev"
-          curl -fsS "$BASE/health" | tee /dev/stderr | grep -q '"ok":true'
-          test "$(curl -fsS -o /dev/null -w '%{http_code}' "$BASE/sightings")" = "200"
+        working-directory: .
+        run: bash .github/workflows/_smoke.sh "https://meowmap-api.${{ secrets.WORKERS_SUBDOMAIN }}.workers.dev"
