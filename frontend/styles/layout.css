@@ -1,0 +1,76 @@
+/* App shell: topbar, the sliding page stage, and the page-marker nav. */
+
+#app { display: flex; flex-direction: column; height: 100dvh; height: 100svh; }
+
+.topbar {
+  flex: 0 0 auto;
+  padding: calc(13px + var(--safe-t)) 17px 11px;
+  background: var(--paper-hi);
+  border-bottom: 2.5px solid var(--ink);
+  display: flex; align-items: baseline; gap: 10px;
+  z-index: 30;
+}
+.wordmark { font-family: var(--font-stick); font-size: var(--t-xl); font-weight: 800; letter-spacing: -.02em; }
+.topbar .place { font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft); margin-left: auto; }
+
+.stage { flex: 1 1 auto; position: relative; overflow: hidden; }
+
+/* Page turns are sheets sliding across a desk: the incoming edge casts onto the one
+   below, which parallaxes the other way and dims. Detail views slide UP instead, so
+   hierarchy and lateral movement never look the same. */
+.screen {
+  position: absolute; inset: 0;
+  background: var(--paper);
+  overflow: hidden;
+  transition: transform var(--turn), opacity var(--turn);
+  box-shadow: 0 0 22px rgba(46, 42, 36, .28);
+}
+.screen.hide   { display: none; }
+.screen.live   { transform: translateX(0); opacity: 1; z-index: 2; }
+.screen.rest-l { transform: translateX(-9%); opacity: .5; z-index: 1; }
+.screen.rest-r { transform: translateX(9%);  opacity: .5; z-index: 1; }
+/* Start positions, committed with a reflow before the transition is re-enabled. */
+.screen.set-l  { transform: translateX(-100%); opacity: 1; z-index: 2; transition: none; }
+.screen.set-r  { transform: translateX(100%);  opacity: 1; z-index: 2; transition: none; }
+
+.pad {
+  height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 15px max(17px, var(--safe-l)) 24px max(17px, var(--safe-r));
+}
+
+/* Not a bar. Three page markers stuck to the bottom edge with the ruled page showing
+   between them — a continuous full-width bar reads as chrome and fights the conceit. */
+.tabs {
+  flex: 0 0 auto;
+  display: flex; gap: 11px; align-items: flex-end; justify-content: center;
+  padding: 0 14px calc(14px + var(--safe-b));
+  background: var(--paper);
+  z-index: 30;
+}
+.tabs button {
+  flex: 0 1 106px;
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
+  background: var(--paper-hi); color: var(--ink-soft);
+  border: 2.5px solid var(--ink-faint); border-radius: var(--r-cut);
+  padding: 8px 0 9px;
+  box-shadow: 1px 2px 0 rgba(46, 42, 36, .16);
+  transition: padding var(--up), background var(--up), color var(--up),
+              border-color var(--up), box-shadow var(--up), transform var(--up);
+}
+.tabs button:nth-child(1) { transform: rotate(-1.8deg); }
+.tabs button:nth-child(2) { transform: rotate(1.1deg); }
+.tabs button:nth-child(3) { transform: rotate(-.6deg); }
+.tabs button[aria-current="page"] {
+  background: var(--accent); color: var(--ink);
+  border: 2.5px solid var(--ink);
+  padding: 14px 0 15px;
+  box-shadow: var(--cut), 3px 4px 0 rgba(46, 42, 36, .32);
+}
+.tabs button:active {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
+.tabs .t1 { --accent: var(--coral); }
+.tabs .t2 { --accent: var(--marigold); }
+.tabs .t3 { --accent: var(--jade); }

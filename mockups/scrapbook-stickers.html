@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meowmap — scrapbook with stickers</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Kalam:wght@400;700&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* paper + ink carry the content */
+  --paper:#e9e4d6; --paper-hi:#f4f0e6; --rule:#d3cbb6;
+  --ink:#2e2a24; --ink-soft:#6b6459; --ink-faint:#9a9184; --tape:#d9c98f;
+  /* the sticker layer: one aubergine outline, four candy fills */
+  --vinyl:#3b2a45;
+  --coral:#ff5470; --marigold:#ffc145; --jade:#3dbe8b; --peri:#7c8cff;
+  --r-sm:4px; --r-md:12px; --r-lg:18px; --r-pill:999px;
+  --t-xs:11px; --t-sm:13px; --t-md:15px; --t-lg:17px; --t-xl:22px; --t-2xl:29px;
+  --pop:3px 3px 0 var(--vinyl);
+  --pop-sm:2px 2px 0 var(--vinyl);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#38313f;
+  font-family:'Zilla Slab',Georgia,serif;
+  color:var(--ink);
+  padding:32px 16px 64px;
+}
+.brief{max-width:1180px;margin:0 auto 28px;color:#ddd3e2}
+.brief h1{font-family:'Baloo 2',cursive;font-size:var(--t-2xl);font-weight:800;letter-spacing:-.01em}
+.brief p{font-size:var(--t-md);max-width:64ch;margin-top:6px;color:#b1a4b8;line-height:1.55}
+.sheet{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;gap:34px;justify-content:center}
+.frame{width:390px;max-width:100%}
+.frame > figcaption{font-family:'Kalam',cursive;font-size:var(--t-md);color:#c4b8cb;margin-bottom:8px;padding-left:4px}
+.phone{
+  height:720px;border-radius:26px;overflow:hidden;position:relative;
+  background:var(--paper);
+  box-shadow:0 18px 40px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;
+  background-image:repeating-linear-gradient(to bottom,transparent 0 27px,var(--rule) 27px 28px);
+  background-position:0 44px;
+}
+.topbar{
+  flex:0 0 auto;padding:13px 16px 11px;background:var(--paper-hi);
+  border-bottom:2.5px solid var(--vinyl);display:flex;align-items:baseline;gap:9px;
+}
+.wordmark{font-family:'Baloo 2',cursive;font-size:var(--t-xl);font-weight:800;letter-spacing:-.02em;color:var(--vinyl)}
+.place{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft);margin-left:auto}
+.body{flex:1 1 auto;overflow:hidden;position:relative}
+.scroll{height:100%;overflow:hidden;padding:15px 17px 0}
+.tabs{flex:0 0 auto;display:flex;gap:8px;padding:9px 12px 13px;background:var(--paper-hi);border-top:2.5px solid var(--vinyl)}
+.tabs button{
+  flex:1;font-family:'Baloo 2',cursive;font-size:var(--t-md);font-weight:700;
+  border:2.5px solid var(--vinyl);background:var(--paper);color:var(--vinyl);
+  padding:7px 0;border-radius:var(--r-pill);cursor:pointer;
+}
+.tabs button.on{background:var(--marigold);box-shadow:var(--pop-sm)}
+
+/* ── map: paper tint on the tiles, vinyl stickers on top ── */
+#map{position:absolute;inset:0}
+.leaflet-tile-pane{filter:sepia(.36) saturate(.6) brightness(1.08) contrast(.88) hue-rotate(-6deg)}
+.leaflet-container{background:var(--paper)}
+.leaflet-control-attribution{font-family:'Zilla Slab',serif;font-size:9px;background:rgba(233,228,214,.85)}
+.pin{background:none;border:0}
+.pin i{
+  display:block;width:48px;height:48px;border-radius:50%;
+  border:3px solid var(--vinyl);outline:3px solid var(--paper-hi);
+  background:var(--paper-hi) center/cover no-repeat;box-shadow:var(--pop);
+}
+.pin::after{
+  content:'';position:absolute;left:50%;bottom:-9px;
+  border:7px solid transparent;border-top:11px solid var(--vinyl);transform:translateX(-50%);
+}
+.pin b{
+  position:absolute;right:-10px;top:-6px;
+  font-family:'Baloo 2',cursive;font-size:var(--t-xs);font-weight:800;
+  background:var(--coral);color:#fff;border:2.5px solid var(--vinyl);
+  padding:0 6px;border-radius:var(--r-pill);box-shadow:var(--pop-sm);
+}
+.pin.loose i{border-style:dashed;filter:grayscale(.6);box-shadow:none}
+.pin.pending i{outline-color:var(--marigold)}
+.pin.pending b{background:var(--marigold);color:var(--vinyl)}
+.maptip{
+  position:absolute;left:14px;right:14px;bottom:14px;z-index:600;
+  background:var(--paper-hi);border:2.5px solid var(--vinyl);border-radius:var(--r-md);
+  padding:9px 13px;font-size:var(--t-sm);color:var(--ink-soft);box-shadow:var(--pop);
+}
+.maptip strong{color:var(--ink);font-weight:600}
+
+/* ── content stays paper: a tipped-in print ─────── */
+.print{position:relative;background:var(--paper-hi);padding:9px 9px 0;
+  border:1px solid var(--rule);box-shadow:2px 3px 0 rgba(46,42,36,.18);
+  transform:rotate(-1.3deg);margin:6px 0 17px}
+.print img{display:block;width:100%;height:190px;object-fit:cover;filter:sepia(.1) saturate(.97)}
+.print .tape{position:absolute;top:-11px;left:50%;width:78px;height:22px;
+  background:var(--tape);opacity:.8;transform:translateX(-50%) rotate(-2deg)}
+.print figcaption{font-family:'Kalam',cursive;font-size:var(--t-md);
+  color:var(--ink-soft);padding:7px 2px 9px;text-align:center}
+
+.label{border-top:2px solid var(--ink);padding-top:9px}
+.label h2{font-size:var(--t-xl);font-weight:700;letter-spacing:-.01em;line-height:1.1}
+.label .sub{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft);margin-top:2px}
+.rows{margin-top:10px;display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:var(--t-sm)}
+.rows dt{color:var(--ink-faint)}
+
+/* ── controls are stickers stuck onto the page ──── */
+.chiprow{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
+.chip{
+  font-family:'Baloo 2',cursive;font-size:var(--t-sm);font-weight:700;
+  border:2.5px solid var(--ink-faint);color:var(--ink-soft);background:var(--paper-hi);
+  padding:4px 12px;border-radius:var(--r-pill);cursor:pointer;
+}
+.chip.on{border-color:var(--vinyl);color:var(--vinyl);box-shadow:var(--pop-sm)}
+.chip.on.c1{background:var(--marigold)}
+.chip.on.c2{background:var(--coral);color:#fff}
+.chip.on.c3{background:var(--jade)}
+.fieldname{font-size:var(--t-xs);color:var(--ink-faint);margin-top:13px}
+
+.badge{
+  position:absolute;right:20px;top:160px;z-index:5;
+  font-family:'Baloo 2',cursive;font-size:var(--t-md);font-weight:800;
+  background:var(--jade);color:var(--vinyl);border:3px solid var(--vinyl);
+  padding:5px 13px;border-radius:var(--r-pill);box-shadow:var(--pop);
+  transform:rotate(-9deg);
+}
+
+/* ── cats list: paper rows, sticker avatars ─────── */
+.cat{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--rule)}
+.cat img{width:52px;height:52px;object-fit:cover;border-radius:50%;
+  border:2.5px solid var(--vinyl);box-shadow:var(--pop-sm)}
+.cat .nm{font-size:var(--t-lg);font-weight:600;line-height:1.15}
+.cat .mt{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft)}
+.cat .ct{margin-left:auto;font-family:'Baloo 2',cursive;font-size:var(--t-xs);font-weight:700;
+  color:var(--vinyl);border:2px solid var(--vinyl);border-radius:var(--r-pill);padding:2px 8px}
+.swatch{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;
+  border:1.5px solid var(--vinyl);vertical-align:0}
+
+/* ── suggestion ─────────────────────────────────── */
+.ask{border:2.5px solid var(--vinyl);border-radius:var(--r-lg);background:var(--paper-hi);
+  padding:14px;box-shadow:var(--pop)}
+.ask h3{font-family:'Baloo 2',cursive;font-size:var(--t-lg);font-weight:800;color:var(--vinyl)}
+.ask .hint{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft);margin-top:1px}
+.cand{display:flex;gap:11px;align-items:center;padding:10px 0;border-top:1px solid var(--rule);margin-top:9px}
+.cand img{width:50px;height:50px;object-fit:cover;border-radius:50%;border:2.5px solid var(--vinyl)}
+.cand .nm{font-size:var(--t-md);font-weight:600}
+.cand .why{font-size:var(--t-sm);color:var(--ink-soft);line-height:1.3}
+.cand button{margin-left:auto;font-family:'Baloo 2',cursive;font-size:var(--t-sm);font-weight:800;
+  border:2.5px solid var(--vinyl);background:var(--jade);color:var(--vinyl);
+  padding:6px 15px;border-radius:var(--r-pill);cursor:pointer;box-shadow:var(--pop-sm)}
+.ghost{display:block;width:100%;margin-top:12px;font-family:'Baloo 2',cursive;
+  font-size:var(--t-md);font-weight:700;
+  border:2.5px dashed var(--ink-faint);background:none;color:var(--ink-soft);
+  padding:8px;border-radius:var(--r-pill);cursor:pointer}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="brief">
+  <h1>Direction 3 — scrapbook with stickers</h1>
+  <p>The hybrid, and my pick. The page is still a paper notebook and photos are still tipped-in prints, but everything you tap is a vinyl sticker: pins, chips, buttons, badges. Content stays warm and personal; the interactive layer stays loud and legible over cartography.</p>
+</div>
+
+<div class="sheet">
+
+  <figure class="frame">
+    <figcaption>1. Map</figcaption>
+    <div class="phone">
+      <div class="topbar"><span class="wordmark">Meowmap</span><span class="place">Fernwood, Victoria</span></div>
+      <div class="body">
+        <div id="map"></div>
+        <div class="maptip"><strong>Mochi</strong> has turned up three times on this block since April.</div>
+      </div>
+      <nav class="tabs"><button class="on">Map</button><button>Snap</button><button>Cats</button></nav>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>2. One sighting</figcaption>
+    <div class="phone">
+      <div class="topbar"><span class="wordmark">Mochi</span><span class="place">third sighting</span></div>
+      <div class="body"><div class="scroll">
+        <div class="badge">petted!</div>
+        <figure class="print">
+          <span class="tape"></span>
+          <img src="https://placecats.com/neo/600/420" alt="A cat on a fence">
+          <figcaption>on the blue mailbox again</figcaption>
+        </figure>
+        <div class="label">
+          <h2>Mochi</h2>
+          <div class="sub">Moss Street at Fernwood Road</div>
+          <dl class="rows">
+            <dt>Seen</dt><dd>14 August, 6:42pm</dd>
+            <dt>Location</dt><dd>from the photo</dd>
+          </dl>
+          <div class="fieldname">Coat</div>
+          <div class="chiprow">
+            <button class="chip on c1">orange</button><button class="chip on c2">tabby</button>
+            <button class="chip">black</button><button class="chip">white</button>
+            <button class="chip">grey</button><button class="chip">tuxedo</button>
+            <button class="chip">calico</button>
+          </div>
+          <div class="fieldname">Size</div>
+          <div class="chiprow">
+            <button class="chip">kitten</button><button class="chip on c3">adult</button><button class="chip">chonk</button>
+          </div>
+        </div>
+      </div></div>
+      <nav class="tabs"><button>Map</button><button>Snap</button><button class="on">Cats</button></nav>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>3. Cats</figcaption>
+    <div class="phone">
+      <div class="topbar"><span class="wordmark">Cats</span><span class="place">nine so far</span></div>
+      <div class="body"><div class="scroll">
+        <div class="cat"><img src="https://placecats.com/neo/160/160" alt="">
+          <div><div class="nm"><span class="swatch" style="background:#ff5470"></span>Mochi</div><div class="mt">Moss Street, three sightings</div></div><div class="ct">petted</div></div>
+        <div class="cat"><img src="https://placecats.com/millie/160/160" alt="">
+          <div><div class="nm"><span class="swatch" style="background:#3dbe8b"></span>Gravy</div><div class="mt">Cook Street, twice</div></div><div class="ct">not yet</div></div>
+        <div class="cat"><img src="https://placecats.com/bella/160/160" alt="">
+          <div><div class="nm"><span class="swatch" style="background:#7c8cff"></span>Sergeant Tuxedo</div><div class="mt">Oak Bay Avenue, once</div></div><div class="ct">fled</div></div>
+        <div class="cat"><img src="https://placecats.com/poppy/160/160" alt="">
+          <div><div class="nm"><span class="swatch" style="background:#ffc145"></span>Biscuit</div><div class="mt">Pandora Avenue, once</div></div><div class="ct">petted</div></div>
+        <div class="cat"><img src="https://placecats.com/louie/160/160" alt="">
+          <div><div class="nm" style="color:var(--ink-soft)">Not named yet</div><div class="mt">the one under the Subaru</div></div><div class="ct">once</div></div>
+      </div></div>
+      <nav class="tabs"><button>Map</button><button>Snap</button><button class="on">Cats</button></nav>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>4. Just after saving</figcaption>
+    <div class="phone">
+      <div class="topbar"><span class="wordmark">Saved</span><span class="place">one moment</span></div>
+      <div class="body"><div class="scroll">
+        <figure class="print" style="transform:rotate(1deg)">
+          <span class="tape"></span>
+          <img src="https://placecats.com/louie/600/380" alt="A cat photographed just now" style="height:144px">
+          <figcaption>just now, Moss Street</figcaption>
+        </figure>
+        <div class="ask">
+          <h3>Have you met this one before?</h3>
+          <div class="hint">Two cats have been seen near here.</div>
+          <div class="cand"><img src="https://placecats.com/neo/160/160" alt="">
+            <div><div class="nm">Mochi</div><div class="why">40 metres away, three days ago</div></div>
+            <button>Yes</button></div>
+          <div class="cand"><img src="https://placecats.com/millie/160/160" alt="">
+            <div><div class="nm">Gravy</div><div class="why">180 metres away, last month</div></div>
+            <button>Yes</button></div>
+          <button class="ghost">Someone new</button>
+        </div>
+      </div></div>
+      <nav class="tabs"><button class="on">Map</button><button>Snap</button><button>Cats</button></nav>
+    </div>
+  </figure>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map',{zoomControl:false,attributionControl:true,preferCanvas:true})
+  .setView([48.4266,-123.3505],15);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'&copy; OpenStreetMap',maxZoom:19}).addTo(map);
+
+function pin(img,{count=null,cls=''}={}){
+  return L.divIcon({
+    className:'pin '+cls,
+    html:'<i style="background-image:url('+img+')"></i>'+(count?'<b>'+count+'</b>':''),
+    iconSize:[48,48], iconAnchor:[24,60]
+  });
+}
+const mochiPts=[[48.4278,-123.3535],[48.4271,-123.3498],[48.4262,-123.3521]];
+const gravyPts=[[48.4249,-123.3480],[48.4256,-123.3455]];
+
+L.polyline(mochiPts,{color:'#ff5470',weight:3.5,dashArray:'7 6',opacity:.95,interactive:false}).addTo(map);
+L.polyline(gravyPts,{color:'#3dbe8b',weight:3.5,dashArray:'7 6',opacity:.95,interactive:false}).addTo(map);
+
+L.marker(mochiPts[0],{icon:pin('https://placecats.com/neo/120/120')}).addTo(map);
+L.marker(mochiPts[1],{icon:pin('https://placecats.com/neo/120/120')}).addTo(map);
+L.marker(mochiPts[2],{icon:pin('https://placecats.com/neo/120/120',{count:'x2'})}).addTo(map);
+L.marker(gravyPts[0],{icon:pin('https://placecats.com/millie/120/120')}).addTo(map);
+L.marker(gravyPts[1],{icon:pin('https://placecats.com/millie/120/120')}).addTo(map);
+L.marker([48.4288,-123.3472],{icon:pin('https://placecats.com/bella/120/120')}).addTo(map);
+L.marker([48.4240,-123.3540],{icon:pin('https://placecats.com/poppy/120/120',{cls:'loose'})}).addTo(map);
+L.marker([48.4295,-123.3505],{icon:pin('https://placecats.com/louie/120/120',{cls:'pending',count:'!'})}).addTo(map);
+</script>
+</body>
+</html>

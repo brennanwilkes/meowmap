@@ -1,0 +1,75 @@
+name = "meowmap-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-10"
+workers_dev = true
+minify = true
+
+[vars]
+# Everything is world-readable and there are no cookies, so Origin is not a security
+# boundary here — Turnstile, the upload pass and the rate limiters are. "*" also avoids a
+# `Vary: Origin` that would fragment the Workers Cache per origin for no benefit.
+ALLOWED_ORIGIN = "*"
+JWT_ISS = "meowmap-api"
+JWT_AUD = "meowmap"
+PASS_TTL_DAYS = "30"
+PASS_RENEW_WITHIN_DAYS = "7"
+# Public by design; served to the buildless frontend via GET /config so rotating the
+# widget never needs a frontend redeploy.
+TURNSTILE_SITE_KEY = "0x4AAAAAAEvmCb1ecWaTIiI7"
+
+# cross_version_cache keeps the year-long immutable photo cache alive across deploys.
+# Without it every `wrangler deploy` dumps every cached photo and re-bills R2 class B ops.
+[cache]
+enabled = true
+cross_version_cache = true
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[[d1_databases]]
+binding = "MEOWMAP_DB"
+database_name = "meowmap"
+database_id = "__D1_ID__"
+
+# R2 must be enabled once in the dashboard (payment method required even for the free
+# tier) or ensure-bindings.mjs cannot create this and the first deploy fails.
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "meowmap-photos"
+
+# `period` must be exactly 10 or 60. Counters are per-Cloudflare-location and eventually
+# consistent — a blunt floodgate, explicitly not an accounting system. Needs wrangler >= 4.36.0.
+#
+# RL_MUTATE_IP is the real bound. RL_MUTATE_DEVICE is a courtesy limiter only: the device
+# id comes from localStorage so an attacker rotates it freely. Don't "harden" the wrong one.
+[[ratelimits]]
+name = "RL_MUTATE_IP"
+namespace_id = "2001"
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
+[[ratelimits]]
+name = "RL_MUTATE_DEVICE"
+namespace_id = "2002"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[ratelimits]]
+name = "RL_PASS_IP"
+namespace_id = "2003"
+  [ratelimits.simple]
+  limit = 5
+  period = 60
+
+# Photo keys are unguessable SHA-256, so enumerating them requires the bulk endpoint
+# first. Throttling /sightings is what makes scraping — and therefore a class B bill —
+# expensive.
+[[ratelimits]]
+name = "RL_BULK_IP"
+namespace_id = "2004"
+  [ratelimits.simple]
+  limit = 30
+  period = 60

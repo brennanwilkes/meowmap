@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Shared helpers for D1 inspection scripts — always queries remote meowmap DB.
+# Source this from other db-* scripts:  source "$(dirname "$0")/db-common"
+set -euo pipefail
+
+PRETTY_FLAG=""
+
+# Default help
+if ! declare -f show_help >/dev/null 2>&1; then
+    show_help() {
+        echo "Usage: $(basename "$0") [--pretty]"
+    }
+fi
+
+validate_int() {
+    local name="$1" value="$2"
+    if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: $name must be a positive integer, got '$value'" >&2
+        exit 1
+    fi
+}
+
+
+sanitize_like() {
+    local s="$1"
+    s="${s//\'/''}"
+    printf '%s' "$s"
+}
+
+parse_common_flags() {
+    local remaining=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --pretty)   PRETTY_FLAG="1"; shift ;;
+            --help|-h)  show_help; exit 0 ;;
+            --)         shift; remaining+=("$@"); break ;;
+            *)          remaining+=("$1"); shift ;;
+        esac
+    done
+    set -- "${remaining[@]}"
+}
+
+d1_query() {
+    local sql="$1"
+    if [[ -n "$PRETTY_FLAG" ]]; then
+        npx wrangler d1 execute meowmap --remote --command "$sql" 2>/dev/null
+    else
+        npx wrangler d1 execute meowmap --remote --json --command "$sql" 2>/dev/null
+    fi
+}

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Recent mutations. The workhorse view.
+source "$(dirname "$0")/db-common"
+show_help() { echo "Usage: db-audit [--limit N] [--outcome X] [--pretty]"; }
+LIMIT=50; OUTCOME=""
+ARGS=(); while [[ $# -gt 0 ]]; do case "$1" in
+  --limit) validate_int limit "$2"; LIMIT="$2"; shift 2;;
+  --outcome) OUTCOME="$(sanitize_like "$2")"; shift 2;;
+  *) ARGS+=("$1"); shift;; esac; done
+parse_common_flags "${ARGS[@]+"${ARGS[@]}"}"
+WHERE=""; [[ -n "$OUTCOME" ]] && WHERE="WHERE outcome = '$OUTCOME'"
+d1_query "
+SELECT id, datetime(ts/1000,'unixepoch') AS when_utc, method, path, status, outcome,
+       ip, country, colo, as_org, substr(device_id,1,8) AS dev, target_id, detail
+FROM audit_log $WHERE ORDER BY id DESC LIMIT $LIMIT"

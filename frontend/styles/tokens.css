@@ -1,0 +1,98 @@
+/* Meowmap design tokens.
+ *
+ * Extracted from mockups/scrapbook-tactile.html, which is the reference for anything
+ * this file cannot express (press physics, page turns, the paper annotations).
+ *
+ * Two rules that are load-bearing rather than stylistic, and that erode silently:
+ *
+ *   1. NOTHING IS HALF-ROUNDED. --r-cut (2px) or a true 50% circle. A 12-20px radius is
+ *      what makes a sticker read as a "badge", which is the exact thing that was rejected
+ *      four times during design review.
+ *   2. NO RAW PX for border-radius or font-size anywhere in the app. Audit with:
+ *        grep -rnE 'border-radius:[ \t]*[0-9]|font-size:[ \t]*[0-9]' styles/ app/
+ *      (50% for a true circle is the only legal literal.)
+ *
+ * Light-only by design. Scrapbook paper does not work on a dark ground, so there is no
+ * dark palette and no theme switch — do not add one without redesigning the metaphor.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ── paper ─────────────────────────────────────────────────────────────── */
+  --paper:       #e9e4d6;  /* the page */
+  --paper-hi:    #f4f0e6;  /* raised surfaces, and the die-cut margin around stickers */
+  --rule:        #d3cbb6;  /* the page ruling, and every section break */
+
+  /* ── ink ───────────────────────────────────────────────────────────────── */
+  --ink:         #2e2a24;  /* body text, sticker keylines */
+  --ink-soft:    #6b6459;  /* secondary text, handwritten annotations */
+  --ink-faint:   #9a9184;  /* unselected chips, disabled, placeholder */
+
+  /* ── sticker colours ───────────────────────────────────────────────────── */
+  /* Also the cat-identity palette: a cat's colour is derived from its id against
+     these, and must be identical on its pins, its turf and its list row. */
+  --coral:       #ff5470;
+  --marigold:    #ffc145;
+  --jade:        #3dbe8b;
+  --peri:        #7c8cff;
+  /* white text is needed on these two; the other two take --ink */
+  --on-coral:    #ffffff;
+  --on-peri:     #ffffff;
+
+  --tape:        rgba(255, 254, 250, 0.80);
+
+  /* ── geometry ──────────────────────────────────────────────────────────── */
+  --r-cut:       2px;      /* the only radius. see rule 1 above. */
+
+  /* ── type ──────────────────────────────────────────────────────────────── */
+  /* Three families, one job each. Zilla Slab = structure and body,
+     Kalam = handwritten annotation, Baloo 2 = sticker lettering. */
+  --font-body:   'Zilla Slab', Georgia, 'Times New Roman', serif;
+  --font-hand:   'Kalam', 'Bradley Hand', cursive;
+  --font-stick:  'Baloo 2', 'Trebuchet MS', system-ui, sans-serif;
+
+  --t-xs:        11px;
+  --t-sm:        13px;
+  --t-md:        15px;
+  --t-lg:        17px;
+  --t-xl:        22px;
+  --t-2xl:       29px;
+  /* iOS zooms the page when a focused form control is under 16px. Any <input>,
+     <select> or <textarea> must use this or larger under pointer:coarse. */
+  --t-input:     16px;
+
+  /* ── sticker physics ───────────────────────────────────────────────────── */
+  /* A sticker sits --lift-x/--lift-y off the page. Pressing it translates by exactly
+     that and collapses the shadow, i.e. it is flattened onto the page. Do not
+     substitute a generic scale-down; the offsets must agree or the press looks wrong. */
+  --lift-x:      2px;
+  --lift-y:      3px;
+  --cut:         0 0 0 3.5px var(--paper-hi);
+  --lift:        var(--lift-x) var(--lift-y) 0 rgba(46, 42, 36, 0.32);
+  --lift-lg:     3px 4px 0 rgba(46, 42, 36, 0.32);
+
+  /* ── motion ────────────────────────────────────────────────────────────── */
+  --down:        50ms cubic-bezier(0.4, 0, 1, 1);          /* press: fast, linear in */
+  --up:          190ms cubic-bezier(0.34, 1.4, 0.64, 1);   /* release: the pop */
+  --turn:        280ms cubic-bezier(0.32, 0.72, 0, 1);     /* page turn */
+
+  /* ── chrome ────────────────────────────────────────────────────────────── */
+  --nav-h:       74px;
+  /* Declared in exactly ONE place. Every rule that fills the viewport subtracts it.
+     spirit-tracker hand-mirrored this in three stylesheets and every page scrolled
+     by exactly the nav height. */
+  --nav-space:   calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+  --safe-t:      env(safe-area-inset-top, 0px);
+  --safe-b:      env(safe-area-inset-bottom, 0px);
+  --safe-l:      env(safe-area-inset-left, 0px);
+  --safe-r:      env(safe-area-inset-right, 0px);
+
+  /* ── map ───────────────────────────────────────────────────────────────── */
+  /* Tint the tile pane, never the marker pane — pins must stay legible whatever
+     the basemap does. This is also what lets a tile provider be swapped without
+     the map ceasing to look like part of the scrapbook. */
+  --tile-filter: sepia(0.38) saturate(0.62) brightness(1.07) contrast(0.89) hue-rotate(-7deg);
+  --turf-fill-opacity: 0.17;
+  --pane-turf:   650;      /* above markerPane (600); see map.js for why */
+}

@@ -1,0 +1,115 @@
+/* The sticker system.
+ *
+ * A sticker = die-cut paper margin + hard offset shadow + a slight hand-stuck tilt.
+ * A badge is a filled pill; the margin and the tilt are the whole difference, and
+ * losing them is how this drifts back into looking generic.
+ *
+ * The press is physically motivated: a sticker sits --lift-x/--lift-y off the page, so
+ * pressing translates by exactly that and collapses the shadow — it is being flattened
+ * onto the page. Do NOT substitute a scale-down; the offsets must agree. */
+
+.stick {
+  box-shadow: var(--cut), var(--lift);
+  transition: transform var(--up), box-shadow var(--up);
+}
+.stick:active {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg) !important;
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
+
+/* Unselected chips lie flat on the page; selected ones are stuck on. The state reads
+   instantly and it is the most sticker-ish thing on the screen. */
+.chip {
+  font-family: var(--font-stick); font-size: var(--t-sm); font-weight: 700;
+  background: transparent; color: var(--ink-faint);
+  border: 2px dashed var(--ink-faint); border-radius: var(--r-cut);
+  padding: 4px 11px;
+  transition: transform var(--up), box-shadow var(--up), background var(--up),
+              color var(--up), border-color var(--up);
+}
+.chip[aria-pressed="true"] {
+  color: var(--ink); background: var(--fill);
+  border: 2.5px solid var(--ink); border-style: solid;
+  box-shadow: var(--cut), var(--lift);
+  transform: rotate(var(--tilt, -2deg));
+}
+.chip[aria-pressed="true"].on-dark { color: #fff; }
+.chip:active {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
+.chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+.btn-stick {
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
+  color: var(--ink); background: var(--marigold);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 12px 18px; min-height: 44px;
+}
+.btn-ghost {
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
+  color: var(--ink-soft); background: none;
+  border: 2px dashed var(--ink-faint); border-radius: var(--r-cut);
+  padding: 9px 14px; min-height: 44px;
+}
+
+/* Clear tape: translucent but milky enough to read as a physical strip, torn at both
+   short ends. The first pass was too transparent and read as a UI gradient. */
+.tape {
+  position: absolute; width: 88px; height: 25px; z-index: 6; pointer-events: none;
+  background: linear-gradient(158deg,
+    rgba(255,254,250,.80), rgba(250,248,240,.52) 42%, rgba(255,254,250,.74));
+  box-shadow: 0 1px 3px rgba(46,42,36,.3), inset 0 0 0 1px rgba(255,255,255,.5);
+  clip-path: polygon(2% 0%, 98% 0%, 94% 25%, 99% 50%, 94% 75%, 98% 100%,
+                     2% 100%, 6% 75%, 1% 50%, 6% 25%);
+  backdrop-filter: saturate(1.1) brightness(1.02);
+}
+.tape::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 10%, rgba(255,255,255,.5) 19%, transparent 29%);
+}
+
+/* A dome, not a disc. */
+.pushpin {
+  position: absolute; width: 22px; height: 22px; border-radius: 50%;
+  z-index: 8; pointer-events: none;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.95) 0 7%, rgba(255,255,255,0) 33%),
+    radial-gradient(circle at 36% 31%, #ff8da0 0%, #ef4a66 40%, #b62644 74%, #7a1530 100%);
+  box-shadow:
+    inset -2px -3px 6px rgba(80,8,26,.6), inset 2px 2px 4px rgba(255,255,255,.3),
+    0 0 0 1px rgba(46,42,36,.4), 4px 6px 8px rgba(46,42,36,.45);
+}
+/* The needle emerges BELOW the dome so it needs no z-order trickery. */
+.pushpin::before {
+  content: ''; position: absolute; left: 50%; top: 86%; width: 3px; height: 12px;
+  margin-left: -1.5px; transform: rotate(10deg); transform-origin: top center;
+  background: linear-gradient(90deg, #63676d, #c8ced6 42%, #63676d);
+  border-radius: 0 0 1.5px 1.5px; box-shadow: 1px 2px 2px rgba(46,42,36,.45);
+}
+.pushpin::after {
+  content: ''; position: absolute; left: 27%; top: 20%; width: 6px; height: 4.5px;
+  border-radius: 50%; background: rgba(255,255,255,.85); transform: rotate(-22deg);
+}
+
+.clip-svg { position: absolute; width: 22px; height: 42px; z-index: 8; pointer-events: none;
+  filter: drop-shadow(1.5px 2px 1.5px rgba(46,42,36,.35)); }
+
+/* A tipped-in print, square, taped at the top. */
+.print {
+  position: relative; background: var(--paper-hi); padding: 9px 9px 0;
+  border: 1px solid var(--rule); box-shadow: 2px 3px 0 rgba(46,42,36,.18);
+  transform: rotate(-1.3deg); margin: 8px 0 18px;
+}
+.print img { width: 100%; object-fit: cover; filter: sepia(.1) saturate(.97); }
+.print figcaption {
+  font-family: var(--font-hand); font-size: var(--t-md); color: var(--ink-soft);
+  padding: 7px 2px 9px; text-align: center;
+}
+
+@media (pointer: coarse) {
+  .btn-stick, .btn-ghost { min-height: 46px; }
+  .chip { padding: 7px 13px; }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "Meowmap",
+  "short_name": "Meowmap",
+  "description": "Cats seen in public, on a map.",
+  "id": "/meowmap/",
+  "start_url": "./#/map",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone"],
+  "orientation": "portrait",
+  "background_color": "#e9e4d6",
+  "theme_color": "#e9e4d6",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

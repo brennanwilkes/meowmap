@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  // Tests are deliberately NOT typechecked. They import node:test/node:assert, which
+  // would need @types/node — and pulling Node's globals (its crypto, its fetch) into a
+  // Workers project is a known source of subtle wrongness. The tests are verified by
+  // being RUN (`npm test`), which is stronger evidence than compiling them.
+  "include": ["src/**/*.ts"]
+}

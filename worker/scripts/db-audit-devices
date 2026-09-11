@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# "Is this just the two phones?" — the question the audit log exists to answer.
+# distinct_ips > 5 on one device, or distinct_devices > 1 on one IP, is the anomaly.
+source "$(dirname "$0")/db-common"
+show_help() { echo "Usage: db-audit-devices [--days N] [--pretty]"; }
+DAYS=30
+ARGS=(); while [[ $# -gt 0 ]]; do case "$1" in
+  --days) validate_int days "$2"; DAYS="$2"; shift 2;;
+  *) ARGS+=("$1"); shift;; esac; done
+parse_common_flags "${ARGS[@]+"${ARGS[@]}"}"
+d1_query "
+SELECT substr(COALESCE(device_id,pass_sub),1,8) AS dev,
+       COUNT(*) AS requests,
+       COUNT(DISTINCT ip) AS distinct_ips,
+       COUNT(DISTINCT as_org) AS distinct_orgs,
+       MAX(as_org) AS an_org,
+       datetime(MIN(ts)/1000,'unixepoch') AS first_seen,
+       datetime(MAX(ts)/1000,'unixepoch') AS last_seen,
+       SUM(CASE WHEN outcome != 'ok' THEN 1 ELSE 0 END) AS non_ok
+FROM audit_log
+WHERE ts > (strftime('%s','now') - $DAYS*86400)*1000
+GROUP BY dev ORDER BY requests DESC"

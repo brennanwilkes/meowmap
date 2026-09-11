@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# D1 side of R2 garbage collection. Content-addressed keys mean two sightings can share
+# one object, so never delete per-sighting — this lists what is REFERENCED, and
+# r2-reconcile.mjs diffs it against what is stored.
+source "$(dirname "$0")/db-common"
+show_help() { echo "Usage: db-orphans [--pretty]"; }
+parse_common_flags "$@"
+d1_query "
+SELECT k AS referenced_hash, COUNT(*) AS refs FROM (
+  SELECT photo_full AS k FROM sightings
+  UNION ALL SELECT photo_thumb FROM sightings
+) GROUP BY k ORDER BY refs DESC"

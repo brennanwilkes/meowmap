@@ -1,0 +1,19 @@
+{
+  "name": "meowmap-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "ensure:bindings": "node scripts/ensure-bindings.mjs",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "reconcile": "node scripts/r2-reconcile.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260910.1",
+    "typescript": "5.9.3",
+    "wrangler": "4.131.0"
+  }
+}

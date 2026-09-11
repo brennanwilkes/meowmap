@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover is REQUIRED or every env(safe-area-inset-*) resolves to 0, and
+     in standalone mode the notch and home indicator eat the nav. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#e9e4d6">
+<title>Meowmap</title>
+
+<!-- iOS does not reliably take the home-screen glyph from the manifest icons array,
+     so the legacy tags stay alongside it. -->
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Meowmap">
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-180.png">
+<link rel="icon" href="./icons/icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Kalam:wght@400;700&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<link rel="stylesheet" href="./styles/tokens.css">
+<link rel="stylesheet" href="./styles/base.css">
+<link rel="stylesheet" href="./styles/layout.css">
+<link rel="stylesheet" href="./styles/sticker.css">
+<link rel="stylesheet" href="./styles/map.css">
+<link rel="stylesheet" href="./styles/sheet.css">
+</head>
+<body>
+
+<div id="app">
+  <header class="topbar">
+    <span class="wordmark" id="wordmark">Meowmap</span>
+    <span class="place" id="place"></span>
+  </header>
+
+  <main class="stage" id="stage">
+    <section class="screen live" id="s-map" aria-label="Map"></section>
+    <section class="screen hide ruled" id="s-snap" aria-label="Add a cat"></section>
+    <section class="screen hide ruled" id="s-cats" aria-label="Cats"></section>
+  </main>
+
+  <div class="veil" id="veil"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Details"></div>
+
+  <nav class="tabs" id="tabs" aria-label="Primary">
+    <button class="t1" data-screen="map"  aria-current="page">Map</button>
+    <button class="t2" data-screen="snap">Snap</button>
+    <button class="t3" data-screen="cats">Cats</button>
+  </nav>
+</div>
+
+<!-- Leaflet is a classic script and must define the L global before main.js runs.
+     Never import it as a module; that is the house convention. -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module" src="./app/main.js"></script>
+</body>
+</html>

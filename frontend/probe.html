@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Meowmap probe</title>
+<style>
+:root{--paper:#e9e4d6;--paper-hi:#f4f0e6;--rule:#d3cbb6;--ink:#2e2a24;--ink-soft:#6b6459;
+      --jade:#3dbe8b;--coral:#ff5470;--marigold:#ffc145}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font:15px/1.5 ui-monospace,Menlo,monospace;
+     padding:16px calc(16px + env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom))}
+h1{font:700 20px/1.2 system-ui;margin-bottom:4px}
+p.lede{font:14px/1.5 system-ui;color:var(--ink-soft);margin-bottom:16px;max-width:60ch}
+h2{font:700 14px/1.3 system-ui;margin:20px 0 8px;padding-top:10px;border-top:2px solid var(--ink)}
+button,label.btn{display:inline-block;font:700 16px/1 system-ui;background:var(--marigold);
+  color:var(--ink);border:2.5px solid var(--ink);border-radius:2px;padding:13px 16px;
+  margin:0 8px 8px 0;cursor:pointer;box-shadow:2px 3px 0 rgba(46,42,36,.32)}
+button:active,label.btn:active{transform:translate(2px,3px);box-shadow:none}
+input[type=file]{display:none}
+pre{background:var(--paper-hi);border:1.5px solid var(--rule);padding:10px;
+    white-space:pre-wrap;word-break:break-all;font-size:12px;margin-bottom:8px}
+.ok{color:#1d7a52;font-weight:700}
+.bad{color:#a5203a;font-weight:700}
+img#preview{max-width:100%;border:2.5px solid var(--ink);margin-top:8px;display:none}
+</style>
+</head>
+<body>
+
+<h1>Meowmap probe</h1>
+<p class="lede">Run this on the real iPhone, over HTTPS. It answers the iOS questions the
+build is currently guessing at. Try each source below and screenshot or copy the output.</p>
+
+<h2>1. Pick a photo</h2>
+<label class="btn" for="cam">Take a photo (capture=)</label>
+<input id="cam" type="file" accept="image/jpeg,image/png" capture="environment">
+<label class="btn" for="lib">Choose from library</label>
+<input id="lib" type="file" accept="image/jpeg,image/png">
+<p class="lede">Run the library one <b>twice</b>: once with the picker's
+<b>Options &rarr; Location</b> ON, once OFF. Also try Options &rarr; Format = Current
+(that is the raw-HEIC case), and a screenshot, and a 48&nbsp;MP photo.</p>
+<pre id="fileOut">no file yet</pre>
+<img id="preview" alt="">
+
+<h2>2. Capability probes</h2>
+<button id="runProbes">Run probes</button>
+<pre id="probeOut">not run</pre>
+
+<h2>3. Storage</h2>
+<button id="runStorage">Check storage + request persist</button>
+<pre id="storageOut">not run</pre>
+
+<h2>4. Geolocation</h2>
+<button id="runGeo">Get a fix (watches 12s, keeps the best)</button>
+<pre id="geoOut">not run</pre>
+
+<script type="module">
+import { readImageMeta, captureTimeMs, sniffContainer } from './app/exif.js';
+
+const $ = (id) => document.getElementById(id);
+const show = (el, obj) => { el.textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2); };
+
+/* ── 1. file inspection ──────────────────────────────────────────────────── */
+
+async function inspect(file, source) {
+  const out = { source, name: file.name, type: file.type, size: file.size };
+  try {
+    const head = await file.slice(0, 256 * 1024).arrayBuffer();
+    out.first16 = [...new Uint8Array(head).slice(0, 16)]
+      .map((b) => b.toString(16).padStart(2, '0')).join(' ');
+    out.sniffed = sniffContainer(head);
+
+    try {
+      const meta = readImageMeta(head);
+      out.exif = {
+        hasExif: meta.hasExif,
+        truncated: meta.truncated,
+        pixels: meta.pixelWidth === null ? null : `${meta.pixelWidth}x${meta.pixelHeight}`,
+        megapixels: meta.pixelWidth === null ? null
+          : +(meta.pixelWidth * meta.pixelHeight / 1e6).toFixed(1),
+        orientation: meta.orientation,
+        dateTimeOriginal: meta.dateTimeOriginal,
+        offsetTimeOriginal: meta.offsetTimeOriginal,
+        gpsDateTimeUtc: meta.gpsDateTimeUtc,
+        gps: meta.gps,
+        captureTime: captureTimeMs(meta) === null ? null : new Date(captureTimeMs(meta)).toISOString(),
+      };
+      // THE question this page exists to answer.
+      out.VERDICT_GPS = meta.gps === null
+        ? 'NO GPS — manual pin required for this source'
+        : 'GPS PRESENT';
+    } catch (e) {
+      out.exifError = `${e.name}: ${e.message}`;
+    }
+
+    // Does it decode at all? This is the HEIC blocking case.
+    try {
+      const bmp = await createImageBitmap(file);
+      out.decode = { ok: true, width: bmp.width, height: bmp.height };
+      bmp.close();
+    } catch (e) {
+      out.decode = { ok: false, error: String(e) };
+    }
+
+    // Does resize-on-decode work? Determines whether a 48 MP source is safe.
+    try {
+      const bmp = await createImageBitmap(file, { resizeWidth: 512, resizeQuality: 'high' });
+      out.resizeOnDecode = { honoured: bmp.width === 512, got: `${bmp.width}x${bmp.height}` };
+      bmp.close();
+    } catch (e) {
+      out.resizeOnDecode = { honoured: false, error: String(e) };
+    }
+  } catch (e) {
+    out.fatal = String(e);
+  }
+  show($('fileOut'), out);
+
+  const img = $('preview');
+  img.src = URL.createObjectURL(file);
+  img.style.display = 'block';
+  img.onload = () => URL.revokeObjectURL(img.src);
+}
+
+$('cam').addEventListener('change', (e) => {
+  if (e.target.files.length > 0) inspect(e.target.files[0], 'capture=environment');
+  e.target.value = '';   // or re-picking the same photo fires no change event
+});
+$('lib').addEventListener('change', (e) => {
+  if (e.target.files.length > 0) inspect(e.target.files[0], 'library');
+  e.target.value = '';
+});
+
+/* ── 2. capability probes ────────────────────────────────────────────────── */
+
+/* A 2x1 JPEG tagged Orientation=6 (rotate 90 CW). If the browser auto-applies EXIF
+   orientation it decodes as 1x2. Built at runtime rather than embedded: generate a
+   baseline JPEG with canvas, then splice an APP1 segment in after SOI. */
+const APP1_ORIENT_6 = new Uint8Array([
+  0xff, 0xe1, 0x00, 0x22,                          // APP1, length 34
+  0x45, 0x78, 0x69, 0x66, 0x00, 0x00,              // "Exif\0\0"
+  0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00,  // II, 42, IFD0 @ 8
+  0x01, 0x00,                                      // 1 entry
+  0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,  // tag 0x0112, SHORT, count 1
+  0x06, 0x00, 0x00, 0x00,                          // value 6
+  0x00, 0x00, 0x00, 0x00,                          // no next IFD
+]);
+
+async function orientedTestBlob() {
+  const c = document.createElement('canvas');
+  c.width = 2; c.height = 1;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f00'; ctx.fillRect(0, 0, 1, 1);
+  ctx.fillStyle = '#00f'; ctx.fillRect(1, 0, 1, 1);
+  const base = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
+  const bytes = new Uint8Array(await base.arrayBuffer());
+  const out = new Uint8Array(bytes.length + APP1_ORIENT_6.length);
+  out.set(bytes.subarray(0, 2), 0);                       // SOI
+  out.set(APP1_ORIENT_6, 2);
+  out.set(bytes.subarray(2), 2 + APP1_ORIENT_6.length);
+  return new Blob([out], { type: 'image/jpeg' });
+}
+
+$('runProbes').addEventListener('click', async () => {
+  const out = {
+    userAgent: navigator.userAgent,
+    standalone: window.matchMedia('(display-mode: standalone)').matches
+      || navigator.standalone === true,
+    createImageBitmap: typeof createImageBitmap === 'function',
+    OffscreenCanvas: typeof OffscreenCanvas === 'function',
+    // Never shipped in any Safari. Expected false; recorded so the assumption is evidenced.
+    backgroundSync: 'serviceWorker' in navigator && 'SyncManager' in window,
+    vibrate: typeof navigator.vibrate === 'function',
+    devicePixelRatio: window.devicePixelRatio,
+  };
+
+  try {
+    const blob = await orientedTestBlob();
+    const bmp = await createImageBitmap(blob);
+    // 2x1 source; 1x2 means the browser applied EXIF orientation itself.
+    out.autoOrients = bmp.width === 1 && bmp.height === 2;
+    out.autoOrientRaw = `${bmp.width}x${bmp.height}`;
+    bmp.close();
+
+    try {
+      const none = await createImageBitmap(blob, { imageOrientation: 'none' });
+      out.honoursOrientationOption = `${none.width}x${none.height}` !== out.autoOrientRaw;
+      none.close();
+    } catch (e) {
+      out.honoursOrientationOption = `error: ${e}`;
+    }
+  } catch (e) {
+    out.orientationProbe = `FAILED: ${e}`;
+  }
+
+  // Does toBlob honour a requested type, or silently fall back to PNG? A 2048px PNG is
+  // ~5 MB, so a silent fallback would blow the size budget invisibly.
+  const c = document.createElement('canvas');
+  c.width = 8; c.height = 8;
+  for (const t of ['image/jpeg', 'image/webp']) {
+    const b = await new Promise((r) => c.toBlob(r, t, 0.8));
+    out[`toBlob ${t}`] = b === null ? 'null' : b.type;
+  }
+
+  show($('probeOut'), out);
+});
+
+/* ── 3. storage ──────────────────────────────────────────────────────────── */
+
+$('runStorage').addEventListener('click', async () => {
+  const out = {};
+  try {
+    const est = await navigator.storage.estimate();
+    out.quotaMB = Math.round((est.quota ?? 0) / 1e6);
+    out.usageMB = Math.round((est.usage ?? 0) / 1e6);
+  } catch (e) { out.estimateError = String(e); }
+  try {
+    out.persisted = await navigator.storage.persisted();
+    // WebKit grants this heuristically, favouring home-screen web apps. Whether it is
+    // granted here decides how durable the offline outbox actually is — and the outbox
+    // is the only copy of a capture= photo, which never reaches the camera roll.
+    out.persistGranted = await navigator.storage.persist();
+  } catch (e) { out.persistError = String(e); }
+  show($('storageOut'), out);
+});
+
+/* ── 4. geolocation ──────────────────────────────────────────────────────── */
+
+$('runGeo').addEventListener('click', () => {
+  show($('geoOut'), 'watching…');
+  if (!('geolocation' in navigator)) { show($('geoOut'), 'no geolocation API'); return; }
+  if (!window.isSecureContext) { show($('geoOut'), 'NOT a secure context — serve over HTTPS'); return; }
+
+  const started = Date.now();
+  const seen = [];
+  let best = null;
+  const id = navigator.geolocation.watchPosition(
+    (p) => {
+      const row = {
+        atMs: Date.now() - started,
+        accuracyM: Math.round(p.coords.accuracy),
+        lat: +p.coords.latitude.toFixed(6),
+        lon: +p.coords.longitude.toFixed(6),
+      };
+      seen.push(row);
+      if (best === null || p.coords.accuracy < best.accuracyM) best = row;
+      show($('geoOut'), { readings: seen, best });
+    },
+    (err) => show($('geoOut'), { error: err.code === 1 ? 'PERMISSION_DENIED'
+      : err.code === 2 ? 'POSITION_UNAVAILABLE' : 'TIMEOUT', message: err.message, readings: seen }),
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+  );
+  setTimeout(() => {
+    navigator.geolocation.clearWatch(id);
+    show($('geoOut'), {
+      readings: seen, best,
+      note: seen.length === 0 ? 'NO READINGS IN 12s — the app must reject, not guess'
+        : `converged from ${seen[0].accuracyM}m to ${best.accuracyM}m`,
+    });
+  }, 12000);
+});
+</script>
+</body>
+</html>

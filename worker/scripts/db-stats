@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# One-screen health check: counts, budget state, and today's D1 write estimate.
+source "$(dirname "$0")/db-common"
+show_help() { echo "Usage: db-stats [--pretty]"; }
+parse_common_flags "$@"
+d1_query "
+SELECT 'sightings live'      AS metric, COUNT(*) AS value FROM sightings WHERE deleted_at IS NULL
+UNION ALL SELECT 'sightings deleted',   COUNT(*) FROM sightings WHERE deleted_at IS NOT NULL
+UNION ALL SELECT 'cats live',           COUNT(*) FROM cats WHERE deleted_at IS NULL
+UNION ALL SELECT 'unidentified',        COUNT(*) FROM sightings WHERE cat_id IS NULL AND deleted_at IS NULL
+UNION ALL SELECT 'distinct devices',    COUNT(DISTINCT device_id) FROM sightings
+UNION ALL SELECT 'distinct photo keys', (SELECT COUNT(*) FROM (SELECT photo_full AS k FROM sightings UNION SELECT photo_thumb FROM sightings))
+UNION ALL SELECT 'audit rows',          COUNT(*) FROM audit_log
+UNION ALL SELECT 'mutations last 24h',  COUNT(*) FROM audit_log WHERE ts > (strftime('%s','now')-86400)*1000
+UNION ALL SELECT 'D1 rows written ~24h',COUNT(*)*4 FROM audit_log WHERE ts > (strftime('%s','now')-86400)*1000
+UNION ALL SELECT 'R2 bytes',            r2_bytes FROM app_meta WHERE id=1
+UNION ALL SELECT 'R2 objects',          r2_objects FROM app_meta WHERE id=1
+UNION ALL SELECT 'R2 reads est (month)',r2_reads_est FROM app_meta WHERE id=1
+UNION ALL SELECT 'uploads today',       uploads_today FROM app_meta WHERE id=1
+UNION ALL SELECT 'data_version',        data_version FROM app_meta WHERE id=1"

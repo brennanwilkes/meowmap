@@ -1,0 +1,85 @@
+/* Leaflet overrides, pins, and the territory layer. */
+
+#map { position: absolute; inset: 0; }
+.leaflet-container { background: var(--paper); font-family: var(--font-body); }
+
+/* Tint the TILE pane only. Tinting the marker pane would drag the pins toward the
+   paper and destroy the contrast they need to stay legible over cartography. This is
+   also what lets a tile provider be swapped without the map ceasing to look like part
+   of the scrapbook. */
+.leaflet-tile-pane { filter: var(--tile-filter); }
+
+.leaflet-control-attribution {
+  font-family: var(--font-body); font-size: var(--t-xs);
+  background: rgba(233, 228, 214, .85);
+}
+.leaflet-control-zoom { display: none; }   /* pinch works; the buttons are chrome */
+
+/* A pin is a square photo sticker whose die-cut ring carries the cat's colour, so you
+   recognise a cat by its face and confirm by its colour — no legend needed. */
+.pin { background: none; border: 0; cursor: pointer; }
+.pin i {
+  display: block; width: 46px; height: 46px; border-radius: var(--r-cut);
+  border: 2.5px solid var(--ink);
+  background: var(--paper-hi) center / cover no-repeat;
+  box-shadow: 0 0 0 3.5px var(--ring), var(--lift);
+  transform: rotate(-2.5deg);
+  transition: transform var(--up), box-shadow var(--up);
+}
+.pin.alt i { transform: rotate(2deg); }
+.pin:active i {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: 0 0 0 3.5px var(--ring);
+  transition: transform var(--down), box-shadow var(--down);
+}
+.pin::after {
+  content: ''; position: absolute; left: 50%; bottom: -8px;
+  width: 3px; height: 9px; background: var(--ink); transform: translateX(-50%);
+}
+.pin b {
+  position: absolute; right: -11px; top: -8px;
+  font-family: var(--font-stick); font-size: var(--t-xs); font-weight: 800;
+  background: var(--ring); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: var(--r-cut); padding: 0 5px;
+  box-shadow: 0 0 0 2.5px var(--paper-hi); transform: rotate(6deg);
+}
+/* Unidentified is a permanent, first-class state — dashed and desaturated says "not
+   named yet", not "broken". */
+.pin.loose i {
+  border-style: dashed; filter: grayscale(.6);
+  box-shadow: 0 0 0 3.5px var(--paper-hi);
+}
+/* Pending upload. She must never wonder whether a photo was saved. */
+.pin.pending i { border-color: var(--marigold); }
+.pin.pending b { background: var(--marigold); }
+
+/* Hand-lettered territory label. Lives in its own pane above the pins and is tappable. */
+.turf-label { background: none; border: 0; cursor: pointer; }
+.turf-label span {
+  font-family: var(--font-hand); font-weight: 700; font-size: var(--t-lg);
+  white-space: nowrap; color: var(--ink); display: inline-block;
+  transform: rotate(-7deg);
+  text-shadow: 0 0 4px var(--paper), 0 0 8px var(--paper), 0 0 12px var(--paper),
+               1px 1px 0 var(--paper);
+  transition: transform var(--up);
+}
+.turf-label:active span { transform: rotate(-7deg) scale(.93); transition: transform var(--down); }
+
+.map-note {
+  position: absolute; left: 14px; right: 14px; bottom: 14px; z-index: 600;
+  background: var(--paper-hi); border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 9px 13px; font-size: var(--t-sm); color: var(--ink-soft);
+  box-shadow: var(--lift-lg);
+}
+.map-note strong { color: var(--ink); font-weight: 600; }
+
+/* Non-dismissible while anything is un-uploaded. capture= photos never reach the
+   camera roll and we do not keep originals, so the outbox is the ONLY copy — this
+   banner is a durability feature, not a status indicator. */
+.outbox-banner {
+  position: absolute; left: 12px; right: 12px; top: 12px; z-index: 620;
+  background: var(--marigold); border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 9px 13px; font-family: var(--font-stick); font-weight: 700;
+  font-size: var(--t-sm); box-shadow: var(--cut), var(--lift);
+}
+.outbox-banner.stale { background: var(--coral); color: #fff; }

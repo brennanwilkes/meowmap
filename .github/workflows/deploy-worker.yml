@@ -1,0 +1,85 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main]
+    paths: [worker/**]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # DEVIATION from vessel-tracker, deliberately. Its deploy job goes straight from
+  # `npm ci` to `wrangler deploy`, so a type error ships. Worse, migrations run BEFORE
+  # deploy, so a bad push can leave the database migrated and the Worker broken. This
+  # gate makes that combination impossible.
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --no-fund --no-audit
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Worker tests
+        run: npm test
+      - name: Frontend tests
+        working-directory: .
+        run: bash tests/run-all.sh
+      - name: Bundle check (no deploy, no network writes)
+        run: npx wrangler deploy --dry-run --outdir /tmp/dist
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --no-fund --no-audit
+
+      # Creates the D1 database and R2 bucket if absent, patches __D1_ID__, then applies
+      # any pending numbered migrations. Idempotent; safe on every deploy.
+      - name: Ensure bindings + apply migrations
+        run: npm run ensure:bindings
+
+      - name: Deploy Worker
+        run: npx wrangler deploy
+
+      # Secrets are re-pushed every deploy so the GitHub secret store stays the single
+      # source of truth. Idempotent.
+      - name: Set TURNSTILE_SECRET_KEY
+        run: echo "${{ secrets.TURNSTILE_SECRET_KEY }}" | npx wrangler secret put TURNSTILE_SECRET_KEY
+
+      - name: Set PASS_SIGNING_SECRET
+        run: echo "${{ secrets.PASS_SIGNING_SECRET }}" | npx wrangler secret put PASS_SIGNING_SECRET
+
+      # Catches the two ways this stack fails silently: a secret that never got pushed,
+      # and a stale D1 binding id.
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          BASE="https://meowmap-api.${{ secrets.WORKERS_SUBDOMAIN }}.workers.dev"
+          curl -fsS "$BASE/health" | tee /dev/stderr | grep -q '"ok":true'
+          test "$(curl -fsS -o /dev/null -w '%{http_code}' "$BASE/sightings")" = "200"

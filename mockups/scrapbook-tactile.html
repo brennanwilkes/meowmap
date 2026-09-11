@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meowmap — tactile</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Kalam:wght@400;700&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#e9e4d6; --paper-hi:#f4f0e6; --rule:#d3cbb6;
+  --ink:#2e2a24; --ink-soft:#6b6459; --ink-faint:#9a9184;
+  --coral:#ff5470; --marigold:#ffc145; --jade:#3dbe8b; --peri:#7c8cff;
+  --r-cut:2px;
+  --t-xs:11px; --t-sm:13px; --t-md:15px; --t-lg:17px; --t-xl:22px; --t-2xl:29px;
+  --cut:0 0 0 3.5px var(--paper-hi);
+  --lift-x:2px; --lift-y:3px;
+  --lift:var(--lift-x) var(--lift-y) 0 rgba(46,42,36,.32);
+  /* a press is fast, a release settles with a little overshoot */
+  --down:50ms cubic-bezier(.4,0,1,1);
+  --up:190ms cubic-bezier(.34,1.4,.64,1);
+  --turn:280ms cubic-bezier(.32,.72,0,1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#3a352c;font-family:'Zilla Slab',Georgia,serif;color:var(--ink);
+  padding:30px 16px 60px;
+  -webkit-tap-highlight-color:transparent;
+}
+button{-webkit-tap-highlight-color:transparent;touch-action:manipulation;font:inherit}
+.wrap{max-width:940px;margin:0 auto;display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start;justify-content:center}
+.brief{flex:1 1 330px;min-width:300px;color:#ded6c6;max-width:420px}
+.brief h1{font-family:'Baloo 2',cursive;font-size:var(--t-2xl);font-weight:800;letter-spacing:-.01em}
+.brief p{font-size:var(--t-md);margin-top:8px;color:#b3a894;line-height:1.6}
+.brief h2{font-family:'Baloo 2',cursive;font-size:var(--t-lg);margin-top:20px;color:#efe7d8}
+.brief li{font-size:var(--t-sm);color:#b3a894;line-height:1.65;margin-left:17px}
+.brief code{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#e8c98a}
+
+/* ── phone ──────────────────────────────────────── */
+.phone{
+  flex:0 0 390px;width:390px;max-width:100%;height:760px;
+  border-radius:26px;overflow:hidden;position:relative;background:var(--paper);
+  box-shadow:0 20px 46px rgba(0,0,0,.5);display:flex;flex-direction:column;
+}
+.topbar{
+  flex:0 0 auto;padding:13px 17px 11px;background:var(--paper-hi);
+  border-bottom:2.5px solid var(--ink);display:flex;align-items:baseline;z-index:30;
+}
+.wordmark{font-family:'Baloo 2',cursive;font-size:var(--t-xl);font-weight:800;letter-spacing:-.02em}
+.place{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft);margin-left:auto}
+.stage{flex:1 1 auto;position:relative;overflow:hidden}
+
+/* page turn: sheets sliding across a desk, leading edge casting onto the one below */
+.screen{
+  position:absolute;inset:0;background:var(--paper);
+  background-image:repeating-linear-gradient(to bottom,transparent 0 27px,var(--rule) 27px 28px);
+  overflow:hidden;
+  transition:transform var(--turn),opacity var(--turn);
+  box-shadow:0 0 22px rgba(46,42,36,.28);
+}
+.screen.hide{display:none}
+.screen.live{transform:translateX(0);opacity:1;z-index:2}
+.screen.rest-l{transform:translateX(-9%);opacity:.5;z-index:1}
+.screen.rest-r{transform:translateX(9%);opacity:.5;z-index:1}
+.screen.set-l{transform:translateX(-100%);opacity:1;z-index:2;transition:none}
+.screen.set-r{transform:translateX(100%);opacity:1;z-index:2;transition:none}
+.pad{height:100%;overflow-y:auto;padding:15px 17px 20px;-webkit-overflow-scrolling:touch}
+
+/* ── the press: a sticker flattens onto the page ── */
+.stick{
+  box-shadow:var(--cut),var(--lift);
+  transition:transform var(--up),box-shadow var(--up);
+}
+.stick:active{
+  transform:translate(var(--lift-x),var(--lift-y)) rotate(0deg)!important;
+  box-shadow:var(--cut),0 0 0 rgba(46,42,36,0);
+  transition:transform var(--down),box-shadow var(--down);
+}
+.flat{transition:transform var(--up),background var(--up),border-color var(--up)}
+.flat:active{transform:translate(1px,1px) scale(.97);transition:transform var(--down)}
+
+/* ── notebook index tabs ────────────────────────── */
+/* Not a bar. Three page markers stuck to the bottom edge, with the ruled page
+   running behind and between them — a continuous bar is what read as chrome. */
+.tabs{
+  flex:0 0 auto;display:flex;gap:11px;align-items:flex-end;justify-content:center;
+  padding:0 14px 14px;background:var(--paper);z-index:30;
+  background-image:repeating-linear-gradient(to bottom,transparent 0 27px,var(--rule) 27px 28px);
+}
+.tabs button{
+  flex:0 1 106px;font-family:'Baloo 2',cursive;font-size:var(--t-md);font-weight:700;
+  background:var(--paper-hi);color:var(--ink-soft);cursor:pointer;
+  border:2.5px solid var(--ink-faint);border-radius:var(--r-cut);
+  padding:8px 0 9px;box-shadow:1px 2px 0 rgba(46,42,36,.16);
+  transition:padding var(--up),background var(--up),color var(--up),
+             border-color var(--up),box-shadow var(--up),transform var(--up);
+}
+.tabs button:nth-child(1){transform:rotate(-1.8deg)}
+.tabs button:nth-child(2){transform:rotate(1.1deg)}
+.tabs button:nth-child(3){transform:rotate(-.6deg)}
+.tabs button.on{
+  background:var(--accent);color:var(--ink);border:2.5px solid var(--ink);
+  padding:14px 0 15px;box-shadow:var(--cut),3px 4px 0 rgba(46,42,36,.32);
+}
+.tabs button:active{
+  transform:translate(var(--lift-x),var(--lift-y)) rotate(0deg);
+  box-shadow:var(--cut),0 0 0 rgba(46,42,36,0);
+  transition:transform var(--down),box-shadow var(--down);
+}
+.tabs button.t1{--accent:var(--coral)}
+.tabs button.t2{--accent:var(--marigold)}
+.tabs button.t3{--accent:var(--jade)}
+
+/* ── clear tape: translucent, sheened, torn at both ends ── */
+/* Matte tape: still translucent, but with enough milkiness to read as a physical
+   strip rather than a faint sheen. Torn at both short ends. */
+.tape{
+  position:absolute;width:88px;height:25px;z-index:6;pointer-events:none;
+  background:linear-gradient(158deg,
+    rgba(255,254,250,.80),rgba(250,248,240,.52) 42%,rgba(255,254,250,.74));
+  box-shadow:0 1px 3px rgba(46,42,36,.3),inset 0 0 0 1px rgba(255,255,255,.5);
+  clip-path:polygon(2% 0%,98% 0%,94% 25%,99% 50%,94% 75%,98% 100%,2% 100%,6% 75%,1% 50%,6% 25%);
+  backdrop-filter:saturate(1.1) brightness(1.02);
+}
+.tape::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent 10%,rgba(255,255,255,.5) 19%,transparent 29%)}
+
+/* ── push pin: a dome, not a disc ───────────────── */
+.pushpin{
+  position:absolute;width:22px;height:22px;border-radius:50%;z-index:8;pointer-events:none;
+  background:
+    radial-gradient(circle at 30% 25%,rgba(255,255,255,.95) 0 7%,rgba(255,255,255,0) 33%),
+    radial-gradient(circle at 36% 31%,#ff8da0 0%,#ef4a66 40%,#b62644 74%,#7a1530 100%);
+  box-shadow:
+    inset -2px -3px 6px rgba(80,8,26,.6),
+    inset 2px 2px 4px rgba(255,255,255,.3),
+    0 0 0 1px rgba(46,42,36,.4),
+    4px 6px 8px rgba(46,42,36,.45);
+}
+/* the needle, emerging below the dome so it needs no z-order trickery */
+.pushpin::before{
+  content:'';position:absolute;left:50%;top:86%;width:3px;height:12px;margin-left:-1.5px;
+  background:linear-gradient(90deg,#63676d,#c8ced6 42%,#63676d);
+  transform:rotate(10deg);transform-origin:top center;border-radius:0 0 1.5px 1.5px;
+  box-shadow:1px 2px 2px rgba(46,42,36,.45);
+}
+.pushpin::after{content:'';position:absolute;left:27%;top:20%;width:6px;height:4.5px;
+  border-radius:50%;background:rgba(255,255,255,.85);transform:rotate(-22deg)}
+
+/* ── paper clip ─────────────────────────────────── */
+.clip{position:absolute;width:22px;height:42px;z-index:8;pointer-events:none;
+  filter:drop-shadow(1.5px 2px 1.5px rgba(46,42,36,.35))}
+
+/* ── handwritten annotation ─────────────────────── */
+.note-hand{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--coral);
+  transform:rotate(-4deg);display:inline-block}
+.arrow{stroke:var(--coral);fill:none;stroke-width:2;stroke-linecap:round}
+
+/* ── map ────────────────────────────────────────── */
+#map{position:absolute;inset:0}
+.leaflet-tile-pane{filter:sepia(.38) saturate(.62) brightness(1.07) contrast(.89) hue-rotate(-7deg)}
+.leaflet-container{background:var(--paper)}
+.leaflet-control-attribution{font-family:'Zilla Slab',serif;font-size:9px;background:rgba(233,228,214,.85)}
+.pin{background:none;border:0;cursor:pointer}
+.pin i{
+  display:block;width:46px;height:46px;border-radius:var(--r-cut);
+  border:2.5px solid var(--ink);background:var(--paper-hi) center/cover no-repeat;
+  box-shadow:0 0 0 3.5px var(--ring),var(--lift);
+  transform:rotate(-2.5deg);
+  transition:transform var(--up),box-shadow var(--up);
+}
+.pin.b i{transform:rotate(2deg)}
+.pin:active i{transform:translate(2px,3px) rotate(0);box-shadow:0 0 0 3.5px var(--ring);
+  transition:transform var(--down),box-shadow var(--down)}
+.pin::after{content:'';position:absolute;left:50%;bottom:-8px;width:3px;height:9px;
+  background:var(--ink);transform:translateX(-50%)}
+.pin b{
+  position:absolute;right:-11px;top:-8px;font-family:'Baloo 2',cursive;
+  font-size:var(--t-xs);font-weight:800;background:var(--ring);color:var(--ink);
+  border:2px solid var(--ink);border-radius:var(--r-cut);padding:0 5px;
+  box-shadow:0 0 0 2.5px var(--paper-hi);transform:rotate(6deg)}
+.pin.loose i{border-style:dashed;filter:grayscale(.6);box-shadow:0 0 0 3.5px var(--paper-hi)}
+
+/* territory label, hand-lettered. lives in its own pane above the pins, and is
+   tappable — it opens the cat it names. */
+.turf-label{background:none;border:0;cursor:pointer}
+.turf-label span{
+  font-family:'Kalam',cursive;font-weight:700;font-size:16px;white-space:nowrap;
+  color:var(--ink);display:inline-block;transform:rotate(-7deg);
+  text-shadow:0 0 4px var(--paper),0 0 8px var(--paper),0 0 12px var(--paper),1px 1px 0 var(--paper);
+  transition:transform var(--up);
+}
+.turf-label:active span{transform:rotate(-7deg) scale(.93);transition:transform var(--down)}
+
+/* ── bottom sheet ───────────────────────────────── */
+.veil{position:absolute;inset:0;background:rgba(46,42,36,.42);opacity:0;pointer-events:none;
+  transition:opacity var(--turn);z-index:40}
+.veil.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:absolute;left:0;right:0;bottom:0;z-index:41;
+  background:var(--paper-hi);border-top:2.5px solid var(--ink);
+  padding:0 17px 20px;transform:translateY(102%);
+  transition:transform var(--turn);max-height:74%;overflow-y:auto;
+}
+.sheet.on{transform:translateY(0)}
+.grabber{width:44px;height:5px;background:var(--ink-faint);border-radius:99px;margin:10px auto 14px}
+
+/* ── print, label, chips ────────────────────────── */
+.print{position:relative;background:var(--paper-hi);padding:9px 9px 0;
+  border:1px solid var(--rule);box-shadow:2px 3px 0 rgba(46,42,36,.18);
+  transform:rotate(-1.3deg);margin:8px 0 18px}
+.print img{display:block;width:100%;height:184px;object-fit:cover;filter:sepia(.1) saturate(.97)}
+.print figcaption{font-family:'Kalam',cursive;font-size:var(--t-md);color:var(--ink-soft);
+  padding:7px 2px 9px;text-align:center}
+.label{border-top:2px solid var(--ink);padding-top:9px}
+.label h2{font-size:var(--t-xl);font-weight:700;letter-spacing:-.01em;line-height:1.1}
+.label .sub{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft);margin-top:2px}
+.when{font-size:var(--t-sm);color:var(--ink-soft);margin-top:4px}
+/* section breaks are just another rule on the page, in the paper's own ruling colour */
+.rule{border:0;height:0;border-top:1.5px solid var(--rule);margin:15px 0 13px}
+.chiprow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{
+  font-family:'Baloo 2',cursive;font-size:var(--t-sm);font-weight:700;
+  background:transparent;color:var(--ink-faint);
+  border:2px dashed var(--ink-faint);border-radius:var(--r-cut);
+  padding:4px 11px;cursor:pointer;
+  transition:transform var(--up),box-shadow var(--up),background var(--up),
+             color var(--up),border-color var(--up);
+}
+.chip[aria-pressed="true"]{
+  color:var(--ink);border:2.5px solid var(--ink);border-style:solid;
+  background:var(--fill);box-shadow:var(--cut),var(--lift);transform:rotate(var(--tilt,-2deg));
+}
+.chip[aria-pressed="true"].dark{color:#fff}
+.chip:active{transform:translate(var(--lift-x),var(--lift-y)) rotate(0deg);
+  box-shadow:var(--cut),0 0 0 rgba(46,42,36,0);transition:transform var(--down),box-shadow var(--down)}
+.fieldname{font-size:var(--t-xs);color:var(--ink-faint);margin-top:14px}
+.petted{
+  position:absolute;right:19px;top:150px;z-index:9;
+  font-family:'Baloo 2',cursive;font-size:var(--t-md);font-weight:800;
+  background:var(--jade);color:var(--ink);border:2.5px solid var(--ink);
+  border-radius:var(--r-cut);padding:6px 14px;transform:rotate(-4deg);
+  box-shadow:var(--cut),3px 4px 0 rgba(46,42,36,.34);cursor:pointer;
+}
+.petted::after{content:'';position:absolute;right:-1px;bottom:-1px;border:8px solid transparent;
+  border-right-color:var(--paper-hi);border-bottom-color:var(--paper-hi);
+  filter:drop-shadow(-1.5px -1.5px 0 var(--ink))}
+
+/* ── cats ───────────────────────────────────────── */
+.cat{display:flex;gap:14px;align-items:center;padding:11px 0;border-bottom:1px solid var(--rule);
+  cursor:pointer;transition:transform var(--up)}
+.cat:active{transform:translateX(3px);transition:transform var(--down)}
+.cat img{width:52px;height:52px;object-fit:cover;border-radius:var(--r-cut);
+  border:2.5px solid var(--ink);box-shadow:0 0 0 3px var(--ring),var(--lift);transform:rotate(-2deg)}
+.cat .nm{font-size:var(--t-lg);font-weight:600;line-height:1.15}
+.cat .mt{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft)}
+.cat .ct{margin-left:auto;font-family:'Baloo 2',cursive;font-size:var(--t-xs);font-weight:700;
+  color:var(--ink-soft);border:2px dashed var(--ink-faint);border-radius:var(--r-cut);padding:2px 8px}
+.cat .ct.yes{color:var(--ink);background:var(--jade);border:2px solid var(--ink);
+  box-shadow:0 0 0 2.5px var(--paper-hi),1px 2px 0 rgba(46,42,36,.3);transform:rotate(-2deg)}
+
+/* ── snap ───────────────────────────────────────── */
+.snap{display:flex;flex-direction:column;gap:16px;padding-top:26px;align-items:center}
+.bigbtn{
+  width:210px;font-family:'Baloo 2',cursive;font-size:19px;font-weight:800;color:var(--ink);
+  background:var(--marigold);border:3px solid var(--ink);border-radius:var(--r-cut);
+  padding:20px 0;cursor:pointer;transform:rotate(-1.5deg);
+}
+.bigbtn.alt{background:var(--peri);color:#fff;transform:rotate(1.2deg);width:190px;font-size:16px;padding:15px 0}
+.ask{border:2.5px solid var(--ink);border-radius:var(--r-cut);background:var(--paper-hi);
+  padding:14px;box-shadow:3px 4px 0 rgba(46,42,36,.28);position:relative;margin-top:8px}
+.ask h3{font-family:'Baloo 2',cursive;font-size:var(--t-lg);font-weight:800}
+.ask .hint{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft);margin-top:1px}
+.cand{display:flex;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--rule);margin-top:9px}
+.cand img{width:50px;height:50px;object-fit:cover;border-radius:var(--r-cut);
+  border:2.5px solid var(--ink);box-shadow:0 0 0 3px var(--ring);transform:rotate(-2deg)}
+.cand .nm{font-size:var(--t-md);font-weight:600}
+.cand .why{font-size:var(--t-sm);color:var(--ink-soft);line-height:1.3}
+.cand button{margin-left:auto;font-family:'Baloo 2',cursive;font-size:var(--t-sm);font-weight:800;
+  border:2.5px solid var(--ink);border-radius:var(--r-cut);background:var(--jade);color:var(--ink);
+  padding:6px 15px;cursor:pointer;transform:rotate(-1.5deg)}
+.ghost{display:block;width:100%;margin-top:14px;font-family:'Baloo 2',cursive;font-size:var(--t-md);
+  font-weight:700;border:2px dashed var(--ink-faint);border-radius:var(--r-cut);background:none;
+  color:var(--ink-soft);padding:9px;cursor:pointer}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:1ms!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brief">
+    <h1>Direction 5 — tactile</h1>
+    <p>Direction 4, made to feel like paper. This one is interactive, because press feel can't be judged from a screenshot.</p>
+
+    <h2>Try these</h2>
+    <ul>
+      <li><b>Switch tabs</b> at the bottom — pages slide like sheets across a desk, the incoming edge casting a shadow on the one below.</li>
+      <li><b>Press and hold a chip</b> on the sighting page. Stickers flatten onto the page under your finger and pop back on release.</li>
+      <li><b>Tap a chip</b> to toggle it. Unselected lies flat; selected is stuck on, tilted and lifted.</li>
+      <li><b>Tap any pin</b> on the map to raise the sheet.</li>
+      <li><b>Mochi's turf</b> is the shaded blob — it appears at three or more sightings. Gravy only has two, so he still gets a dashed line.</li>
+    </ul>
+
+    <h2>What makes it feel sticky</h2>
+    <p>The press is physically motivated rather than a generic shrink: a sticker sits <code>2px 3px</code> off the page, so pressing translates it by exactly that and collapses the shadow to zero. Down is <code>50ms</code> and linear-in; release is <code>190ms</code> with a slight overshoot, which is the pop.</p>
+
+    <h2>One honest limitation</h2>
+    <p>iOS Safari has no vibration API, so real haptics are Android-only. On her phone the entire feel has to come from motion — which is why the timings above matter more than they would elsewhere.</p>
+  </div>
+
+  <div class="phone">
+    <div class="topbar"><span class="wordmark" id="wm">Meowmap</span><span class="place" id="pl">Fernwood, Victoria</span></div>
+
+    <div class="stage" id="stage">
+
+      <section class="screen live" id="s-map">
+        <div id="map"></div>
+      </section>
+
+      <section class="screen hide" id="s-snap">
+        <div class="pad">
+          <div class="snap">
+            <button class="bigbtn stick">Take a photo</button>
+            <!-- the arrow has to actually land on something; it points straight up
+                 at the button it is talking about -->
+            <div class="hand-note">
+              <svg width="40" height="26" viewBox="0 0 40 26" style="overflow:visible">
+                <path class="arrow" d="M20 25 C 13 17, 15 8, 22 3"/>
+                <path class="arrow" d="M22 3 l -6 2 M22 3 l 2 6"/>
+              </svg>
+              <span class="note-hand">this one knows where you are</span>
+            </div>
+            <button class="bigbtn alt stick">Choose a photo</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen hide" id="s-cats">
+        <div class="pad">
+          <svg class="clip" viewBox="0 0 24 44" style="top:-6px;left:44px">
+            <path d="M17 13v17a5.5 5.5 0 0 1-11 0V10a3.6 3.6 0 0 1 7.2 0v19.5a1.9 1.9 0 0 1-3.8 0V13"
+                  fill="none" stroke="#9296a0" stroke-width="2.6" stroke-linecap="round"/>
+          </svg>
+          <div style="height:16px"></div>
+          <div class="cat"><img src="https://placecats.com/neo/160/160" alt="" style="--ring:#ff5470">
+            <div><div class="nm">Mochi</div><div class="mt">Moss Street, three sightings</div></div>
+            <div class="ct yes">petted</div></div>
+          <div class="cat"><img src="https://placecats.com/millie/160/160" alt="" style="--ring:#3dbe8b">
+            <div><div class="nm">Gravy</div><div class="mt">Cook Street, twice</div></div>
+            <div class="ct">not yet</div></div>
+          <div class="cat"><img src="https://placecats.com/bella/160/160" alt="" style="--ring:#7c8cff">
+            <div><div class="nm">Sergeant Tuxedo</div><div class="mt">Oak Bay Avenue, once</div></div>
+            <div class="ct">fled</div></div>
+          <div class="cat"><img src="https://placecats.com/poppy/160/160" alt="" style="--ring:#ffc145">
+            <div><div class="nm">Biscuit</div><div class="mt">Pandora Avenue, once</div></div>
+            <div class="ct yes">petted</div></div>
+          <div class="cat"><img src="https://placecats.com/louie/160/160" alt="" style="--ring:#f4f0e6">
+            <div><div class="nm" style="color:var(--ink-soft)">Not named yet</div>
+            <div class="mt">the one under the Subaru</div></div><div class="ct">once</div></div>
+
+          <div class="ask" style="margin-top:20px">
+            <span class="pushpin" style="top:-8px;left:50%;margin-left:-9px"></span>
+            <h3>Have you met this one before?</h3>
+            <div class="hint">Two cats have been seen near here.</div>
+            <div class="cand"><img src="https://placecats.com/neo/160/160" alt="" style="--ring:#ff5470">
+              <div><div class="nm">Mochi</div><div class="why">40 metres away, three days ago</div></div>
+              <button class="stick">Yes</button></div>
+            <div class="cand"><img src="https://placecats.com/millie/160/160" alt="" style="--ring:#3dbe8b">
+              <div><div class="nm">Gravy</div><div class="why">180 metres away, last month</div></div>
+              <button class="stick">Yes</button></div>
+            <button class="ghost flat">Someone new</button>
+          </div>
+          <div style="height:24px"></div>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="veil" id="veil"></div>
+    <div class="sheet" id="sheet">
+      <div class="grabber"></div>
+      <div class="petted stick" id="pettedBtn">petted</div>
+      <figure class="print">
+        <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
+        <img id="shImg" src="https://placecats.com/neo/600/420" alt="A cat">
+        <figcaption id="shCap">on the blue mailbox again</figcaption>
+      </figure>
+      <div class="label">
+        <h2 id="shName">Mochi</h2>
+        <div class="sub" id="shWhere">Moss Street at Fernwood Road</div>
+        <div class="when">14 August, 6:42pm</div>
+        <hr class="rule">
+        <div class="chiprow" id="coatRow"></div>
+        <hr class="rule">
+        <div class="chiprow" id="sizeRow"></div>
+      </div>
+      <div style="height:14px"></div>
+    </div>
+
+    <nav class="tabs" id="tabs">
+      <button class="t1 on" data-s="map">Map</button>
+      <button class="t2" data-s="snap">Snap</button>
+      <button class="t3" data-s="cats">Cats</button>
+    </nav>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+
+/* ── chips ─────────────────────────────────────── */
+const FILLS = ['var(--marigold)','var(--coral)','var(--jade)','var(--peri)'];
+const DARKFILL = new Set(['var(--coral)','var(--peri)']);
+function buildChips(el, items, chosen){
+  el.innerHTML = '';
+  items.forEach((label, i) => {
+    const b = document.createElement('button');
+    const fill = FILLS[i % FILLS.length];
+    b.className = 'chip' + (DARKFILL.has(fill) ? ' dark' : '');
+    b.type = 'button';
+    b.textContent = label;
+    b.style.setProperty('--fill', fill);
+    b.style.setProperty('--tilt', (i % 2 ? 1.5 : -2) + 'deg');
+    b.setAttribute('aria-pressed', chosen.includes(label) ? 'true' : 'false');
+    b.addEventListener('click', () => {
+      const now = b.getAttribute('aria-pressed') === 'true';
+      b.setAttribute('aria-pressed', now ? 'false' : 'true');
+    });
+    el.appendChild(b);
+  });
+}
+buildChips(document.getElementById('coatRow'),
+  ['orange','black','white','grey','tabby','tuxedo','calico'], ['orange','tabby']);
+buildChips(document.getElementById('sizeRow'), ['kitten','adult','chonk'], ['adult']);
+
+document.getElementById('pettedBtn').addEventListener('click', e => {
+  const on = e.currentTarget.dataset.off !== '1';
+  e.currentTarget.dataset.off = on ? '1' : '0';
+  e.currentTarget.style.background = on ? 'var(--paper-hi)' : 'var(--jade)';
+  e.currentTarget.textContent = on ? 'not petted' : 'petted';
+});
+
+/* ── page turns ────────────────────────────────── */
+const ORDER = ['map','snap','cats'];
+const TITLES = {map:['Meowmap','Fernwood, Victoria'], snap:['Snap','point it at a cat'], cats:['Cats','nine so far']};
+let current = 'map';
+
+function go(next){
+  if (next === current) return;
+  const from = document.getElementById('s-' + current);
+  const to   = document.getElementById('s-' + next);
+  const forward = ORDER.indexOf(next) > ORDER.indexOf(current);
+
+  to.classList.remove('hide','rest-l','rest-r','live');
+  to.classList.add(forward ? 'set-r' : 'set-l');
+  void to.offsetWidth;                       // commit the start position before animating
+  to.classList.remove('set-r','set-l');
+  to.classList.add('live');
+
+  from.classList.remove('live');
+  from.classList.add(forward ? 'rest-l' : 'rest-r');
+  const settled = from;
+  setTimeout(() => { if (!settled.classList.contains('live')) settled.classList.add('hide'); }, 300);
+
+  document.getElementById('wm').textContent = TITLES[next][0];
+  document.getElementById('pl').textContent = TITLES[next][1];
+  current = next;
+  if (next === 'map') setTimeout(() => map.invalidateSize(), 300);
+}
+
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b === null) return;
+  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+  go(b.dataset.s);
+});
+
+/* ── sheet ─────────────────────────────────────── */
+const veil = document.getElementById('veil'), sheet = document.getElementById('sheet');
+function openSheet(c){
+  document.getElementById('shImg').src = c.photo;
+  document.getElementById('shName').textContent = c.name;
+  document.getElementById('shWhere').textContent = c.where;
+  document.getElementById('shCap').textContent = c.caption;
+  veil.classList.add('on'); sheet.classList.add('on');
+}
+veil.addEventListener('click', () => { veil.classList.remove('on'); sheet.classList.remove('on'); });
+
+/* ── map ───────────────────────────────────────── */
+const map = L.map('map',{zoomControl:false,attributionControl:true,preferCanvas:true})
+  .setView([48.4266,-123.3505],15);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'&copy; OpenStreetMap',maxZoom:19}).addTo(map);
+
+const CATS = {
+  mochi:{name:'Mochi', ring:'#ff5470', photo:'https://placecats.com/neo/600/420',
+         thumb:'https://placecats.com/neo/120/120', where:'Moss Street at Fernwood Road',
+         caption:'on the blue mailbox again',
+         pts:[[48.4278,-123.3535],[48.4271,-123.3498],[48.4262,-123.3521]]},
+  gravy:{name:'Gravy', ring:'#3dbe8b', photo:'https://placecats.com/millie/600/420',
+         thumb:'https://placecats.com/millie/120/120', where:'Cook Street',
+         caption:'screamed at me from the porch',
+         pts:[[48.4249,-123.3480],[48.4256,-123.3455]]}
+};
+
+/* A territory blob: the support function of the sightings, padded, with a gentle
+   hand-drawn wobble so it reads as a pencilled-in zone rather than a geofence. */
+function turf(pts, padM){
+  const latRef = pts.reduce((s,p) => s + p[0], 0) / pts.length;
+  const lonRef = pts.reduce((s,p) => s + p[1], 0) / pts.length;
+  const mLat = 111320, mLon = 111320 * Math.cos(latRef * Math.PI / 180);
+  const xy = pts.map(p => [(p[1] - lonRef) * mLon, (p[0] - latRef) * mLat]);
+  const ring = [];
+  const STEPS = 44;
+  for (let i = 0; i < STEPS; i++){
+    const th = i / STEPS * 2 * Math.PI, ux = Math.cos(th), uy = Math.sin(th);
+    let r = -Infinity;
+    for (const [x, y] of xy){ const d = x * ux + y * uy; if (d > r) r = d; }
+    r = (r + padM) * (1 + 0.05 * Math.sin(th * 3 + 1.2) + 0.03 * Math.sin(th * 5 + 0.4));
+    ring.push([latRef + (r * uy) / mLat, lonRef + (r * ux) / mLon]);
+  }
+  return {ring, centre:[latRef, lonRef]};
+}
+
+function pinIcon(c, {count = null, cls = '', flip = false} = {}){
+  return L.divIcon({
+    className:'pin ' + cls + (flip ? ' b' : ''),
+    html:'<i style="--ring:' + c.ring + ';background-image:url(' + c.thumb + ')"></i>'
+       + (count ? '<b style="--ring:' + c.ring + '">' + count + '</b>' : ''),
+    iconSize:[46,46], iconAnchor:[23,55]
+  });
+}
+
+/* The label needs to sit ABOVE the photo pins. Both are markers, and markerPane
+   sorts by latitude, so a dedicated pane is the only reliable way to win. */
+map.createPane('turf');
+map.getPane('turf').style.zIndex = 650;
+
+const TURF_MIN_ZOOM = 16;   // only once you're really in close; 14 fired far too eagerly
+
+/* three or more sightings earns a turf; two only gets a line. */
+for (const key of Object.keys(CATS)){
+  const c = CATS[key];
+  if (c.pts.length >= 3){
+    const t = turf(c.pts, 70);
+    L.polygon(t.ring,{color:c.ring,weight:2.5,dashArray:'7 7',opacity:.9,
+      fillColor:c.ring,fillOpacity:.17,interactive:false,smoothFactor:1}).addTo(map);
+    L.marker(t.centre,{
+      pane:'turf', interactive:true, keyboard:false,
+      icon:L.divIcon({className:'turf-label',
+        html:'<span>' + c.name + "'s turf</span>", iconSize:[130,22], iconAnchor:[65,11]})
+    }).addTo(map).on('click', () => openSheet(c));
+  } else {
+    L.polyline(c.pts,{color:c.ring,weight:3,dashArray:'6 6',opacity:.9,interactive:false}).addTo(map);
+  }
+  c.pts.forEach((p, i) => {
+    const m = L.marker(p,{icon:pinIcon(c,{flip:i % 2 === 1, count:i === 2 ? 'x2' : null})}).addTo(map);
+    m.on('click', () => openSheet(c));
+  });
+}
+
+const LOOSE = {name:'Not named yet', ring:'#f4f0e6', photo:'https://placecats.com/poppy/600/420',
+  thumb:'https://placecats.com/poppy/120/120', where:'Dallas Road', caption:'hiding under the Subaru'};
+L.marker([48.4240,-123.3540],{icon:pinIcon(LOOSE,{cls:'loose'})}).addTo(map)
+  .on('click', () => openSheet(LOOSE));
+
+const BISCUIT = {name:'Biscuit', ring:'#ffc145', photo:'https://placecats.com/bella/600/420',
+  thumb:'https://placecats.com/bella/120/120', where:'Pandora Avenue', caption:'loafing in the window'};
+L.marker([48.4288,-123.3472],{icon:pinIcon(BISCUIT)}).addTo(map)
+  .on('click', () => openSheet(BISCUIT));
+
+function updateTurfLabels(){
+  const show = map.getZoom() >= TURF_MIN_ZOOM;
+  document.querySelectorAll('.turf-label').forEach(el => { el.style.display = show ? '' : 'none'; });
+}
+map.on('zoomend', updateTurfLabels);
+updateTurfLabels();
+</script>
+</body>
+</html>

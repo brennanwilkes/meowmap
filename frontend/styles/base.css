@@ -1,0 +1,60 @@
+/* Reset, page ground, and the paper the whole app is drawn on. */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;              /* the app scrolls its panes, never the document */
+  overscroll-behavior: none;     /* no rubber-band over the map */
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--t-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The ruled page. Offset so the first rule sits below the topbar rather than
+   clipping through it. */
+.ruled {
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0 27px, var(--rule) 27px 28px);
+}
+
+/* We paint our own press feedback, so the grey flash and the 300ms double-tap delay
+   both have to go. */
+a, button, input, select, textarea, label, summary, .tappable {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+/* iOS zooms the page when a focused control is under 16px. --t-input is that floor. */
+input, select, textarea {
+  font-family: inherit;
+  font-size: var(--t-input);
+  color: var(--ink);
+}
+
+img { max-width: 100%; display: block; }
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2.5px solid var(--vinyl, var(--ink));
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.hand { font-family: var(--font-hand); color: var(--ink-soft); }
+.stick-type { font-family: var(--font-stick); font-weight: 700; }
+
+/* Section breaks are just another rule on the page, in the paper's own ruling colour. */
+hr.rule { border: 0; height: 0; border-top: 1.5px solid var(--rule); margin: 15px 0 13px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}

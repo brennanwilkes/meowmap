@@ -1,0 +1,4 @@
+# Copy to .dev.vars (gitignored) for `wrangler dev`.
+# Both are real secrets in prod, pushed by CI from GitHub secrets.
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+PASS_SIGNING_SECRET=dev-only-not-a-real-secret-change-me

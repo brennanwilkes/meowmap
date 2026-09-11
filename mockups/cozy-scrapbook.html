@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meowmap — cozy scrapbook</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#e9e4d6; --paper-hi:#f2eee3; --rule:#d3cbb6;
+  --ink:#2e2a24; --ink-soft:#6b6459; --ink-faint:#9a9184;
+  --moss:#5f7a52; --oxide:#a8442f; --tape:#d9c98f;
+  --r-sm:2px; --r-md:4px; --r-pill:999px;
+  --t-xs:11px; --t-sm:13px; --t-md:15px; --t-lg:17px; --t-xl:22px; --t-2xl:28px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#403a31;
+  font-family:'Zilla Slab',Georgia,serif;
+  color:var(--ink);
+  padding:32px 16px 64px;
+}
+.brief{max-width:1180px;margin:0 auto 28px;color:#d8d0bf}
+.brief h1{font-size:var(--t-2xl);font-weight:700;letter-spacing:-.01em}
+.brief p{font-size:var(--t-md);max-width:64ch;margin-top:8px;color:#b3a996;line-height:1.55}
+.sheet{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;gap:34px;justify-content:center}
+.frame{width:390px;max-width:100%}
+.frame > figcaption{
+  font-family:'Kalam',cursive;font-size:var(--t-md);color:#c6bda9;
+  margin-bottom:8px;padding-left:4px;
+}
+.phone{
+  height:720px;border-radius:26px;overflow:hidden;position:relative;
+  background:var(--paper);
+  box-shadow:0 18px 40px rgba(0,0,0,.45);
+  display:flex;flex-direction:column;
+  background-image:repeating-linear-gradient(to bottom,transparent 0 27px,var(--rule) 27px 28px);
+  background-position:0 44px;
+}
+.topbar{
+  flex:0 0 auto;padding:14px 18px 10px;background:var(--paper-hi);
+  border-bottom:1.5px solid var(--ink);display:flex;align-items:baseline;gap:10px;
+}
+.wordmark{font-size:var(--t-xl);font-weight:700;letter-spacing:-.02em}
+.place{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft)}
+.body{flex:1 1 auto;overflow:hidden;position:relative}
+.scroll{height:100%;overflow:hidden;padding:16px 18px 0}
+.tabs{
+  flex:0 0 auto;display:flex;background:var(--paper-hi);
+  border-top:1.5px solid var(--ink);padding-bottom:6px;
+}
+.tabs button{
+  flex:1;background:none;border:0;font-family:inherit;font-size:var(--t-sm);
+  color:var(--ink-soft);padding:11px 0 9px;cursor:pointer;
+}
+.tabs button.on{color:var(--ink);font-weight:600}
+.tabs button.on span{border-bottom:2px solid var(--oxide);padding-bottom:3px}
+
+/* ── map ─────────────────────────────────────────── */
+#map{position:absolute;inset:0}
+/* tint the tiles into the notebook, never the markers */
+.leaflet-tile-pane{filter:sepia(.42) saturate(.72) brightness(1.05) contrast(.92) hue-rotate(-8deg)}
+.leaflet-container{background:var(--paper)}
+.leaflet-control-attribution{font-family:'Zilla Slab',serif;font-size:9px;background:rgba(233,228,214,.82)}
+.pin{background:none;border:0}
+.pin i{
+  display:block;width:46px;height:46px;border:2.5px solid var(--ink);
+  background:var(--paper-hi) center/cover no-repeat;
+  box-shadow:1px 2px 0 rgba(46,42,36,.35);
+  transform:rotate(-3deg);
+}
+.pin.b i{transform:rotate(2.5deg)}
+.pin::after{
+  content:'';position:absolute;left:50%;bottom:-7px;width:2.5px;height:8px;
+  background:var(--ink);transform:translateX(-50%);
+}
+.pin em{
+  position:absolute;top:-6px;left:-8px;width:26px;height:11px;
+  background:var(--tape);opacity:.85;transform:rotate(-22deg);
+}
+.pin b{
+  position:absolute;right:-9px;bottom:-4px;background:var(--ink);color:var(--paper);
+  font-family:'Zilla Slab',serif;font-size:var(--t-xs);font-weight:600;
+  padding:1px 5px;border-radius:var(--r-pill);
+}
+.pin.loose i{border-style:dashed;filter:grayscale(.55)}
+.pin.pending i{border-color:var(--oxide)}
+.pin.pending b{background:var(--oxide)}
+.maptip{
+  position:absolute;left:14px;right:14px;bottom:14px;z-index:600;
+  background:var(--paper-hi);border:1.5px solid var(--ink);
+  padding:9px 12px;font-size:var(--t-sm);color:var(--ink-soft);
+  box-shadow:2px 3px 0 rgba(46,42,36,.3);
+}
+.maptip strong{color:var(--ink);font-weight:600}
+
+/* ── tipped-in print ─────────────────────────────── */
+.print{position:relative;background:var(--paper-hi);padding:9px 9px 0;
+  border:1px solid var(--rule);box-shadow:2px 3px 0 rgba(46,42,36,.18);
+  transform:rotate(-1.4deg);margin:6px 0 18px}
+.print img{display:block;width:100%;height:196px;object-fit:cover;filter:sepia(.12) saturate(.95)}
+.print .tape{position:absolute;top:-11px;left:50%;width:78px;height:22px;
+  background:var(--tape);opacity:.8;transform:translateX(-50%) rotate(-2deg)}
+.print figcaption{font-family:'Kalam',cursive;font-size:var(--t-md);
+  color:var(--ink-soft);padding:7px 2px 9px;text-align:center}
+
+/* ── specimen label ──────────────────────────────── */
+.label{border-top:1.5px solid var(--ink);padding-top:9px}
+.label h2{font-size:var(--t-xl);font-weight:700;letter-spacing:-.01em;line-height:1.1}
+.label .sub{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft);margin-top:2px}
+.rows{margin-top:11px;display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:var(--t-sm)}
+.rows dt{color:var(--ink-faint)}
+.rows dd{color:var(--ink)}
+
+/* ── chips ───────────────────────────────────────── */
+.chiprow{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.chip{
+  font-family:'Zilla Slab',serif;font-size:var(--t-sm);
+  border:1.5px solid var(--ink-faint);color:var(--ink-soft);
+  background:transparent;padding:4px 10px;border-radius:var(--r-pill);cursor:pointer;
+}
+.chip.on{border-color:var(--ink);background:var(--ink);color:var(--paper-hi);font-weight:600}
+.chip.on.moss{border-color:var(--moss);background:var(--moss)}
+.fieldname{font-size:var(--t-xs);color:var(--ink-faint);margin-top:13px}
+
+/* the petted mark is a passport stamp, not a checkbox */
+.stamp{
+  position:absolute;right:16px;top:150px;z-index:5;
+  border:2.5px solid var(--oxide);color:var(--oxide);
+  font-size:var(--t-md);font-weight:700;letter-spacing:.04em;
+  padding:5px 11px;transform:rotate(-13deg);opacity:.82;
+  border-radius:var(--r-md);
+}
+
+/* ── cats list ───────────────────────────────────── */
+.cat{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--rule)}
+.cat img{width:54px;height:54px;object-fit:cover;border:2px solid var(--ink);transform:rotate(-2deg)}
+.cat .nm{font-size:var(--t-lg);font-weight:600;line-height:1.15}
+.cat .mt{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft)}
+.cat .ct{margin-left:auto;font-size:var(--t-sm);color:var(--ink-faint)}
+.swatch{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:1px}
+
+/* ── suggestion ──────────────────────────────────── */
+.ask{border:1.5px solid var(--ink);background:var(--paper-hi);padding:14px;
+  box-shadow:3px 4px 0 rgba(46,42,36,.22)}
+.ask h3{font-size:var(--t-lg);font-weight:700}
+.ask .hint{font-family:'Kalam',cursive;font-size:var(--t-sm);color:var(--ink-soft);margin-top:2px}
+.cand{display:flex;gap:11px;align-items:center;padding:10px 0;border-top:1px solid var(--rule);margin-top:10px}
+.cand img{width:52px;height:52px;object-fit:cover;border:2px solid var(--ink)}
+.cand .nm{font-size:var(--t-md);font-weight:600}
+.cand .why{font-size:var(--t-sm);color:var(--ink-soft);line-height:1.3}
+.cand button{margin-left:auto;font-family:'Zilla Slab',serif;font-size:var(--t-sm);font-weight:600;
+  border:1.5px solid var(--ink);background:var(--ink);color:var(--paper-hi);
+  padding:6px 13px;border-radius:var(--r-pill);cursor:pointer}
+.ghost{display:block;width:100%;margin-top:13px;font-family:'Zilla Slab',serif;font-size:var(--t-sm);
+  border:1.5px dashed var(--ink-faint);background:none;color:var(--ink-soft);
+  padding:9px;border-radius:var(--r-pill);cursor:pointer}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="brief">
+  <h1>Direction 1 — cozy scrapbook</h1>
+  <p>A naturalist's field notebook for cats. Ruled paper, tipped-in prints held with tape, specimen labels, and a rubber stamp instead of a checkbox. Warm but not sugary; the map is tinted to sit on the page rather than fight it.</p>
+</div>
+
+<div class="sheet">
+
+  <figure class="frame">
+    <figcaption>1. Map</figcaption>
+    <div class="phone">
+      <div class="topbar"><span class="wordmark">Meowmap</span><span class="place">Fernwood, Victoria</span></div>
+      <div class="body">
+        <div id="map"></div>
+        <div class="maptip"><strong>Mochi</strong> has turned up three times on this block since April.</div>
+      </div>
+      <nav class="tabs">
+        <button class="on"><span>Map</span></button><button>Snap</button><button>Cats</button>
+      </nav>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>2. One sighting</figcaption>
+    <div class="phone">
+      <div class="topbar"><span class="wordmark">Mochi</span><span class="place">third sighting</span></div>
+      <div class="body"><div class="scroll">
+        <div class="stamp">petted</div>
+        <figure class="print">
+          <span class="tape"></span>
+          <img src="https://placecats.com/neo/600/420" alt="A cat on a fence">
+          <figcaption>on the blue mailbox again</figcaption>
+        </figure>
+        <div class="label">
+          <h2>Mochi</h2>
+          <div class="sub">Moss Street at Fernwood Road</div>
+          <dl class="rows">
+            <dt>Seen</dt><dd>14 August, 6:42pm</dd>
+            <dt>Location</dt><dd>from the photo</dd>
+          </dl>
+          <div class="fieldname">Coat</div>
+          <div class="chiprow">
+            <button class="chip on">orange</button><button class="chip on">tabby</button>
+            <button class="chip">black</button><button class="chip">white</button>
+            <button class="chip">grey</button><button class="chip">tuxedo</button>
+            <button class="chip">calico</button>
+          </div>
+          <div class="fieldname">Size</div>
+          <div class="chiprow">
+            <button class="chip">kitten</button><button class="chip on moss">adult</button><button class="chip">chonk</button>
+          </div>
+        </div>
+      </div></div>
+      <nav class="tabs"><button>Map</button><button>Snap</button><button class="on"><span>Cats</span></button></nav>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>3. Cats</figcaption>
+    <div class="phone">
+      <div class="topbar"><span class="wordmark">Cats</span><span class="place">nine so far</span></div>
+      <div class="body"><div class="scroll">
+        <div class="cat"><img src="https://placecats.com/neo/160/160" alt="">
+          <div><div class="nm"><span class="swatch" style="background:#c4703a"></span>Mochi</div><div class="mt">Moss Street, three sightings</div></div><div class="ct">petted</div></div>
+        <div class="cat"><img src="https://placecats.com/millie/160/160" alt="">
+          <div><div class="nm"><span class="swatch" style="background:#5f7a52"></span>Gravy</div><div class="mt">Cook Street, twice</div></div><div class="ct">never petted</div></div>
+        <div class="cat"><img src="https://placecats.com/bella/160/160" alt="">
+          <div><div class="nm"><span class="swatch" style="background:#7a6fa8"></span>Sergeant Tuxedo</div><div class="mt">Oak Bay Avenue, once</div></div><div class="ct">ran away</div></div>
+        <div class="cat"><img src="https://placecats.com/poppy/160/160" alt="">
+          <div><div class="nm"><span class="swatch" style="background:#a8442f"></span>Biscuit</div><div class="mt">Pandora Avenue, once</div></div><div class="ct">petted</div></div>
+        <div class="cat"><img src="https://placecats.com/louie/160/160" alt="">
+          <div><div class="nm" style="color:var(--ink-soft)">Not named yet</div><div class="mt">the one under the Subaru</div></div><div class="ct">once</div></div>
+      </div></div>
+      <nav class="tabs"><button>Map</button><button>Snap</button><button class="on"><span>Cats</span></button></nav>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>4. Just after saving</figcaption>
+    <div class="phone">
+      <div class="topbar"><span class="wordmark">Saved</span><span class="place">one moment</span></div>
+      <div class="body"><div class="scroll">
+        <figure class="print" style="transform:rotate(1.1deg)">
+          <span class="tape"></span>
+          <img src="https://placecats.com/louie/600/380" alt="A cat photographed just now" style="height:150px">
+          <figcaption>just now, Moss Street</figcaption>
+        </figure>
+        <div class="ask">
+          <h3>Have you met this one before?</h3>
+          <div class="hint">Two cats have been seen near here.</div>
+          <div class="cand"><img src="https://placecats.com/neo/160/160" alt="">
+            <div><div class="nm">Mochi</div><div class="why">40 metres away, three days ago</div></div>
+            <button>Yes</button></div>
+          <div class="cand"><img src="https://placecats.com/millie/160/160" alt="">
+            <div><div class="nm">Gravy</div><div class="why">180 metres away, last month</div></div>
+            <button>Yes</button></div>
+          <button class="ghost">Someone new</button>
+        </div>
+      </div></div>
+      <nav class="tabs"><button class="on"><span>Map</span></button><button>Snap</button><button>Cats</button></nav>
+    </div>
+  </figure>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const CATS = {
+  mochi:{colour:'#c4703a', img:'https://placecats.com/neo/120/120'},
+  gravy:{colour:'#5f7a52', img:'https://placecats.com/millie/120/120'}
+};
+const map = L.map('map',{zoomControl:false,attributionControl:true,preferCanvas:true})
+  .setView([48.4266,-123.3505],15);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'&copy; OpenStreetMap',maxZoom:19}).addTo(map);
+
+function pin(img,{count=null,cls='',flip=false}={}){
+  return L.divIcon({
+    className:'pin '+cls+(flip?' b':''),
+    html:'<em></em><i style="background-image:url('+img+')"></i>'+(count?'<b>'+count+'</b>':''),
+    iconSize:[46,46], iconAnchor:[23,54]
+  });
+}
+const mochiPts=[[48.4278,-123.3535],[48.4271,-123.3498],[48.4262,-123.3521]];
+const gravyPts=[[48.4249,-123.3480],[48.4256,-123.3455]];
+
+L.polyline(mochiPts,{color:CATS.mochi.colour,weight:2,dashArray:'5 5',opacity:.85,interactive:false}).addTo(map);
+L.polyline(gravyPts,{color:CATS.gravy.colour,weight:2,dashArray:'5 5',opacity:.85,interactive:false}).addTo(map);
+
+L.marker(mochiPts[0],{icon:pin(CATS.mochi.img)}).addTo(map);
+L.marker(mochiPts[1],{icon:pin(CATS.mochi.img,{flip:true})}).addTo(map);
+L.marker(mochiPts[2],{icon:pin(CATS.mochi.img,{count:'x2'})}).addTo(map);
+L.marker(gravyPts[0],{icon:pin(CATS.gravy.img,{flip:true})}).addTo(map);
+L.marker(gravyPts[1],{icon:pin(CATS.gravy.img)}).addTo(map);
+L.marker([48.4288,-123.3472],{icon:pin('https://placecats.com/bella/120/120')}).addTo(map);
+L.marker([48.4240,-123.3540],{icon:pin('https://placecats.com/poppy/120/120',{cls:'loose'})}).addTo(map);
+L.marker([48.4295,-123.3505],{icon:pin('https://placecats.com/louie/120/120',{cls:'pending',count:'!'})}).addTo(map);
+</script>
+</body>
+</html>
