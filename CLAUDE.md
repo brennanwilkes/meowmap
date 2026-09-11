@@ -124,21 +124,72 @@ header states the two rules that erode silently. In short:
 
 ## iOS realities that shaped the build
 
-- **GPS EXIF is stripped from library photos by default** (WebKit 207088); it's opt-in per
-  upload via the picker's Options → Location. So "use the photo's location" is the
-  exception, not the rule, and manual pin placement is a first-class flow.
-- **`capture=` photos have all EXIF stripped and never reach the camera roll.** Combined
-  with not storing originals, an evicted outbox means the photo is gone forever — hence
-  persistent storage, a loud pending banner, and save-to-device on every queued item.
-- **`accept="image/heic"` makes Safari 17+ transcode JPEGs *into* HEIC.** Use
-  `image/jpeg,image/png`.
-- **Background Sync has never shipped in Safari.** Do not write one, even guarded. The
-  flush loop lives in the page.
-- **Canvas silently yields a blank image above `w*h > 16,777,216`** — no exception. Catch
-  oversized sources before decode using the SOFn dimensions from the EXIF pass.
-- **`canvas.toBlob` silently falls back to PNG** for an unsupported type. JPEG only.
-- EXIF must be read from the original bytes *before* any canvas work; canvas re-encode
-  destroys all metadata unconditionally.
+**MEASURED on the actual device** via `frontend/probe.html`, iPhone iOS 18.7.5 Safari,
+2026-09-11. Two of these contradict what the documentation said, so trust this table over
+any blog post — and re-run the probe after an iOS major version.
+
+| Behaviour | Measured |
+|---|---|
+| Library photo GPS | **PRESENT** — `48.42985833, -123.36201389`, accuracy 9.98 m, with no picker setting changed. The documented "stripped by default" did NOT reproduce |
+| Library photo timestamps | `DateTimeOriginal` + `OffsetTimeOriginal` + `GPSDateStamp/TimeStamp` all present |
+| `capture=` EXIF | **Partially stripped**: `orientation` survives, but date and GPS are `null`. Not "all EXIF" as documented |
+| Orientation auto-applied | **Yes** — a 4032x3024 photo tagged orientation 6 decodes as 3024x4032 |
+| `imageOrientation` option | **IGNORED** (`honoursOrientationOption: false`). Do not pass it and do not depend on it |
+| `createImageBitmap` `resizeWidth` | **Honoured** — 512 requested, 512 delivered |
+| `toBlob('image/webp')` | **Returned `image/png`** — the silent fallback, confirmed. JPEG only |
+| Background Sync | Absent, as expected |
+| `navigator.vibrate` | Absent — no haptics, confirmed |
+| `storage.persist()` | **DENIED** in Safari (`standalone: false`). Untested as an installed home-screen app, which is where WebKit's heuristic is supposed to favour granting |
+| Storage quota | 41 GB. Quota is not the constraint; **eviction** is |
+| Geolocation | First fix at 1.2 s reporting 20 m, then five identical readings over 12 s — it never improves. Target loosened to 30 m so we resolve immediately instead of sitting on the boundary |
+| Camera | 12.2 MP (4032x3024), ~3.9 MB. Well under `SOURCE_PIXEL_CEILING` |
+| Cross-validation | The EXIF parser's coordinates matched `navigator.geolocation` to 5 decimal places, on a real photo |
+
+The EXIF GPS was *more* accurate than the live browser fix (9.98 m vs 20 m), which is a
+good reason to keep preferring it when present.
+
+Still unverified: an actual 48 MP source, HEIC via Format=Current, and whether the
+picker's Location toggle is sticky (it did not need touching here).
+
+## Photo pipeline
+
+- **Order is fixed:** `file.slice(0, 256KB)` → `readImageMeta` → `decode` → `resize`.
+  `canvas.toBlob()` emits a bare JFIF JPEG with no APP1 segment, so every re-encode
+  destroys all metadata unconditionally. EXIF must be read from the original bytes first.
+- **Never pass `imageOrientation` and never rotate manually.** Measured: the option is
+  ignored, and orientation is auto-applied. Doing both gives sideways cats.
+- **JPEG only**, and `ASSERT_ENCODED_MIME` turns the silent PNG substitution into a throw.
+- Byte budgets are hit by **bounded bisection**, not a fixed quality — a cat in a bush and
+  a cat asleep on a step compress an order of magnitude apart. Over budget at
+  `minQuality` throws; a 3 MB "thumbnail" is worse than a failure.
+- The thumb is drawn **from the full canvas**, so it is a pixel-consistent reduction of
+  the image that actually ships.
+- **Location resolution has no nag card.** The probe falsified its premise. Missing GPS
+  now means a screenshot or a shared image, so it goes straight to tap-the-map. An old
+  photo never borrows the current fix; a fresh one (<10 min) may, and says so.
+- `input.value = ''` before every `.click()`, and the `.click()` must be **synchronous
+  inside the user gesture** — start geolocation after it, never await before it.
+
+## Two-file vocabularies
+
+`COAT_TAGS`, `SIZE_TAGS`, `PETTED_VALUES` and the length caps are declared in **both**
+`frontend/config.js` and `worker/src/constants.ts`; there is no bundler to share one
+declaration across a buildless ES module and a TS Worker. `tests/vocab.test.mjs` reads
+both files and asserts they agree, so drift is a red test rather than a 400 at save time.
+
+## Service worker
+
+- **Every precache path must be relative.** GitHub Pages serves at `/meowmap/`, so a
+  leading slash silently precaches nothing and the app appears to install but never works
+  offline.
+- Buildless means no content hashing: `BUILD` in `sw.js` is hand-written. **Bump it on
+  every frontend change** or the shell cache never rotates.
+- Precache with `cache: 'reload'` — GH Pages puts a ~10 min CDN TTL on `index.html`.
+- **No automatic `skipWaiting()`.** Swapping ES module versions under a running page gives
+  half-old-half-new state; the update bar asks first.
+- `cache.keys()` returns insertion order, so the photo cap is free FIFO — no LRU table.
+- Every `<img>` at the Worker needs `crossorigin="anonymous"`, or the SW sees an opaque
+  response whose padded quota accounting blows through storage.
 
 ## Gotchas in this environment
 

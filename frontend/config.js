@@ -56,7 +56,11 @@ export const DEFAULT_ZOOM = 15;
  * maximumAge must stay 0. The first iOS fix is typically a 1–3 km cell estimate with
  * the good GPS fix arriving 3–10 s later, which is why this converges rather than
  * taking the first reading. */
-export const GEO_TARGET_ACCURACY_M = 20;
+// MEASURED on iPhone 18.7.5: the first fix arrives at ~1.2s reporting exactly 20 m and
+// then never improves — five readings over 12s were byte-identical. A target of 20 sat
+// exactly on the boundary, so a device reporting 21 m would have waited the full 12s for
+// nothing. 30 leaves headroom without accepting a genuinely bad fix.
+export const GEO_TARGET_ACCURACY_M = 30;
 export const GEO_MAX_WAIT_MS = 12_000;
 export const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 };
 /** Above this, pre-open the pin-correction step instead of quietly accepting the fix. */
@@ -83,7 +87,9 @@ export const QUALITY_SEARCH_STEPS = 4;
  *  destination is never the problem (2048x1536 = 3.1 MP); the source is: a 24 MP iPhone
  *  still is 98 MB of RGBA and a 48 MP one is 195 MB. Above this ceiling we ask the
  *  decoder to downscale during decode so the full bitmap is never materialised.
- *  CONFIRM against a real 48 MP photo with probe.html. */
+ *  MEASURED: this phone shoots 12.2 MP (4032x3024), comfortably under the ceiling, so
+ *  the guard will not normally fire. When it does, resize-on-decode IS honoured here —
+ *  512 requested, 512 delivered. Still unverified against an actual 48 MP source. */
 export const SOURCE_PIXEL_CEILING = 30_000_000;
 export const RESIZE_ON_DECODE_LONG_EDGE = 4000;
 
@@ -95,6 +101,17 @@ export const EXIF_HEAD_BYTES = 256 * 1024;
 /** Deliberately excludes image/heic: including it makes Safari 17+ transcode JPEGs
  *  INTO HEIC. One constant so it is a one-line flip after device testing. */
 export const ACCEPT_TYPES = 'image/jpeg,image/png';
+
+/* ── tag vocabularies ──────────────────────────────────────────────────────
+ * THESE MUST MATCH `worker/src/constants.ts` EXACTLY — the Worker rejects anything it
+ * does not recognise, so a drifted chip here is a 400 at save time. There is no bundler
+ * to share the declaration across the TS Worker and the buildless frontend, so
+ * `tests/vocab.test.mjs` reads both and asserts they agree. */
+export const COAT_TAGS = ['orange', 'black', 'white', 'grey', 'tabby', 'tuxedo', 'calico'];
+export const SIZE_TAGS = ['kitten', 'adult', 'chonk'];
+export const PETTED_VALUES = ['yes', 'no', 'fled'];
+export const MAX_NOTE_LEN = 280;
+export const MAX_NAME_LEN = 60;
 
 /* ── the same-cat suggester ────────────────────────────────────────────────
  * Thresholds live in app/suggest.js next to the scoring they belong to. */
@@ -117,5 +134,24 @@ export const LS = {
   pass: 'meowmap:upload-pass',
   tileSource: 'meowmap:tile-source',
   lastView: 'meowmap:last-view',
-  locationNagSeen: 'meowmap:location-nag-seen',
+  installHintSeen: 'meowmap:install-hint-seen',
 };
+
+/* `meowmap:location-nag-seen` was reserved for the "turn on Options -> Location in the
+ * picker" card and is deliberately NOT here. The probe falsified its premise: a library
+ * photo arrived with full GPS, untouched settings. A photo with no GPS is now a
+ * screenshot or a shared image, for which that instruction is not the fix. */
+
+/* ── measured iOS behaviour (probe.html, iPhone iOS 18.7.5 Safari, 2026-09-11) ──
+ *
+ * DO NOT pass `imageOrientation` to createImageBitmap. The option is IGNORED on this
+ * device (honoursOrientationOption: false), while the default already auto-applies EXIF
+ * orientation (a 4032x3024 photo tagged orientation 6 decodes as 3024x4032). Passing it
+ * is a harmless no-op today, but writing code that depends on it would be a bug — and
+ * manually rotating on top of the automatic rotation produces sideways cats.
+ *
+ * `canvas.toBlob('image/webp')` returned **image/png** on this device — the documented
+ * silent fallback, confirmed. A 2048px PNG is ~5 MB, so if WebP is ever added it MUST
+ * assert blob.type and throw. This is why the pipeline is JPEG-only. */
+export const PASS_IMAGE_ORIENTATION = false;
+export const ASSERT_ENCODED_MIME = true;

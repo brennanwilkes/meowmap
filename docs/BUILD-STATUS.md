@@ -1,6 +1,7 @@
 # Build status
 
-**Updated:** 2026-09-11 — FIRST DEPLOY IS LIVE AND BOTH PIPELINES ARE GREEN.
+**Updated:** 2026-09-11 — deployed, green, probe RUN, and the photo pipeline + capture
+page + PWA now exist (not yet run on a device).
 **Read this first after a break or a context compaction.** The full design rationale lives
 in `~/.claude/plans/take-a-look-through-imperative-hejlsberg.md`; this file is only "what
 exists, what is verified, what is next".
@@ -43,7 +44,7 @@ Worth recording because none of them were what they first looked like.
 Everything below was actually executed, not just written.
 
 ```
-bash tests/run-all.sh                                       52 checks pass
+bash tests/run-all.sh                                       70 checks pass
 cd worker && npm test                                       33 tests pass
 cd worker && npm run typecheck                              CLEAN (zero errors in src/)
 cd worker && npx wrangler deploy --dry-run --outdir /tmp/d  23.56 KiB / 8.25 KiB gzip
@@ -63,6 +64,9 @@ to know if the install is ever unavailable again.
 | `worker/test/jwt.test.ts` (9) | Round trip, expiry, wrong secret/iss/aud, **alg=none forgery**, tampered payload, secret rotation |
 | `worker/test/validate.test.ts` (13) | Coordinate bounds, id 0, coat whitelist, hash format + path traversal, slugify |
 | `tests/dom.test.mjs` (9) | `esc()` XSS boundary incl. ampersand ordering, relative/absolute time, timezone-independent |
+| `tests/outbox.test.mjs` (18) | Error classification, jittered backoff + cap, every state transition, **failed-is-not-deletion**, budget slow-path, banner escalation |
+| `tests/pipeline.test.mjs` (19) | fitLongEdge never upscales, halvingPlan never exceeds 2x per step, EXIF-beats-device, **an old photo never borrows the current fix**, poor-accuracy pre-opens correction, a skewed camera clock is rejected, and a guard that the nag card stays deleted |
+| `tests/vocab.test.mjs` (4) | The coat/size/petted vocabularies and length caps in `config.js` match `worker/src/constants.ts` — read from both files, because there is no bundler to share one declaration |
 
 Also structurally verified: every frontend module parses, **every relative import
 resolves**, every local `href`/`src` in `index.html` exists, the manifest is valid JSON,
@@ -83,10 +87,21 @@ frontend/
   probe.html                   iPhone diagnostic — NOT YET RUN, see Next
   config.js                    every tunable, incl. TILE_SOURCES
   styles/                      tokens, base, layout, sticker, map, sheet
-  app/main.js                  router + page-turn lifecycle
+  sw.js  offline.html          service worker (4 caches) + first-visit-offline page
+  app/main.js                  router + page-turn lifecycle + boot wiring
+  app/capture_page.js          take/choose -> tag -> place -> queue -> suggest
+  app/pipeline.js              picker -> exif -> decode -> resize -> draft
+  app/decode.js                File -> bitmap, source-pixel ceiling guard
+  app/resize.js                halving downscale + bounded quality search
+  app/geolocate.js             converging watchPosition, typed failures
+  app/turnstile.js             on-demand widget -> upload pass, coalesced
+  app/pwa.js                   sw registration, update bar, persist(), install hint
   app/map_page.js              pins, turf pane, collapse-by-cat, outbox banner
   app/sheet.js                 detail sheet — READ-ONLY for now, see Next
   app/store.js                 pub/sub store + pending-vs-server dedupe
+  app/idb.js                   IndexedDB wrapper; tx2() for atomic two-store writes
+  app/outbox.js                queue state machine (pure half is unit-tested)
+  app/flush.js                 serial flush loop, page-based, no Background Sync
   app/api.js  device.js  dom.js
   app/exif.js  suggest.js  turf.js  catcolor.js     (all tested)
 worker/
@@ -98,7 +113,7 @@ worker/
                                db-audit-devices, db-orphans, r2-reconcile.mjs
   test/                        budget, jwt, validate
 .github/workflows/             deploy-worker (with a check gate), pr-check, deploy-pages
-tests/                         5 suites + run-all.sh
+tests/                         6 suites + run-all.sh
 ```
 
 ---
@@ -162,30 +177,93 @@ tests/                         5 suites + run-all.sh
 
 ---
 
+## OPEN DECISION — needs Brennan
+
+### 1. The location nag — RESOLVED IN CODE AS OPTION (a), say if you disagree
+
+`pipeline.js` → `resolveLocation()` implements **(a): no nag.** A photo with no GPS goes
+straight to tap-the-map. `LS.locationNagSeen` has been removed from `config.js` and
+`tests/pipeline.test.mjs` has a check that asserts no resolution mentions the picker,
+so it cannot creep back by habit. One constant's worth of work to reverse if you want
+(b) or (c). The reasoning: The probe shows a library photo arriving with **full GPS**
+(9.98 m accuracy) and full timestamps, with no picker setting touched — the documented
+"iOS strips GPS from library photos by default" did not reproduce on iOS 18.7.5.
+
+So nagging every time a photo lacks GPS would now fire only for genuinely location-less
+photos (screenshots, AirDropped or shared images, old imports), where the instruction
+"turn on Options → Location" is not the fix and would just be wrong. Options:
+  a) Drop the nag; when GPS is absent, go straight to tap-the-map. **← built**
+  b) Keep a one-time card, shown only the first time it happens.
+  c) Keep nagging as originally chosen.
+
+### 2. `storage.persist()` — still unresolved, and it is the important one
+
+**`storage.persist()` was DENIED**, but that was measured in Safari
+(`standalone: false`), not as an installed home-screen app — which is exactly where
+WebKit's heuristic is meant to favour granting. **Re-run the Storage probe after
+installing to the home screen.** This is the single most important open question for
+durability, because the outbox is the only copy of an in-app camera photo and quota
+(41 GB) is not the constraint — eviction is.
+
+`pwa.js` now re-requests it on **every** boot rather than once, precisely because the
+answer legitimately changes after install, and logs a warning when it comes back false.
+Open the console on the installed app and look for `[pwa] storage is NOT persisted`.
+
+---
+
 ## Next, in order
 
-1. **Run `frontend/probe.html` on the real iPhone**, over HTTPS. It is the outstanding
-   Phase 0 item and it answers the questions the photo pipeline is currently guessing at:
-   what a `capture=` photo actually contains, whether the picker's Location toggle is
-   *sticky* across launches, what HEIC arrives as, whether `createImageBitmap` honours
-   `resizeWidth`, and whether `storage.persist()` is granted. Fold the answers into
-   `decode.js`/`resize.js` constants before writing them.
-2. **Open the app in a browser.** It has never been rendered — everything so far is
-   structural verification. Serve `frontend/` statically and point `config.js`
-   `API_BASE` at a local `wrangler dev`. Expect runtime errors; nothing here has
-   executed in a DOM.
-3. Photo pipeline: `decode.js`, `resize.js`, `pipeline.js`, `probes.js`, `geolocate.js`.
-   Use the probe results from step 1 for the constants.
-4. Turnstile exchange, then make `sheet.js` editable — it is read-only today because
-   editing needs an upload pass. Chips render as static stickers rather than as
-   tappable-but-dead controls.
-5. Offline: `idb.js`, `outbox.js`, `flush.js`, `sw.js`.
-6. Remaining pages: capture, cats, cat, sighting, settings. Snap and Cats are
-   placeholder page modules in `main.js` today.
+1. ~~Run probe.html on the iPhone.~~ **DONE 2026-09-11.** Full measured results are in
+   the table in `CLAUDE.md` → "iOS realities". Two documented behaviours did NOT
+   reproduce — read that table rather than trusting any blog post. Constants already
+   folded into `config.js`.
+2. **Open the app in a browser and actually look at it.** It is deployed and every
+   asset serves, but the map page has never been rendered — everything so far is
+   structural verification (parses, imports resolve, references exist). Expect runtime
+   errors. https://brennanwilkes.github.io/meowmap/
+3. ~~Photo pipeline.~~ **DONE:** `decode.js`, `resize.js`, `pipeline.js`,
+   `geolocate.js`, and `capture_page.js` end to end — take/choose, EXIF, resize,
+   location resolution, chips, a tap-to-place mini map, queue, suggestion card.
+   `probes.js` was never written and is not needed: the answers are measured and
+   committed. Written but **never executed in a browser**.
+4. ~~Turnstile exchange.~~ **DONE:** `turnstile.js` loads the widget on demand
+   (`interaction-only`, `action: 'upload'`), coalesces concurrent challenges into one,
+   and is registered as `flush.onNeedsPass` at boot so a queue draining hours later can
+   still re-verify. **Still to do: make `sheet.js` editable** — it is read-only, and its
+   chips render as static stickers rather than tappable-but-dead controls.
+5. ~~Offline queue.~~ **DONE and tested** (18 checks). ~~`sw.js` + install prompt.~~
+   **DONE:** `sw.js` (four caches, FIFO photo cap, no auto-`skipWaiting`),
+   `offline.html`, and `pwa.js` (registration, update bar, `persist()` every boot, a
+   one-time iOS install hint).
+6. Remaining pages: cats, cat, sighting, settings. Cats is still a placeholder page
+   module in `main.js`.
+
+**THE NEXT THING TO DO IS OPEN IT ON THE PHONE.** Roughly 1,400 lines of frontend have
+now been written against a browser that has never run them. The tests cover the pure
+logic and the structure checks cover the wiring, but neither has ever painted a pixel.
 
 ---
 
 ## Decisions made during the build (not in the original plan)
+
+- **The vocabularies are declared twice and asserted equal.** `COAT_TAGS` etc. live in
+  both `frontend/config.js` and `worker/src/constants.ts` because there is no bundler
+  to share one declaration. `tests/vocab.test.mjs` reads both files and compares, so
+  drift is a red test rather than a 400 at save time, after the photo has already been
+  processed.
+- **`linkWhenUploaded` returns false rather than failing** when the row has already
+  uploaded, and the capture page then PATCHes the server row. The suggestion card
+  appears immediately after save, so on a fast connection the row can be gone from the
+  queue before she taps — dropping the link there would be silent and wrong.
+- **The Turnstile challenge is fetched at save time, not at flush time.** It appears
+  while she is still looking at the photo rather than minutes later out of nowhere. A
+  failure is not fatal: the row queues regardless and `flush.js` retries the exchange.
+- **The geolocation watch starts AFTER `input.click()`**, never before. The click must
+  be synchronous inside the user gesture or iOS silently drops the picker — so the
+  ordering is load-bearing, not stylistic.
+- **`persist()` is requested on every boot, not once.** It was DENIED in Safari and the
+  documented heuristic favours installed apps, so the answer legitimately changes; a
+  cached "no" would hide that.
 
 - **Cat colours use a coprime stride, not a hash.** A test caught ids 37/38 colliding.
   With 12 shades a hash makes collisions merely unlikely (~1 in 12 per adjacent pair);

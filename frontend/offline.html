@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Meowmap — offline</title>
+<link rel="stylesheet" href="./styles/tokens.css">
+<link rel="stylesheet" href="./styles/base.css">
+<style>
+  .offline { display:grid; place-content:center; gap:12px; min-height:100dvh;
+             padding:24px; text-align:center; }
+  .offline h1 { font-family:var(--font-stick); font-size:var(--t-xl); margin:0; }
+  .offline p  { color:var(--ink-soft); max-width:22em; margin:0; }
+  .offline .hand { font-family:var(--font-hand); color:var(--ink-faint); }
+</style>
+</head>
+<body>
+<!-- Reached only if the shell itself was never cached, i.e. the very first visit
+     happened offline. Once installed, navigations fall back to index.html instead and
+     the app runs normally from cache. -->
+<div class="offline">
+  <h1>No connection</h1>
+  <p>Meowmap has not been saved to this phone yet, so there is nothing to show offline.</p>
+  <p class="hand">Open it once with signal and it will work without.</p>
+</div>
+</body>
+</html>

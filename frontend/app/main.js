@@ -1,6 +1,10 @@
 import { $ } from './dom.js';
 import * as store from './store.js';
 import * as mapPage from './map_page.js';
+import * as capturePage from './capture_page.js';
+import * as turnstile from './turnstile.js';
+import * as flush from './flush.js';
+import * as pwa from './pwa.js';
 
 /* Router and app-shell lifecycle.
  *
@@ -16,8 +20,8 @@ const TITLES = {
   cats: ['Cats', ''],
 };
 
-// Snap and Cats are placeholders until their pages land; keeping them as real page
-// modules from the start means the router never needs changing to add them.
+// Cats is still a placeholder; keeping it as a real page module from the start means
+// the router never needs changing when it lands.
 const placeholder = (text) => ({
   mount(el) { el.innerHTML = `<div class="pad"><p class="empty">${text}</p></div>`; },
   unmount() {},
@@ -25,7 +29,7 @@ const placeholder = (text) => ({
 
 const PAGES = {
   map: mapPage,
-  snap: placeholder('Taking photos lands here next.'),
+  snap: capturePage,
   cats: placeholder('Your cats will appear here.'),
 };
 
@@ -99,3 +103,18 @@ window.addEventListener('online', () => store.refresh());
 
 go(screenFromHash());
 store.refresh();
+
+// A 401 during a background flush means the pass expired, not that anything is wrong.
+// Registering the exchange here rather than in the capture page means a queue that
+// drains hours later can still re-verify.
+flush.onNeedsPass(turnstile.ensurePass);
+
+pwa.register();
+// Ask every boot: persist() legitimately flips to granted once installed to the home
+// screen, and the outbox is the only copy of an in-app camera photo.
+pwa.ensurePersisted().then((s) => {
+  if (!s.persisted) console.warn('[pwa] storage is NOT persisted', s);
+});
+// Boot the flush loop last: it resets interrupted uploads and immediately retries, so
+// it must not race the first store.refresh().
+flush.start().catch((err) => console.error('[flush] start failed:', err));

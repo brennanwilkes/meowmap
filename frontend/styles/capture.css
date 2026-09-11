@@ -1,0 +1,190 @@
+/* The capture flow, the Turnstile card, and the PWA bars.
+   Radius is --r-cut or a true circle. Never anything between: a 12-20px radius is what
+   reads as "badge" rather than "sticker", which was rejected repeatedly. */
+
+/* A section break as a torn line of ruled paper, not a grey <hr>. Brennan's note:
+   "maybe just some HR like lined paper ish to separate the sections". */
+.rule {
+  border: 0;
+  height: 1px;
+  margin: 18px 0 14px;
+  background: repeating-linear-gradient(
+    90deg, var(--rule) 0 7px, transparent 7px 11px);
+}
+
+.capture-idle, .capture-draft { display: flex; flex-direction: column; }
+
+.shutter-row { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.btn-stick.big, .btn-ghost.big { font-size: var(--t-lg); padding: 16px 0; width: 100%; }
+
+/* Brennan: the old camera caption "kinda pointed from nowhere". It now sits directly
+   under the buttons it describes, with the arrow leading up to them rather than off
+   into empty page. */
+.arrow-note {
+  position: relative;
+  margin: 14px 0 0 46px;
+  font-size: var(--t-sm);
+  max-width: 22em;
+}
+.arrow-note::before {
+  content: '';
+  position: absolute; left: -34px; top: -4px;
+  width: 26px; height: 22px;
+  border-left: 2px solid var(--ink-faint);
+  border-top: 2px solid var(--ink-faint);
+  border-top-left-radius: 14px;
+  transform: rotate(-8deg);
+}
+
+.capture-busy { display: grid; place-items: center; gap: 14px; padding-top: 64px; }
+.spinner {
+  width: 34px; height: 34px;
+  border: 3px solid var(--rule);
+  border-top-color: var(--coral);
+  border-radius: 50%;
+  animation: spin 720ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.field { display: block; margin-top: 14px; }
+.field > span { display: block; font-size: var(--t-sm); color: var(--ink-soft); margin-bottom: 5px; }
+.field em { font-style: normal; color: var(--ink-faint); }
+.field input {
+  width: 100%;
+  /* --t-input is the iOS no-zoom floor. Anything smaller and Safari zooms the page on
+     focus, which in a full-bleed map app never zooms back out cleanly. */
+  font-family: var(--font-body); font-size: var(--t-input); color: var(--ink);
+  background: var(--paper-hi);
+  border: 2px solid var(--rule); border-radius: var(--r-cut);
+  padding: 9px 11px;
+}
+.field input:focus { outline: none; border-color: var(--ink); }
+
+.notice {
+  margin: 10px 0 0;
+  font-size: var(--t-sm);
+  color: var(--ink-soft);
+}
+
+.loc-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.loc-line .when { font-size: var(--t-sm); color: var(--ink-soft); }
+.loc-line .sub { font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft); text-align: right; }
+
+.mini-map {
+  height: 190px; margin-top: 10px;
+  border: 2.5px solid var(--ink);
+  border-radius: var(--r-cut);
+  box-shadow: var(--lift);
+}
+/* A pushed-in map pin: a shaded dome with a needle, not a flat disc. */
+.drop-pin i {
+  display: block; width: 16px; height: 16px; margin: 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #fff 0 12%, var(--coral) 38%, #8d2337 100%);
+  box-shadow: inset 0 -2px 3px rgba(0, 0, 0, .35), 1px 2px 3px rgba(46, 42, 36, .45);
+}
+.drop-pin::after {
+  content: ''; display: block; width: 2px; height: 18px; margin: -2px auto 0;
+  background: linear-gradient(90deg, #b9b1a3, #6b6459 45%, #2e2a24);
+}
+
+.save-row { display: flex; gap: 10px; align-items: stretch; margin: 20px 0 8px; }
+.save-row .btn-ghost { flex: 0 0 auto; }
+.save-row .btn-stick { flex: 1 1 auto; }
+
+.saved-note { font-size: var(--t-lg); margin: 6px 0 14px; }
+
+.suggest-row { display: flex; gap: 11px; overflow-x: auto; padding: 4px 2px 14px; }
+.suggest {
+  flex: 0 0 128px;
+  display: flex; flex-direction: column; gap: 5px;
+  background: var(--paper-hi); color: var(--ink);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 7px;
+  box-shadow: var(--cut), var(--lift);
+  transform: rotate(-1.2deg);
+  transition: transform var(--up), box-shadow var(--up);
+}
+.suggest:nth-child(even) { transform: rotate(1.4deg); }
+.suggest:active {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
+.suggest img {
+  width: 100%; height: 104px; object-fit: cover;
+  border-radius: var(--r-cut);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.suggest .nm { font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700; }
+.suggest .why { font-family: var(--font-hand); font-size: var(--t-xs); color: var(--ink-soft); }
+
+/* ── taped cards ───────────────────────────────────────────────────────── */
+
+.taped {
+  position: relative;
+  background: var(--paper-hi);
+  border: 2.5px solid var(--ink);
+  border-radius: var(--r-cut);
+  padding: 16px 15px 14px;
+  box-shadow: var(--lift-lg);
+}
+.taped::before {
+  content: '';
+  position: absolute; top: -10px; left: 50%; margin-left: -40px;
+  width: 80px; height: 20px;
+  /* Milky, not a faint sheen — the first pass was too transparent to read as a
+     physical strip. Torn ends rather than cut ones. */
+  background: rgba(255, 255, 255, .62);
+  border-left: 1px solid rgba(255, 255, 255, .8);
+  border-right: 1px solid rgba(255, 255, 255, .8);
+  clip-path: polygon(4% 0, 96% 6%, 100% 96%, 2% 100%);
+  transform: rotate(-1.6deg);
+}
+
+.install-hint { margin-top: 26px; }
+.install-hint p { margin: 0 0 8px; font-size: var(--t-sm); }
+.install-hint .hand { font-size: var(--t-md); }
+.install-hint button { margin-top: 6px; }
+
+/* ── the Turnstile card ────────────────────────────────────────────────── */
+
+.ts-veil {
+  position: fixed; inset: 0; z-index: 90;
+  display: grid; place-items: center;
+  padding: 24px;
+  background: rgba(46, 42, 36, .45);
+}
+.ts-card { width: min(320px, 100%); text-align: center; }
+.ts-title { font-family: var(--font-stick); font-size: var(--t-lg); margin: 0 0 12px; }
+.ts-widget { display: grid; place-items: center; min-height: 66px; }
+.ts-note { font-size: var(--t-sm); margin: 8px 0 0; }
+
+/* ── the update bar ────────────────────────────────────────────────────── */
+
+.update-bar {
+  position: fixed; left: 12px; right: 12px; z-index: 60;
+  bottom: calc(12px + var(--safe-b));
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
+  background: var(--marigold); color: var(--ink);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 12px 14px;
+  box-shadow: var(--cut), var(--lift-lg);
+  transform: rotate(-.7deg);
+}
+.update-bar:active {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+}
+
+@media (pointer: coarse) {
+  .suggest { flex-basis: 140px; }
+  .field input { min-height: 46px; }
+}
+
+/* A frozen spinner reads as broken, so it keeps moving as opacity even here. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .suggest, .update-bar { transition: none; }
+}
