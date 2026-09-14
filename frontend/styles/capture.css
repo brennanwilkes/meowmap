@@ -250,7 +250,12 @@
 .group-bar, .save-bar {
   position: absolute; left: 12px; right: 12px; z-index: 20;
   bottom: calc(12px + var(--safe-b));
-  display: flex; align-items: center; gap: 10px;
+  /* GRID, NOT FLEX. A flex line that overflows can push its first item outside the
+     container — "Undo" kept ending up off the left edge with its border clipped, through
+     two attempted fixes (margin-left:auto, then justify-content). Grid tracks cannot do
+     that: each child is placed inside a track and clamped to it, so the failure mode is
+     structurally impossible rather than merely discouraged. */
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px;
   background: var(--paper-hi);
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
   padding: 10px 12px;
@@ -258,12 +263,13 @@
   transition: transform var(--turn), opacity var(--turn);
 }
 .group-bar > span { font-family: var(--font-hand); font-size: var(--t-sm); min-width: 0; }
-/* justify-content, NOT margin-left:auto. An auto margin on an overflowing flex line
-   pushes the first item off the left edge, which is exactly what "Undo" did on the
-   phone. space-between degrades correctly instead. */
-.group-bar, .save-bar { justify-content: space-between; }
-.group-bar > *, .save-bar > * { flex: 0 1 auto; min-width: 0; }
-.save-bar .btn-stick, .group-bar .btn-stick { flex: 0 1 auto; white-space: nowrap; }
+/* The secondary action keeps its natural width; the primary takes the rest of the row,
+   which also makes it the obvious target. Both may shrink their text rather than the
+   row overflowing. */
+.group-bar > *, .save-bar > * { min-width: 0; }
+.save-bar .btn-stick, .group-bar .btn-stick { width: 100%; white-space: nowrap; }
+.save-bar .btn-ghost, .group-bar .btn-ghost { white-space: nowrap; }
+
 .group-bar.down, .save-bar.down {
   transform: translateY(calc(100% + 24px + var(--safe-b)));
   opacity: 0; pointer-events: none;
@@ -345,15 +351,42 @@
 
    It is still an <input> — tapping the name and typing is the whole edit, with no mode
    to enter and nothing to press afterwards. */
-.plate-wrap { display: flex; justify-content: center; margin: 16px 0 4px; }
-.nameplate {
-  width: 100%; max-width: 280px;
-  font-family: var(--font-stick); font-size: var(--t-input); font-weight: 800;
+.plate-wrap { display: flex; justify-content: center; margin: -22px 0 4px; position: relative; z-index: 2; }
+
+/* ── the name tag ──────────────────────────────────────────────────────────
+   A CAT'S NAME TAG, with ears. The plain slanted plate was right about the physics and
+   wrong about the subject: this is the one label in the app that is about an animal, so
+   it looks like one.
+
+   The ears are two ink-outlined diamonds whose top corners poke above the tag; the tag
+   body is `position: relative` so it paints over their lower halves and only the points
+   show. Diamonds rather than clip-path triangles because clip-path cuts the border off
+   with the shape, and the ink outline is the whole look.
+
+   They live on a WRAPPER, not on the tag itself: an <input> does not render ::before or
+   ::after, so an eared input is not something CSS can do to one element. */
+.tag { position: relative; display: inline-block; max-width: 100%; }
+.tag::before, .tag::after {
+  content: ''; position: absolute; top: -7px;
+  width: 15px; height: 15px;
+  background: var(--ring, var(--marigold));
+  border: 2.5px solid var(--ink);
+  border-radius: var(--r-cut) 0 0 0;
+  transform: rotate(45deg);
+}
+.tag::before { left: 16px; }
+.tag::after { right: 16px; }
+
+.nameplate, .plate {
+  position: relative;      /* paints over the ears' lower halves */
+  /* Handwritten, because a name on a tag is written by hand. 17px clears the 16px iOS
+     no-zoom floor, which a form control must. */
+  font-family: var(--font-hand); font-size: var(--t-lg); font-weight: 700;
   text-align: center;
   /* Five of the twelve cat colours are dark enough to swallow ink, so the text colour
      travels with the fill rather than being assumed. */
   color: var(--ring-ink, var(--ink));
-  padding: 10px 14px; min-height: 44px;
+  padding: 9px 18px; min-height: 44px;
   background: var(--ring, var(--marigold));
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
   /* Die-cut margin + hard offset shadow + hand-stuck tilt: a sticker, by the same three
@@ -362,18 +395,39 @@
   transform: rotate(-1.6deg);
   transition: transform var(--up), box-shadow var(--up), background var(--up);
 }
-/* Unnamed LIES FLAT on the page, exactly as an unselected chip does: no fill, no tilt,
-   no shadow. Same physics, so "not named yet" reads as a state rather than as a blank. */
+/* The tilt has to sit on the WRAPPER so the ears come with it. */
+.tag { transform: rotate(-1.6deg); }
+.nameplate, .plate { transform: none; }
+
+.nameplate { width: 100%; max-width: 260px; }
+.plate { display: inline-block; }
+.plate:active {
+  transform: translate(var(--lift-x), var(--lift-y));
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
+/* Unnamed lies FLAT on the page, exactly as an unselected chip does: no fill, no shadow.
+   Same physics, so "not named yet" reads as a state rather than as a blank. The ears
+   stay — it is still a cat. */
 .nameplate:placeholder-shown {
   background: transparent; color: var(--ink-faint);
   border: 2px dashed var(--ink-faint);
   box-shadow: none;
-  transform: none;
 }
+.tag:has(.nameplate:placeholder-shown)::before,
+.tag:has(.nameplate:placeholder-shown)::after {
+  background: var(--paper); border-color: var(--ink-faint); border-style: dashed;
+}
+.tag:has(.nameplate:placeholder-shown) { transform: none; }
+
+/* The hero print sits above the tag, which overlaps its lower edge like a label stuck on
+   the photo. */
+.print.hero { margin-bottom: 0; }
+
 .nameplate:focus {
   outline: none;
   border-color: var(--ink); border-style: solid;
-  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  transform: translate(var(--lift-x), var(--lift-y));
   box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
   transition: transform var(--down), box-shadow var(--down);
 }

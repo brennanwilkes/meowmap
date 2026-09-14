@@ -12,6 +12,7 @@ import { distanceM, reasonText, suggestCats } from './suggest.js';
 import { chipRows, wireChips } from './components/chips.js';
 import * as flush from './flush.js';
 import * as pwa from './pwa.js';
+import { keepSized } from './minimap.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
@@ -28,6 +29,7 @@ let draft = null;
 let locating = null;     // the in-flight geolocation handle
 let miniMap = null;
 let miniMarker = null;
+let unsize = null;
 let objectUrl = null;
 
 /* ── rendering ─────────────────────────────────────────────────────────── */
@@ -202,7 +204,7 @@ function mountMiniMap() {
 
   // The container was written into the DOM a moment ago, so Leaflet measured it at
   // zero height. Without this the tiles render in one corner.
-  requestAnimationFrame(() => miniMap.invalidateSize());
+  unsize = keepSized(miniMap, el);
 }
 
 function placeMarker(lat, lon) {
@@ -222,6 +224,7 @@ function placeMarker(lat, lon) {
 }
 
 function destroyMiniMap() {
+  if (unsize !== null) { unsize(); unsize = null; }
   if (miniMap !== null) { miniMap.remove(); miniMap = null; }
   miniMarker = null;
 }
@@ -372,6 +375,8 @@ function showPicker() {
   for (const btn of pick.querySelectorAll('[data-pick]')) {
     btn.addEventListener('click', () => regroup(Number(btn.dataset.pick)));
   }
+  // Revealing faces below the fold and leaving the page put reads as nothing happening.
+  requestAnimationFrame(() => pick.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
 }
 
 /** Switch between "a new cat" and "that cat" and back. Nothing is saved yet, so this is

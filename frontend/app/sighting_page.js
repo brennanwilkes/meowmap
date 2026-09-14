@@ -2,11 +2,12 @@ import {
   DEFAULT_TILE_ID, LS, MAX_NOTE_LEN, TILE_SOURCES,
 } from '../config.js';
 import { deleteSighting, patchSighting, photoUrl } from './api.js';
-import { catColour, displayName } from './catcolor.js';
+import { catColour, displayName, inkFor } from './catcolor.js';
 import { getPref } from './device.js';
 import { $, dateText, esc } from './dom.js';
 import { back, navigate } from './nav.js';
 import { LOCATION_SOURCE } from './pipeline.js';
+import { keepSized } from './minimap.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
@@ -34,6 +35,7 @@ let draft = null;        // the working copy; null means "showing server state"
 let original = null;
 let miniMap = null;
 let miniMarker = null;
+let unsize = null;
 let saving = false;
 
 function dirty() {
@@ -58,6 +60,7 @@ function render(state) {
   if (active !== null && root.contains(active) && active.tagName === 'INPUT') return;
   if (dirty()) return;
 
+  if (unsize !== null) { unsize(); unsize = null; }
   if (miniMap !== null) { miniMap.remove(); miniMap = null; miniMarker = null; }
 
   const s = store.sightingById(sightingId, state);
@@ -74,15 +77,15 @@ function render(state) {
   const ring = colour === null ? 'var(--rule)' : colour.hex;
 
   root.innerHTML = `
-    <div class="pad" style="--ring:${esc(ring)}">
+    <div class="pad" style="--ring:${esc(ring)};--ring-ink:${esc(inkFor(s.catId))}">
       ${cat === null ? '' : `<div class="detail-head">
-        <button type="button" class="btn-ghost" id="to-cat">${esc(displayName(cat))}</button>
+        <span class="tag"><button type="button" class="plate" id="to-cat">${esc(displayName(cat))}</button></span>
       </div>`}
 
       <figure class="print">
         <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
         <img src="${esc(photoUrl(s.photoFull))}" alt="" crossorigin="anonymous"
-             style="height:230px">
+             width="${esc(String(s.photoW))}" height="${esc(String(s.photoH))}">
       </figure>
       <p class="hand">${esc(dateText(s.seenAt))}</p>
 
@@ -212,7 +215,7 @@ function drawPinMap(ring) {
     moved(e.latlng.lat, e.latlng.lng);
   });
 
-  requestAnimationFrame(() => miniMap.invalidateSize());
+  unsize = keepSized(miniMap, el);
 }
 
 /* ── mutations ─────────────────────────────────────────────────────────── */
@@ -287,6 +290,7 @@ export function mount(container, arg) {
 
 export function unmount() {
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
+  if (unsize !== null) { unsize(); unsize = null; }
   if (miniMap !== null) { miniMap.remove(); miniMap = null; miniMarker = null; }
   draft = null;
   original = null;

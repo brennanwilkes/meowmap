@@ -238,6 +238,11 @@ const VELOCITY_WINDOW_MS = 100;
 
   el.addEventListener('touchstart', (e) => {
     if (detail === null || e.touches.length !== 1) return;
+    /* A LEAFLET MAP OWNS ITS OWN DRAG. Without this, panning a mini-map inside a detail
+     * page drags the whole sheet down with it: the map pans, the sheet follows, and the
+     * page appears to scroll on its own. Anything that handles its own gestures has to
+     * be excluded here rather than fought afterwards. */
+    if (e.target.closest('.leaflet-container') !== null) return;
     const fromGrab = e.target.closest('.grab') !== null;
     if (!fromGrab && body.scrollTop > 0) return;
     startY = e.touches[0].clientY;
@@ -255,10 +260,16 @@ const VELOCITY_WINDOW_MS = 100;
     const dy = y - startY;
 
     if (!decided) {
-      // Let a horizontal swipe or an upward pull go to the page untouched.
       const dx = e.touches[0].clientX - startX;
+      /* WAIT FOR REAL MOVEMENT BEFORE JUDGING DIRECTION. The first millimetre of any
+       * gesture is noise, and comparing dx to dy across it is decided by jitter: a
+       * genuine downward drag that happens to start 2px to the left reads as horizontal,
+       * gets handed to the page, and — because `dragging` is then false for the rest of
+       * the gesture — can never recover. That is what made the swipe-down feel dead.
+       * Below the slop threshold, commit to nothing. */
+      if (Math.abs(dx) < COMMIT_PX && Math.abs(dy) < COMMIT_PX) return;
+      // Let a horizontal swipe or an upward pull go to the page untouched.
       if (Math.abs(dx) > Math.abs(dy) || dy < 0) { dragging = false; el.style.transition = ''; return; }
-      if (dy < COMMIT_PX) return;
       decided = true;
     }
     e.preventDefault();

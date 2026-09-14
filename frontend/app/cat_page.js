@@ -7,6 +7,7 @@ import { $, distanceText, esc, whenText } from './dom.js';
 import { distanceM } from './suggest.js';
 import { navigate } from './nav.js';
 import { turfRing, shouldDrawTurf } from './turf.js';
+import { keepSized } from './minimap.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
@@ -32,6 +33,7 @@ let root = null;
 let catId = null;
 let unsubscribe = null;
 let miniMap = null;
+let unsize = null;
 let saveTimer = null;
 /* The working copy of everything that describes the animal. Chips mutate it in place and
  * one debounced PATCH sends whatever actually differs. `pendingFor` is the cat that
@@ -48,6 +50,7 @@ function render(state) {
   // A pending debounce means a tap she has made is not on the server yet; rebuilding
   // from server state would silently undo it in front of her.
   if (saveTimer !== null) return;
+  if (unsize !== null) { unsize(); unsize = null; }
   if (miniMap !== null) { miniMap.remove(); miniMap = null; }
 
   const cat = store.catsWithSightings(state).find((c) => c.id === catId);
@@ -66,10 +69,19 @@ function render(state) {
         <span class="swatch" aria-hidden="true"></span>
       </div>
 
+      ${sightings.length === 0 ? '' : `
+      <figure class="print hero">
+        <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
+        <img src="${esc(photoUrl(sightings[0].photoFull))}" alt="" crossorigin="anonymous"
+             width="${esc(String(sightings[0].photoW))}" height="${esc(String(sightings[0].photoH))}">
+      </figure>`}
+
       <div class="plate-wrap">
-        <input type="text" class="nameplate" id="f-name" maxlength="${MAX_NAME_LEN}"
-               aria-label="This cat's name"
-               placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">
+        <span class="tag">
+          <input type="text" class="nameplate" id="f-name" maxlength="${MAX_NAME_LEN}"
+                 aria-label="This cat's name"
+                 placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">
+        </span>
       </div>
       <p class="hand" id="save-state">&nbsp;</p>
 
@@ -213,6 +225,10 @@ function showMergePicker(cat) {
   for (const btn of slot.querySelectorAll('[data-merge]')) {
     btn.addEventListener('click', () => merge(cat, Number(btn.dataset.merge)));
   }
+  /* Scroll the faces into view. Revealing UI below the fold and leaving the page where it
+   * was reads as the button having done nothing. rAF so the row has laid out first, and
+   * 'nearest' so it moves the minimum needed rather than yanking the page. */
+  requestAnimationFrame(() => slot.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
 }
 
 /**
@@ -330,7 +346,7 @@ function drawTerritory(sightings, colour) {
     }).addTo(miniMap);
   }
   miniMap.fitBounds(L.latLngBounds(points).pad(0.35));
-  requestAnimationFrame(() => miniMap.invalidateSize());
+  unsize = keepSized(miniMap, el);
 }
 
 export function mount(container, arg) {
@@ -349,6 +365,7 @@ export function unmount() {
     saveTimer = null;
     if (pendingFor !== null) saveEdits(pendingFor);
   }
+  if (unsize !== null) { unsize(); unsize = null; }
   if (miniMap !== null) { miniMap.remove(); miniMap = null; }
   root = null;
   catId = null;

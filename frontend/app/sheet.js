@@ -70,8 +70,8 @@ export function openSightingSheet(sighting, cat, members = null) {
     ${pettedSticker(tagged.petted)}
     <figure class="print">
       <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
-      <img src="${esc(photoFor(sighting))}" alt="${esc(name)}"
-           crossorigin="anonymous" style="height:190px">
+      <img src="${esc(photoFor(sighting))}" alt="${esc(name)}" crossorigin="anonymous"
+           width="${esc(String(sighting.photoW ?? ''))}" height="${esc(String(sighting.photoH ?? ''))}">
       ${sighting.note === null || sighting.note === undefined || sighting.note === ''
         ? '' : `<figcaption>${esc(sighting.note)}</figcaption>`}
     </figure>

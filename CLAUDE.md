@@ -366,6 +366,42 @@ And take a `npm run backup` before applying.
   holding still still read as fast, so the sheet flew away after she had decided not to
   dismiss it — stopping must be a real cancel. The commit threshold is SUBTRACTED from the
   offset or the sheet jumps under the finger, and tracking is 1:1, as every iOS sheet is.
+- **Do not judge a gesture's direction from the first touchmove.** The first millimetre
+  is jitter, so comparing dx to dy across it is decided by noise: a genuine downward drag
+  that starts 2px to the left reads as horizontal, gets handed to the page, and — because
+  `dragging` is false for the rest of the gesture — CAN NEVER RECOVER. That made
+  swipe-to-dismiss feel dead. Commit to nothing below the slop threshold.
+- **A Leaflet map owns its own drag**, so the sheet gesture ignores touches starting
+  inside `.leaflet-container`. Without it, panning a mini-map drags the sheet down with it
+  and the page appears to scroll on its own.
+- **Mini-maps use a ResizeObserver (`minimap.js`), never a bare rAF.**
+  `requestAnimationFrame(() => map.invalidateSize())` is a GUESS ABOUT TIMING — one frame
+  is enough when the sheet is already open and not enough while it is animating, which is
+  why the territory map loaded "sometimes". Leaflet measures its container once and never
+  notices it changing; the observer fires whenever the box actually changes.
+- **Action bars are a GRID, not flex.** An overflowing flex line can push its first item
+  outside the container: "Undo" ended up off the left edge with its border clipped through
+  two attempted fixes (`margin-left:auto`, then `justify-content`). Grid tracks clamp
+  their children, so the failure mode is structurally impossible rather than discouraged.
+- **A revealed picker must scroll itself into view.** Showing faces below the fold and
+  leaving the page where it was reads as the button having done nothing.
+- **Photos are never cropped to a fixed pixel height.** `object-fit: cover` on a fixed
+  height cut most of the cat out of a portrait shot. Height follows the image's own aspect
+  ratio, capped with `max-height`, and `contain` letterboxes onto the paper mount — which
+  on a print is what a mount is for. Pass `width`/`height` attributes so layout is
+  reserved before the image loads.
+- **A pin is a little polaroid**: white mount, a deep chin below a square photo window,
+  the cat's colour as the die-cut ring. The window stays square so a pin is a predictable
+  size whatever shape the photo is; the print around it is what makes it an object.
+- **The map opens on the Victoria bounds on EVERY fresh page load**, whatever was saved
+  and wherever the cats are. `lastView` only survives switching tabs within one session,
+  which is the case it was for. A module-level `firstMount` flag is "fresh load", since
+  the module is evaluated once per load.
+- **A cat's name is a CAT NAME TAG with ears**, in the handwritten face. The ears live on
+  a `.tag` WRAPPER because an `<input>` renders neither `::before` nor `::after`, and they
+  are ink-outlined diamonds rather than clip-path triangles — `clip-path` cuts the border
+  off with the shape, and the ink outline is the whole look. The tag body is
+  `position: relative` so it paints over their lower halves and only the points show.
 - **A cat's name is a slanted NAMEPLATE, not a form field.** The dashed outline it
   replaced is this app's vocabulary for "unselected chip", so borrowing it for a text box
   said the name was an option not yet taken. Unnamed lies flat via `:placeholder-shown` —

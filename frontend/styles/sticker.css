@@ -103,7 +103,17 @@
   border: 1px solid var(--rule); box-shadow: 2px 3px 0 rgba(46,42,36,.18);
   transform: rotate(-1.3deg); margin: 8px 0 18px;
 }
-.print img { width: 100%; object-fit: cover; filter: sepia(.1) saturate(.97); }
+/* SHOW THE WHOLE PHOTO. A fixed height with object-fit:cover cropped hard — on a
+   portrait shot of a cat it cut off most of the animal. Height follows the image's own
+   aspect ratio instead, capped so a tall photo cannot push the buttons off the screen;
+   `contain` means the cap letterboxes onto the paper mount rather than cropping again,
+   which on a print is what a mount is for. */
+.print img {
+  display: block; width: 100%; height: auto;
+  max-height: 52vh; object-fit: contain;
+  background: var(--paper);
+  filter: sepia(.1) saturate(.97);
+}
 .print figcaption {
   font-family: var(--font-hand); font-size: var(--t-md); color: var(--ink-soft);
   padding: 7px 2px 9px; text-align: center;

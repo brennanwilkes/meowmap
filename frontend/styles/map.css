@@ -14,21 +14,33 @@
 .leaflet-control-attribution { display: none; }
 .leaflet-control-zoom { display: none; }   /* pinch works; the buttons are chrome */
 
-/* A pin is a square photo sticker whose die-cut ring carries the cat's colour, so you
-   recognise a cat by its face and confirm by its colour — no legend needed. */
+/* A pin is a LITTLE POLAROID: white mount, a wider strip along the bottom, the cat's
+   colour as the die-cut ring, and a hand-stuck tilt. The photo window is square because
+   the pin must stay a predictable size on the map whatever shape the photo is — the
+   print around it is what makes it read as an object rather than a thumbnail in a box. */
 .pin { background: none; border: 0; cursor: pointer; }
 .pin i {
-  display: block; width: 46px; height: 46px; border-radius: var(--r-cut);
-  border: 2.5px solid var(--ink);
-  background: var(--paper-hi) center / cover no-repeat;
-  box-shadow: 0 0 0 3.5px var(--ring), var(--lift);
+  display: block; width: 52px; height: 60px;
+  /* The asymmetric padding IS the polaroid: even margin on three sides, a deep chin
+     below. Without the chin it is just a framed picture. */
+  padding: 4px 4px 12px;
+  border-radius: var(--r-cut);
+  border: 1.5px solid var(--rule);
+  background: var(--paper-hi);
+  box-shadow: 0 0 0 2.5px var(--ring), var(--lift);
   transform: rotate(-2.5deg);
   transition: transform var(--up), box-shadow var(--up);
+}
+.pin i u {
+  display: block; width: 44px; height: 44px;
+  background: var(--paper) center / cover no-repeat;
+  /* A faint inner line, the way a real print sits slightly below its mount. */
+  box-shadow: inset 0 0 0 1px rgba(46, 42, 36, .22);
 }
 .pin.alt i { transform: rotate(2deg); }
 .pin:active i {
   transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
-  box-shadow: 0 0 0 3.5px var(--ring);
+  box-shadow: 0 0 0 2.5px var(--ring);
   transition: transform var(--down), box-shadow var(--down);
 }
 .pin::after {
@@ -45,11 +57,12 @@
 /* Unidentified is a permanent, first-class state — dashed and desaturated says "not
    named yet", not "broken". */
 .pin.loose i {
-  border-style: dashed; filter: grayscale(.6);
-  box-shadow: 0 0 0 3.5px var(--paper-hi);
+  border-style: dashed;
+  box-shadow: 0 0 0 2.5px var(--paper-hi), var(--lift);
 }
+.pin.loose i u { filter: grayscale(.6); }
 /* Pending upload. She must never wonder whether a photo was saved. */
-.pin.pending i { border-color: var(--marigold); }
+.pin.pending i { box-shadow: 0 0 0 2.5px var(--marigold), var(--lift); }
 .pin.pending b { background: var(--marigold); }
 
 /* Hand-lettered territory label. Lives in its own pane above the pins and is tappable. */

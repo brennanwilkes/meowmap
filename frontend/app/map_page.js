@@ -33,6 +33,8 @@ const objectUrls = new Set();
  * filter that survives a relaunch means opening the app tomorrow to a map missing most
  * of her cats, with nothing on screen explaining why. */
 const active = emptyFilter();
+/** True until the map has been built once in this page load; see mount(). */
+let firstMount = true;
 /** The "you are here" dot and its accuracy ring. */
 let meMarker = null;
 let meCircle = null;
@@ -84,9 +86,11 @@ function pinIcon(s, ring, count) {
   const badge = count > 1 ? `<b>&times;${count}</b>` : (s.pending === true ? '<b>!</b>' : '');
   return L.divIcon({
     className: cls.join(' '),
-    html: `<i style="--ring:${esc(ring)};background-image:url(${esc(thumbSrc(s))})"></i>${badge}`,
-    iconSize: [46, 46],
-    iconAnchor: [23, 55],
+    // The photo is its own element inside the print, so the mount and the chin below it
+    // stay paper rather than being covered by the image.
+    html: `<i style="--ring:${esc(ring)}"><u style="background-image:url(${esc(thumbSrc(s))})"></u></i>${badge}`,
+    iconSize: [52, 60],
+    iconAnchor: [26, 69],
   });
 }
 
@@ -222,7 +226,15 @@ export function mount(el) {
     <div class="coat-filter" id="coatFilter">${filterChips()}</div>
     <div class="outbox-banner" id="outboxBanner" style="display:none"></div>`;
 
-  const view = getJsonPref(LS.lastView, null);
+  /* EVERY FRESH PAGE LOAD OPENS ON VICTORIA, whatever was saved and wherever the cats
+   * are. The saved view only survives switching tabs within one session, which is the
+   * case it was actually for — coming back to the map mid-task and finding it moved is
+   * the annoying version. Opening the app tomorrow somewhere else because of where she
+   * happened to pan yesterday is the more annoying one.
+   *
+   * The module is evaluated once per page load, so this flag IS "fresh load". */
+  const view = firstMount ? null : getJsonPref(LS.lastView, null);
+  firstMount = false;
 
   /* No attribution control at all, and no credits button — Brennan's call for a private
    * two-person app after the (i) button was tried and judged clutter. Noted rather than
@@ -235,9 +247,9 @@ export function mount(el) {
   });
 
   if (view === null) {
-    // First run: frame the walkable core of Victoria, James Bay to Mount Tolmie. Fitting
-    // bounds rather than a fixed zoom means the same area is framed on a phone and on a
-    // laptop, instead of being right on whichever screen it was tuned against.
+    // Frame the walkable core of Victoria, James Bay to Mount Tolmie. Fitting bounds
+    // rather than a fixed zoom means the same area is framed on a phone and on a laptop,
+    // instead of being right on whichever screen it was tuned against.
     map.fitBounds([
       [DEFAULT_BOUNDS.sw.lat, DEFAULT_BOUNDS.sw.lon],
       [DEFAULT_BOUNDS.ne.lat, DEFAULT_BOUNDS.ne.lon],
