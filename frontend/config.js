@@ -153,6 +153,14 @@ export const OUTBOX_NAG_AFTER_MS = 6 * 3_600_000;
 
 /* ── storage keys ──────────────────────────────────────────────────────────
  * Convention: meowmap:<kebab-key>. */
+/* Fired on `window` when the tile provider is switched in Settings.
+ *
+ * The map tab STAYS MOUNTED underneath the Settings sheet — that is deliberate, so
+ * closing a detail never re-runs a map build — which means the map never re-reads the
+ * preference and the switch appeared to do nothing until a full reload. An event rather
+ * than settings_page importing map_page: pages here do not import each other. */
+export const TILE_CHANGED = 'meowmap:tile-changed';
+
 export const LS = {
   deviceId: 'meowmap:device-id',
   pass: 'meowmap:upload-pass',

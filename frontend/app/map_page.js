@@ -1,5 +1,6 @@
 import {
-  COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, LS, PETTED_VALUES, SIZE_TAGS, TILE_SOURCES,
+  COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, LS, PETTED_VALUES, SIZE_TAGS,
+  TILE_CHANGED, TILE_SOURCES,
 } from '../config.js';
 import { esc } from './dom.js';
 import { getJsonPref, getPref, setJsonPref } from './device.js';
@@ -64,6 +65,19 @@ function filterChips() {
 function tileSource() {
   const id = getPref(LS.tileSource, DEFAULT_TILE_ID);
   return TILE_SOURCES.find((t) => t.id === id) ?? TILE_SOURCES[0];
+}
+
+/** Build (or rebuild) the basemap layer from the current preference. */
+function applyTileSource() {
+  if (map === null) return;
+  const src = tileSource();
+  if (tileLayer !== null) map.removeLayer(tileLayer);
+  tileLayer = L.tileLayer(src.url, {
+    attribution: src.attribution,
+    maxZoom: src.maxZoom,
+    maxNativeZoom: src.maxNativeZoom,
+    subdomains: src.subdomains ?? 'abc',
+  }).addTo(map);
 }
 
 function thumbSrc(s) {
@@ -173,6 +187,14 @@ function updateTurfLabels() {
   }
 }
 
+/* WITH its sightings attached: the sheet pages through every photo of the cat, not just
+ * the ones collapsed into this pin. Bunched pins are exactly the case where "show me the
+ * others" matters, and the others are usually NOT at the same spot. */
+function catFor(s, state) {
+  if (s.catId === null || s.catId === undefined) return null;
+  return store.catsWithSightings(state).find((c) => c.id === s.catId) ?? null;
+}
+
 function drawPins(state) {
   const catsById = new Map(state.cats.map((c) => [c.id, c]));
   const groups = collapse(filterSightings(store.renderableSightings(state), catsById, active));
@@ -195,12 +217,12 @@ function drawPins(state) {
       existing.setLatLng([g.lat, g.lon]);
       existing.setIcon(icon);
       existing.off('click');
-      existing.on('click', () => openSightingSheet(head, store.catById(head.catId, state), g.members));
+      existing.on('click', () => openSightingSheet(head, catFor(head, state)));
       continue;
     }
     const m = L.marker([g.lat, g.lon], { icon })
       .addTo(map)
-      .on('click', () => openSightingSheet(head, store.catById(head.catId, state), g.members));
+      .on('click', () => openSightingSheet(head, catFor(head, state)));
     markers.set(key, m);
   }
 
@@ -261,13 +283,8 @@ export function mount(el) {
   map.createPane('turf');
   map.getPane('turf').style.zIndex = '650';
 
-  const src = tileSource();
-  tileLayer = L.tileLayer(src.url, {
-    attribution: src.attribution,
-    maxZoom: src.maxZoom,
-    maxNativeZoom: src.maxNativeZoom,
-    subdomains: src.subdomains ?? 'abc',
-  }).addTo(map);
+  applyTileSource();
+  window.addEventListener(TILE_CHANGED, applyTileSource);
 
   // The container was written by innerHTML a moment ago and may not have laid out yet.
   requestAnimationFrame(() => { if (map !== null) map.invalidateSize(); });
@@ -341,6 +358,7 @@ export function onShown() {
 }
 
 export function unmount() {
+  window.removeEventListener(TILE_CHANGED, applyTileSource);
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
   if (locating !== null) { locating.cancel(); locating = null; }
   meMarker = null;

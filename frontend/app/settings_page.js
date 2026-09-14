@@ -1,4 +1,4 @@
-import { DEFAULT_TILE_ID, LS, TILE_SOURCES } from '../config.js';
+import { DEFAULT_TILE_ID, LS, TILE_CHANGED, TILE_SOURCES } from '../config.js';
 import { getHealth } from './api.js';
 import { deviceId, getPref, setPref } from './device.js';
 import { $, esc, whenText } from './dom.js';
@@ -84,6 +84,8 @@ function wire() {
     const btn = e.target.closest('[data-tile]');
     if (btn === null) return;
     setPref(LS.tileSource, btn.dataset.tile);
+    // Tell the live map to swap its layer; it is mounted behind this sheet.
+    window.dispatchEvent(new Event(TILE_CHANGED));
     for (const sib of root.querySelectorAll('[data-tile]')) {
       sib.setAttribute('aria-pressed', String(sib.dataset.tile === btn.dataset.tile));
     }

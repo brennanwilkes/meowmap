@@ -19,11 +19,10 @@ import * as pwa from './pwa.js';
 
 const SCREENS = ['map', 'snap', 'cats'];
 
-const TITLES = {
-  map: ['MeowMap', ''],
-  snap: ['Snap', 'point it at a cat'],
-  cats: ['Cats', ''],
-};
+/* The wordmark is CONSTANT. It used to change per page, with a faint subtitle beside it
+ * — but the tab bar and the content already say where you are, so the header was
+ * restating it, and a wordmark that changes is not a wordmark. It is set once in
+ * index.html and never touched. */
 
 const PAGES = {
   map: mapPage,
@@ -37,12 +36,6 @@ const DETAILS = {
   cat: catPage,
   sighting: sightingPage,
   settings: settingsPage,
-};
-
-const DETAIL_TITLES = {
-  cat: ['MeowMap', 'a cat'],
-  sighting: ['MeowMap', 'one sighting'],
-  settings: ['Settings', ''],
 };
 
 let current = null;
@@ -82,9 +75,7 @@ function go(next, keepHash = false) {
     }, 320);
   }
 
-  $('#wordmark').textContent = TITLES[next][0];
-  $('#place').textContent = TITLES[next][1];
-  for (const btn of document.querySelectorAll('#tabs button')) {
+    for (const btn of document.querySelectorAll('#tabs button')) {
     if (btn.dataset.screen === next) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
   }
@@ -119,14 +110,14 @@ function openDetail(name, arg) {
   el.style.transform = '';
   el.classList.remove('hide', 'down');
   $('#detail-veil').classList.add('on');
+  // The nav compacts while a sheet is up; see .tabs in layout.css.
+  document.body.classList.add('sheet-up');
   if (!wasOpen) {
     el.classList.add('set-up');
     void el.offsetWidth;          // commit the off-screen position before transitioning
     el.classList.remove('set-up');
   }
-  $('#wordmark').textContent = DETAIL_TITLES[name][0];
-  $('#place').textContent = DETAIL_TITLES[name][1];
-
+  
   try {
     DETAILS[name].mount(body, arg);
     if (DETAILS[name].onShown !== undefined) DETAILS[name].onShown();
@@ -148,11 +139,10 @@ function closeDetail() {
   el.style.transform = '';
   // Restore the tab's own title: the detail layer borrowed the topbar, it does not own it.
   if (current !== null) {
-    $('#wordmark').textContent = TITLES[current][0];
-    $('#place').textContent = TITLES[current][1];
-  }
+      }
   el.classList.add('down');
   $('#detail-veil').classList.remove('on');
+  document.body.classList.remove('sheet-up');
   setTimeout(() => { if (detail === null) el.classList.add('hide'); }, 320);
 }
 
@@ -187,7 +177,7 @@ $('#cog').addEventListener('click', () => { location.hash = '#/settings'; });
 /* There is no Back button on a detail page: the gesture IS the affordance, which is why
  * the sheet stops short of the top edge and wears a grabber. Two rules make it not fight
  * the page underneath it:
- *   - a drag only starts at the grabber, or when the body is scrolled to the very top;
+ *   - a drag only starts at the grabber, or when the content is scrolled to the very top;
  *   - once a vertical drag is committed the page must not also scroll, so the move
  *     handler is non-passive and calls preventDefault.
  *
@@ -214,7 +204,6 @@ const VELOCITY_WINDOW_MS = 100;
 
 (() => {
   const el = $('#s-detail');
-  const body = $('#s-detail-body');
   let startY = 0;
   let startX = 0;
   let dragging = false;
@@ -236,15 +225,30 @@ const VELOCITY_WINDOW_MS = 100;
     el.style.transform = '';
   };
 
+  /* Is anything between the touch and the sheet actually scrolled down?
+   *
+   * The guard used to read `body.scrollTop`, but `#s-detail-body` IS NOT THE SCROLLER —
+   * `.pad` inside it is (`height:100%; overflow-y:auto`). So it was always 0, the guard
+   * never fired, and a downward drag halfway through a long page dismissed the sheet
+   * instead of scrolling it. Walking up from the touch target finds whichever element is
+   * actually scrolling, without this having to know the class name. */
+  const scrolledDown = (node) => {
+    for (let n = node; n !== null && n !== el.parentNode; n = n.parentElement) {
+      if (n.scrollTop > 0) return true;
+    }
+    return false;
+  };
+
   el.addEventListener('touchstart', (e) => {
     if (detail === null || e.touches.length !== 1) return;
-    /* A LEAFLET MAP OWNS ITS OWN DRAG. Without this, panning a mini-map inside a detail
-     * page drags the whole sheet down with it: the map pans, the sheet follows, and the
-     * page appears to scroll on its own. Anything that handles its own gestures has to
+    /* A LEAFLET MAP AND THE FILMSTRIP OWN THEIR OWN DRAG. Without this, panning a
+     * mini-map inside a detail page drags the whole sheet down with it — the map pans,
+     * the sheet follows, and the page appears to scroll on its own — and paging sideways
+     * through photos dismisses the sheet. Anything that handles its own gestures has to
      * be excluded here rather than fought afterwards. */
-    if (e.target.closest('.leaflet-container') !== null) return;
+    if (e.target.closest('.leaflet-container, .filmstrip') !== null) return;
     const fromGrab = e.target.closest('.grab') !== null;
-    if (!fromGrab && body.scrollTop > 0) return;
+    if (!fromGrab && scrolledDown(e.target)) return;
     startY = e.touches[0].clientY;
     startX = e.touches[0].clientX;
     dragging = true;

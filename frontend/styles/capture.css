@@ -195,12 +195,16 @@
   gap: 12px; margin-top: 10px;
 }
 
+/* Every photo card is a LITTLE PRINT: paper mount, a deep chin under the photo for the
+   caption, a hairline rather than a heavy keyline, and a hand-stuck tilt. The heavy
+   2.5px ink border they used to wear made them read as UI cards, and the dashed variant
+   read as "broken" rather than "not named yet". */
 .cat-card, .loose-card {
-  display: flex; flex-direction: column; gap: 4px;
-  background: var(--paper-hi); color: var(--ink); text-align: left;
-  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  padding: 6px;
-  box-shadow: var(--cut), var(--lift);
+  display: flex; flex-direction: column;
+  background: var(--paper-hi); color: var(--ink); text-align: center;
+  border: 1.5px solid var(--rule); border-radius: var(--r-cut);
+  padding: 5px 5px 0;
+  box-shadow: 2px 3px 0 rgba(46, 42, 36, .22);
   transition: transform var(--up), box-shadow var(--up);
 }
 /* Hand-stuck, not grid-aligned. nth-child rather than random so a re-render never
@@ -210,37 +214,60 @@
 .cat-card:nth-child(3n),   .loose-card:nth-child(3n)   { transform: rotate(-.5deg); }
 .cat-card:active, .loose-card:active {
   transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
-  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  box-shadow: 0 0 0 rgba(46, 42, 36, 0);
   transition: transform var(--down), box-shadow var(--down);
 }
 
 .cat-card img.cat-face, .loose-card img {
-  width: 100%; height: 88px; object-fit: cover; border-radius: var(--r-cut);
+  display: block; width: 100%; height: 88px; object-fit: cover;
+  /* A real print sits very slightly below its mount. */
+  box-shadow: inset 0 0 0 1px rgba(46, 42, 36, .22);
 }
-.cat-card img.cat-face { box-shadow: 0 0 0 3px var(--ring); }
-.cat-card .nm { font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700; }
+/* The cat's colour, on the print's edge rather than around the photo. */
+.cat-card { border-color: var(--ring, var(--rule)); border-width: 2px; }
+.cat-card .nm {
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
+  padding-top: 6px;
+}
 .cat-card .why, .loose-card .why {
   font-family: var(--font-hand); font-size: var(--t-xs); color: var(--ink-soft);
+  padding: 2px 2px 8px;
+  /* ONE LINE, ALWAYS. "seen 3 times · 3 months ago" wrapping to two lines made every
+     card in the row taller and the grid ragged; the middle dot is the part that can go. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* Unidentified sightings lie FLAT on the page until picked — the same physics the
-   chips use, so "selected" means one thing everywhere. */
-.loose-card {
-  position: relative;
-  border-style: dashed; border-color: var(--ink-faint);
-  box-shadow: none; transform: none !important;
+/* Pinned or taped to the page. Alternating so a grid does not look stamped out, and
+   pointer-events:none so neither ever eats the tap that opens the cat. */
+.cat-card::before, .loose-card::before {
+  content: ''; position: absolute; pointer-events: none; z-index: 2;
 }
-.loose-card.picked {
-  border-style: solid; border-color: var(--ink);
-  box-shadow: var(--cut), var(--lift);
+.cat-card, .loose-card { position: relative; }
+/* A push pin: a shaded dome with a specular highlight. */
+.cat-card:nth-child(2n)::before, .loose-card:nth-child(2n)::before {
+  left: 50%; top: -7px; margin-left: -6px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, .95) 0 18%, transparent 19%),
+    var(--coral);
+  border: 1.5px solid var(--ink);
+  box-shadow: 0 1px 2px rgba(46, 42, 36, .45);
 }
-.loose-card.picked::after {
-  content: '\2713';
-  position: absolute; top: -9px; right: -9px;
-  width: 22px; height: 22px; line-height: 21px;
-  text-align: center; font-weight: 700;
-  background: var(--jade); color: var(--ink);
-  border: 2px solid var(--ink); border-radius: 50%;
+/* A strip of tape across the corner. */
+.cat-card:nth-child(2n+1)::before, .loose-card:nth-child(2n+1)::before {
+  left: -9px; top: 8px;
+  width: 34px; height: 13px;
+  background: var(--tape);
+  border-left: 1px solid rgba(46, 42, 36, .14);
+  border-right: 1px solid rgba(46, 42, 36, .14);
+  transform: rotate(-38deg);
+}
+
+/* Not named yet is a permanent, first-class state: the print is simply unlabelled. It is
+   NOT dashed and NOT greyed — both read as broken rather than as ordinary. */
+.loose-card { border-style: solid; }
+.loose-card .btn-ghost.sm {
+  width: 100%; margin: 0 0 6px; font-size: var(--t-xs); padding: 4px 6px;
 }
 
 /* ── the two action bars ───────────────────────────────────────────────── */
@@ -339,7 +366,6 @@
   display: block; width: 100%; padding: 0; background: none; border: 0;
 }
 .loose-card .face img { width: 100%; height: 88px; object-fit: cover; border-radius: var(--r-cut); }
-.loose-card .btn-ghost.sm { width: 100%; margin-top: 4px; font-size: var(--t-xs); padding: 4px 6px; }
 
 #cat-err:empty { display: none; }
 
@@ -367,15 +393,19 @@
    ::after, so an eared input is not something CSS can do to one element. */
 .tag { position: relative; display: inline-block; max-width: 100%; }
 .tag::before, .tag::after {
-  content: ''; position: absolute; top: -7px;
-  width: 15px; height: 15px;
+  content: ''; position: absolute; top: -8px;
+  width: 17px; height: 17px;
   background: var(--ring, var(--marigold));
   border: 2.5px solid var(--ink);
   border-radius: var(--r-cut) 0 0 0;
+  /* The inner ear. An inset shadow from one corner of a 45deg-rotated square lands as a
+     smaller triangle inside the ear, which is the whole trick — no extra element, and an
+     input has no pseudo-elements to spare anyway. */
+  box-shadow: inset -4px -4px 0 0 var(--blossom);
   transform: rotate(45deg);
 }
-.tag::before { left: 16px; }
-.tag::after { right: 16px; }
+.tag::before { left: 15px; }
+.tag::after { right: 15px; }
 
 .nameplate, .plate {
   position: relative;      /* paints over the ears' lower halves */
@@ -391,7 +421,9 @@
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
   /* Die-cut margin + hard offset shadow + hand-stuck tilt: a sticker, by the same three
      rules as every other one. */
-  box-shadow: var(--cut), var(--lift);
+  /* Die-cut margin, hard offset shadow, and a stitched inner line — the tag is sewn, the
+     way a collar tag is. */
+  box-shadow: var(--cut), var(--lift), inset 0 0 0 1.5px rgba(244, 240, 230, .55);
   transform: rotate(-1.6deg);
   transition: transform var(--up), box-shadow var(--up), background var(--up);
 }
@@ -403,7 +435,8 @@
 .plate { display: inline-block; }
 .plate:active {
   transform: translate(var(--lift-x), var(--lift-y));
-  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0),
+              inset 0 0 0 1.5px rgba(244, 240, 230, .55);
   transition: transform var(--down), box-shadow var(--down);
 }
 /* Unnamed lies FLAT on the page, exactly as an unselected chip does: no fill, no shadow.

@@ -144,7 +144,7 @@ function draftView() {
 function suggestionView(candidates, cats) {
   if (candidates.length === 0) {
     return `<div class="pad">
-      <p class="saved-note hand">Saved! It is on the map.</p>
+      <p class="saved-note hand">Saved! They&rsquo;re on the map.</p>
       <button type="button" class="btn-stick" id="again">Another cat</button>
     </div>`;
   }
@@ -415,7 +415,7 @@ async function save() {
    * might have missed. */
   if (saved.catId !== null) {
     root.innerHTML = `<div class="pad">
-      <p class="saved-note hand">Saved! It is on the map.</p>
+      <p class="saved-note hand">Saved! They&rsquo;re on the map.</p>
       <button type="button" class="btn-stick" id="again">Another cat</button>
     </div>`;
     $('#again', root).addEventListener('click', showIdle);

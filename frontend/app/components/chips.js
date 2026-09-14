@@ -13,7 +13,7 @@ import { esc } from '../dom.js';
  * keeps them reading as stickers rather than as badges.
  */
 
-const PETTED_LABEL = { yes: 'petted it', no: 'did not pet it' };
+const PETTED_LABEL = { yes: 'petted them', no: 'did not pet them' };
 const FILLS = ['var(--marigold)', 'var(--coral)', 'var(--jade)', 'var(--peri)'];
 const ON_DARK = new Set(['var(--coral)', 'var(--peri)']);
 
@@ -70,4 +70,23 @@ export function wireChips(root, draft, onChange) {
       onChange();
     });
   }
+}
+
+/**
+ * The same tags, as STATIC stickers rather than controls.
+ *
+ * For the places that only report what a cat is — the map sheet and the cat page before
+ * you tap Edit. Rendering the interactive row there would give tappable-looking chips
+ * that do nothing, which is worse than plain text.
+ */
+export function staticChips(tagged) {
+  const coat = Array.isArray(tagged.coat) ? tagged.coat : [];
+  const all = tagged.size === null || tagged.size === undefined ? coat : [...coat, tagged.size];
+  if (all.length === 0) return '';
+  return `<div class="chiprow">${all.map((label, i) => {
+    const fill = FILLS[i % FILLS.length];
+    const dark = ON_DARK.has(fill) ? ' on-dark' : '';
+    const tilt = i % 2 === 0 ? '-2deg' : '1.5deg';
+    return `<span class="chip${dark}" aria-pressed="true" style="--fill:${fill};--tilt:${tilt}">${esc(label)}</span>`;
+  }).join('')}</div>`;
 }

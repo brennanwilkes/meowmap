@@ -105,7 +105,10 @@ header states the two rules that erode silently. In short:
   replaced element with no text, so its flex baseline is its bottom margin edge and
   baseline-aligning hangs it below the wordmark. The topbar padding is symmetric so that
   centring lands level with it.
-- **The wordmark is "MeowMap"**, capital M twice, everywhere user-visible.
+- **The wordmark is "MeowMap"**, capital M twice, and CONSTANT. It used to change per page
+  with a faint subtitle beside it ("a cat", "one sighting"); the tab bar and the content
+  already say where you are, so the header was restating it — and a wordmark that changes
+  is not a wordmark. Set once in `index.html` and never touched by the router.
 - **iPhone only means no haptics exist** — the entire tactile impression is motion, which
   makes the timing tokens load-bearing rather than cosmetic.
 - Bottom nav is still unresolved; four forms tried. A continuous full-width bar reads as
@@ -125,6 +128,11 @@ header states the two rules that erode silently. In short:
   MeowMap is ever made public, the credits go back.
 - **No recentre button.** The blue "you are here" dot stays and is dropped once on mount
   without moving the view; `locateMe()` takes no argument and has one caller.
+- **Switching the tile provider fires `TILE_CHANGED` on `window`.** The map tab stays
+  mounted underneath the Settings sheet — deliberately, so closing a detail never re-runs
+  a map build — so it never re-read the preference and the switcher appeared to do nothing
+  until a full reload. An event, not an import: pages here do not import each other.
+  Verified 2026-09-14 that all three providers serve real, distinct tiles for Victoria.
 - **Tile providers betray you silently.** CARTO's free basemaps now stamp "API KEY REQUIRED"
   onto the imagery while still returning HTTP 200 with distinct per-tile bytes, so a status
   check does not catch it. Hence `TILE_SOURCES` (several keyless providers) plus a switcher
@@ -330,6 +338,39 @@ reach a cat through `cat_id`. Linking row-to-new-row in plain SQL needs a marker
 the real files, seeded with the real data shape). That is what caught the orphan case.
 And take a `npm run backup` before applying.
 
+## The filmstrip
+
+**A cat's photos page sideways, on the map sheet and the cat page.** Pins bunch up: several
+sightings of one cat collapse into a single pin, and even when they do not, two prints a
+few metres apart cannot be hit individually on a phone.
+
+- **It shows EVERY photo of the cat**, not the co-located cluster. "Show me the others" is
+  the question being asked, and the others are usually somewhere else. `map_page` therefore
+  passes a cat WITH its sightings (`catsWithSightings`), not `catById`.
+- **Only the photo area moves.** The name tag, petted sticker and date ride inside each
+  frame and repeat — the first two are the cat's and identical on every frame; the date is
+  the photo's own and is the thing that actually changes. Everything below stays put.
+- **Native scroll-snap, never a JS carousel**: momentum, rubber-banding and VoiceOver come
+  free, and there is no gesture of ours to fight the sheet's drag-to-dismiss.
+- **The next print PEEKS** (frames are 86% wide) and dots sit underneath. Full-width frames
+  give no hint anything is beside them. `scroll-snap-stop: always` so one swipe moves one
+  photo however hard it is flicked.
+- **The index comes from `frame.offsetLeft`, never `scrollLeft / clientWidth`** — frames are
+  narrower than the track and there is a gap, so that arithmetic drifts further out with
+  every slide. The Edit button follows the swipe and opens the photo on screen.
+- **`.filmstrip` is excluded from both sheets' dismiss gestures**, like `.leaflet-container`:
+  it is its own scroller, and paging sideways with any downward drift dismissed the sheet.
+
+## The cat page opens as a glance
+
+**Tapping a cat lands read-only, with an Edit button** — the same shape as the map sheet.
+It used to open straight into a form, which made every visit look like a task when most
+are just "who is this again". Edit reveals the name tag input, the chip rows, the grouping
+question and the per-photo "different cat"; Done leaves the mode and FLUSHES the debounce
+rather than waiting out a timer she has walked away from. The mode button blurs first,
+because `render()` refuses to rebuild while a field has focus and would otherwise do
+nothing when tapped straight from the name box.
+
 ## Editing
 
 - **The sheet is a glance; `#/sighting/<id>` is the only editor.** Two editors that must
@@ -366,6 +407,33 @@ And take a `npm run backup` before applying.
   holding still still read as fast, so the sheet flew away after she had decided not to
   dismiss it — stopping must be a real cancel. The commit threshold is SUBTRACTED from the
   offset or the sheet jumps under the finger, and tracking is 1:1, as every iOS sheet is.
+- **The scroll guard must find the ACTUAL scroller.** It read `#s-detail-body.scrollTop`,
+  but that element does not scroll — `.pad` inside it does (`height:100%; overflow-y:auto`).
+  So it was always 0, the guard never fired, and a downward drag halfway through a long
+  page dismissed the sheet instead of scrolling it. Walk up from the touch target instead
+  of naming a class.
+- **The nav compacts while a sheet is up** (`body.sheet-up`): no tilts, no raised marker,
+  less height. Straightening matters as much as shrinking — three tilted markers under a
+  sheet read as clutter poking out from beneath it; squared off they read as an edge.
+- **Ruling on `.pad` uses `background-attachment: local`**, so it scrolls WITH the
+  content. That is the whole reason it is allowed to exist here: a FIXED ruling under
+  scrolling text is what made Settings unreadable, because the lines crossed every line of
+  type at a different offset each frame. Ruled paper that moves with the writing is paper.
+- **Photo cards are little prints**, not UI cards: hairline mount, deep chin for the
+  caption, hand-stuck tilt, and a push pin or a strip of tape (alternating by `nth-child`,
+  `pointer-events: none` so neither eats the tap). The heavy ink keyline read as a card,
+  and the dashed "not named yet" variant read as broken rather than as ordinary — unnamed
+  is a first-class state, so the print is simply unlabelled.
+- **Card captions are one line** (`white-space: nowrap` + ellipsis). "seen 3 times · 3
+  months ago" wrapping made every card in the row taller and the grid ragged.
+- **The petted sticker lives on the PRINT, not the sheet.** It was `top: 150px`, a magic
+  number tied to the old fixed 190px photo height; once photos kept their own aspect ratio
+  that number pointed at nothing. It now sits in the print's top-right corner at a steeper
+  angle than anything else — the one thing stuck on afterwards rather than laid out.
+- **A cat is "them", never "it".** Only where it means the animal: a photo still has "no
+  location saved in it", and the app still "sorts itself out".
+- **`splitToNewCat` is shared** (`identity.js`) between the cat page and the sighting
+  editor, so the two can never disagree about what "a different cat" does.
 - **Do not judge a gesture's direction from the first touchmove.** The first millimetre
   is jitter, so comparing dx to dy across it is decided by noise: a genuine downward drag
   that starts 2px to the left reads as horizontal, gets handed to the page, and — because

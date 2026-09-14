@@ -9,7 +9,7 @@
  * frontend change or the shell cache never rotates.
  */
 
-const BUILD = '2026-09-14h';
+const BUILD = '2026-09-14k';
 
 const SHELL = `shell-${BUILD}`;
 const API = 'api-v1';
@@ -41,6 +41,7 @@ const FILES = [
   './app/catcolor.js',
   './app/cats_page.js',
   './app/components/chips.js',
+  './app/components/filmstrip.js',
   './app/decode.js',
   './app/device.js',
   './app/dom.js',
@@ -51,6 +52,7 @@ const FILES = [
   './app/idb.js',
   './app/main.js',
   './app/map_page.js',
+  './app/identity.js',
   './app/minimap.js',
   './app/nav.js',
   './app/outbox.js',

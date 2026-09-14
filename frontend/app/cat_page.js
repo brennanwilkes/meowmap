@@ -1,12 +1,14 @@
 import { DEFAULT_TILE_ID, LS, MAX_NAME_LEN, TILE_SOURCES } from '../config.js';
-import { createCat, deleteCat, patchCat, patchSighting, photoUrl } from './api.js';
+import { deleteCat, patchCat, patchSighting, photoUrl } from './api.js';
 import { catColour, displayName, inkFor } from './catcolor.js';
-import { chipRows, wireChips } from './components/chips.js';
+import { chipRows, staticChips, wireChips } from './components/chips.js';
+import { filmstrip, wireFilmstrip } from './components/filmstrip.js';
 import { getPref } from './device.js';
 import { $, distanceText, esc, whenText } from './dom.js';
 import { distanceM } from './suggest.js';
 import { navigate } from './nav.js';
 import { turfRing, shouldDrawTurf } from './turf.js';
+import { splitToNewCat } from './identity.js';
 import { keepSized } from './minimap.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
@@ -34,6 +36,11 @@ let catId = null;
 let unsubscribe = null;
 let miniMap = null;
 let unsize = null;
+let unstrip = null;
+/* A cat page opens as a GLANCE, like the map sheet does, and Edit turns it into a form.
+ * Landing straight in an editor made every visit look like a task; most of them are just
+ * "who is this again". */
+let editing = false;
 let saveTimer = null;
 /* The working copy of everything that describes the animal. Chips mutate it in place and
  * one debounced PATCH sends whatever actually differs. `pendingFor` is the cat that
@@ -41,7 +48,7 @@ let saveTimer = null;
 let edit = null;
 let pendingFor = null;
 
-function render(state) {
+function render(state = store.get()) {
   // The store fires on every refresh, including the one this page triggers after a
   // rename. Re-rendering mid-edit would steal focus and drop what she is typing, so
   // the only safe moment to rebuild is when the name field is not being used.
@@ -64,51 +71,58 @@ function render(state) {
 
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(colour.hex)};--ring-ink:${esc(inkFor(cat.id))}">
-      <div class="detail-head">
-        <h1 class="sec">Edit cat</h1>
-        <span class="swatch" aria-hidden="true"></span>
+      ${filmstrip(sightings, {
+        name: displayName(cat), petted: cat.petted,
+        src: (x) => photoUrl(x.photoFull),
+      })}
+
+      ${editing ? `
+        <div class="plate-wrap">
+          <span class="tag">
+            <input type="text" class="nameplate" id="f-name" maxlength="${MAX_NAME_LEN}"
+                   aria-label="This cat's name"
+                   placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">
+          </span>
+        </div>
+        <p class="hand" id="save-state">&nbsp;</p>
+
+        <hr class="rule">
+        ${chipRows(cat)}
+      ` : staticChips(cat)}
+
+      <div class="sheet-acts">
+        <button type="button" class="btn-stick" id="mode">${editing ? 'Done' : 'Edit'}</button>
       </div>
 
-      ${sightings.length === 0 ? '' : `
-      <figure class="print hero">
-        <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
-        <img src="${esc(photoUrl(sightings[0].photoFull))}" alt="" crossorigin="anonymous"
-             width="${esc(String(sightings[0].photoW))}" height="${esc(String(sightings[0].photoH))}">
-      </figure>`}
+      ${sightings.length < 2 ? '' : `
+        <hr class="rule">
+        <h2 class="sec">Seen ${sightings.length} times</h2>
+        <div class="mini-map" id="cat-map"></div>`}
 
-      <div class="plate-wrap">
-        <span class="tag">
-          <input type="text" class="nameplate" id="f-name" maxlength="${MAX_NAME_LEN}"
-                 aria-label="This cat's name"
-                 placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">
-        </span>
-      </div>
-      <p class="hand" id="save-state">&nbsp;</p>
+      ${!editing ? '' : `
+        <hr class="rule">
+        <button type="button" class="btn-stick wide" id="same-as">I&rsquo;ve seen this cat before</button>
+        <div id="merge-pick"></div>
 
-      <hr class="rule">
-      ${chipRows(cat)}
-
-      <hr class="rule">
-      <h2 class="sec">${sightings.length === 1 ? 'Seen once' : `Seen ${sightings.length} times`}</h2>
-      ${sightings.length < 2 ? '' : '<div class="mini-map" id="cat-map"></div>'}
-
-      <div class="loose-grid">
-        ${sightings.map((s) => `
-          <div class="loose-card">
-            <button type="button" class="face" data-sighting="${s.id}">
-              <img src="${esc(photoUrl(s.photoThumb))}" alt="" crossorigin="anonymous">
-            </button>
-            <span class="why">${esc(whenText(s.seenAt))}</span>
-            ${sightings.length < 2 ? '' : `
-              <button type="button" class="btn-ghost sm" data-split="${s.id}">different cat</button>`}
-          </div>`).join('')}
-      </div>
-
-      <hr class="rule">
-      <button type="button" class="btn-stick wide" id="same-as">I&rsquo;ve seen this cat before</button>
-      <div id="merge-pick"></div>
+        ${sightings.length < 2 ? '' : `
+          <hr class="rule">
+          <h2 class="sec">Not all the same cat?</h2>
+          <div class="loose-grid">
+            ${sightings.map((x) => `
+              <div class="loose-card">
+                <button type="button" class="face" data-sighting="${x.id}">
+                  <img src="${esc(photoUrl(x.photoThumb))}" alt="" crossorigin="anonymous">
+                </button>
+                <span class="why">${esc(whenText(x.seenAt))}</span>
+                <button type="button" class="btn-ghost sm" data-split="${x.id}">different cat</button>
+              </div>`).join('')}
+          </div>`}
+      `}
       <div class="map-note" id="cat-err" style="position:static"></div>
     </div>`;
+
+  if (unstrip !== null) { unstrip(); unstrip = null; }
+  unstrip = wireFilmstrip($('.filmstrip', root), 0, () => {});
 
   edit = { name: cat.name ?? null, coat: [...cat.coat], size: cat.size, petted: cat.petted };
   wire(cat);
@@ -116,6 +130,21 @@ function render(state) {
 }
 
 function wire(cat) {
+  $('#mode', root).addEventListener('click', () => {
+    /* Blur first: render() refuses to rebuild while a field has focus, and without this
+     * the button would silently do nothing when tapped straight from the name box. */
+    if (document.activeElement !== null && root.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    /* Leaving edit mode must not lose a debounced edit — saveEdits fires it immediately
+     * rather than waiting out the timer she has just walked away from. */
+    if (editing && saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; saveEdits(cat); }
+    editing = !editing;
+    render();
+  });
+
+  if (!editing) return;
+
   for (const btn of root.querySelectorAll('[data-sighting]')) {
     btn.addEventListener('click', () => navigate(`#/sighting/${btn.dataset.sighting}`));
   }
@@ -126,10 +155,9 @@ function wire(cat) {
     schedule(cat);
   });
 
-  /* Tags save on the same debounce as the name rather than behind a Save button. There
-   * is no button on this page and adding one for half the fields would be worse than
-   * either extreme — and the debounce already collapses a flurry of taps into ONE D1
-   * write, which is what the button existed to protect. */
+  /* Tags save on the same debounce as the name rather than behind a Save button. Done
+   * only leaves the mode; the debounce already collapses a flurry of taps into ONE D1
+   * write, which is what a Save button would have existed to protect. */
   wireChips(root, edit, () => schedule(cat));
 
   $('#same-as', root).addEventListener('click', () => showMergePicker(cat));
@@ -208,7 +236,7 @@ function showMergePicker(cat) {
   others.sort((a, b) => near(a) - near(b));
 
   slot.innerHTML = `
-    <p class="hand">which one is it?</p>
+    <p class="hand">which one are they?</p>
     <div class="suggest-row">
       ${others.map((o) => {
         const face = o.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
@@ -301,14 +329,7 @@ async function split(sightingId, cat) {
   if (btn !== null) { btn.disabled = true; btn.textContent = 'moving…'; }
   try {
     await turnstile.ensurePass();
-    /* The new cat inherits the description it is leaving. She grouped these in the first
-     * place because they looked alike, so an orange tabby splitting off is still an
-     * orange tabby — starting it blank would make her re-type what she already knows. */
-    const { cat: fresh } = await createCat({ coat: cat.coat, size: cat.size, petted: cat.petted });
-    await patchSighting(sightingId, { catId: fresh.id });
-    // The cat this left may now be empty; tidy it up rather than leaving a shell.
-    if (cat.sightings.length === 1) await deleteCat(cat.id);
-    await store.refresh();
+    const fresh = await splitToNewCat(sightingId, cat);
     navigate(`#/cat/${fresh.id}`);
   } catch (err) {
     if (btn !== null) { btn.disabled = false; btn.textContent = 'different cat'; }
@@ -356,6 +377,8 @@ export function mount(container, arg) {
 }
 
 export function unmount() {
+  editing = false;
+  if (unstrip !== null) { unstrip(); unstrip = null; }
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
   /* FLUSH, never drop. Swiping the sheet away within the debounce window used to bin the
    * edit silently — she taps "chonk", leaves, and it was never saved. The PATCH is fired

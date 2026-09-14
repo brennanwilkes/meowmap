@@ -4,9 +4,10 @@ import {
 import { deleteSighting, patchSighting, photoUrl } from './api.js';
 import { catColour, displayName, inkFor } from './catcolor.js';
 import { getPref } from './device.js';
-import { $, dateText, esc } from './dom.js';
+import { $, esc } from './dom.js';
 import { back, navigate } from './nav.js';
 import { LOCATION_SOURCE } from './pipeline.js';
+import { splitToNewCat } from './identity.js';
 import { keepSized } from './minimap.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
@@ -72,22 +73,22 @@ function render(state) {
   original = snapshot(s);
   draft = snapshot(s);
 
-  const cat = store.catById(s.catId, state);
+  /* WITH its sightings: the split needs to know whether this is the cat's only photo, and
+   * inherits the cat's description for the new one. */
+  const cat = store.catsWithSightings(state).find((c) => c.id === s.catId) ?? null;
   const colour = catColour(s.catId);
   const ring = colour === null ? 'var(--rule)' : colour.hex;
 
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(ring)};--ring-ink:${esc(inkFor(s.catId))}">
-      ${cat === null ? '' : `<div class="detail-head">
-        <span class="tag"><button type="button" class="plate" id="to-cat">${esc(displayName(cat))}</button></span>
-      </div>`}
-
-      <figure class="print">
+      <figure class="print hero">
         <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
         <img src="${esc(photoUrl(s.photoFull))}" alt="" crossorigin="anonymous"
              width="${esc(String(s.photoW))}" height="${esc(String(s.photoH))}">
       </figure>
-      <p class="hand">${esc(dateText(s.seenAt))}</p>
+      ${cat === null ? '' : `<div class="plate-wrap">
+        <span class="tag"><button type="button" class="plate" id="to-cat">${esc(displayName(cat))}</button></span>
+      </div>`}
 
       <hr class="rule">
       <label class="field">
@@ -108,6 +109,8 @@ function render(state) {
       <p class="hand">tap or drag to move the pin</p>
 
       <hr class="rule">
+      ${cat === null || cat.sightings.length < 2 ? '' : `
+        <button type="button" class="btn-ghost wide" id="split">This is a different cat</button>`}
       <button type="button" class="btn-ghost wide danger" id="del">Delete this photo</button>
       <div style="height:80px"></div>
     </div>
@@ -119,7 +122,7 @@ function render(state) {
       <button type="button" class="btn-stick" id="save">Save changes</button>
     </div>`;
 
-  wire(s);
+  wire(s, cat);
   drawPinMap(ring);
 }
 
@@ -148,9 +151,30 @@ function markDirty() {
   bar.classList.toggle('down', !dirty());
 }
 
-function wire(s) {
+function wire(s, cat) {
   const toCat = $('#to-cat', root);
   if (toCat !== null) toCat.addEventListener('click', () => navigate(`#/cat/${s.catId}`));
+
+  /* The same question as on the cat page, reachable from the map without going via the
+   * cat first — it is the photo she is looking at, so it is where she will ask. Offered
+   * only when the cat has another photo left; on a lone sighting it would delete the cat
+   * and immediately mint an identical one. */
+  const splitBtn = $('#split', root);
+  if (splitBtn !== null) {
+    splitBtn.addEventListener('click', async () => {
+      splitBtn.disabled = true;
+      splitBtn.textContent = 'moving…';
+      try {
+        await turnstile.ensurePass();
+        const fresh = await splitToNewCat(s.id, cat);
+        navigate(`#/cat/${fresh.id}`);
+      } catch (err) {
+        splitBtn.disabled = false;
+        splitBtn.textContent = 'This is a different cat';
+        console.error('[sighting] split failed:', err);
+      }
+    });
+  }
 
   $('#f-note', root).addEventListener('input', (e) => {
     draft.note = e.target.value.trim() === '' ? null : e.target.value.trim();

@@ -34,9 +34,8 @@
   transform: rotate(-6deg);
 }
 .cog:active { color: var(--ink); transform: rotate(18deg); }
+.topbar .cog { margin-left: auto; }
 .wordmark { font-family: var(--font-stick); font-size: var(--t-xl); font-weight: 800; letter-spacing: -.02em; }
-.topbar .place { font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft); margin-left: auto; }
-.topbar .place:empty { margin-left: auto; }
 
 .stage { flex: 1 1 auto; position: relative; overflow: hidden; }
 
@@ -107,6 +106,14 @@
 .pad {
   height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;
   padding: 15px max(17px, var(--safe-l)) 24px max(17px, var(--safe-r));
+  /* Faint ruling, so the ground reads as a page rather than as a panel.
+     `background-attachment: local` IS LOAD-BEARING: it makes the ruling scroll WITH the
+     content. A fixed ruling under scrolling text is what made Settings genuinely hard to
+     read — the lines crossed every line of type at a different offset each frame. Ruled
+     paper that moves with the writing on it is just paper. */
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0 27px, rgba(163, 152, 128, .16) 27px 28px);
+  background-attachment: local;
 }
 
 /* Not a bar. Three page markers stuck to the bottom edge with the ruled page showing
@@ -145,3 +152,29 @@
 .tabs .t1 { --accent: var(--coral); }
 .tabs .t2 { --accent: var(--marigold); }
 .tabs .t3 { --accent: var(--jade); }
+
+/* ── the nav, while a sheet is up ──────────────────────────────────────────
+   A detail sheet is the thing being read, and the nav underneath it is only there to
+   say where you would land on dismissing it. So it gets out of the way: no tilts, no
+   raised selected marker, less height — several lines of the sheet's content, back.
+
+   Straightening matters as much as shrinking. Three tilted markers at the foot of a
+   sheet read as clutter poking out from under it, where the same three squared off read
+   as an edge. */
+body.sheet-up .tabs {
+  padding-bottom: calc(6px + var(--safe-b));
+  gap: 8px;
+}
+body.sheet-up .tabs button {
+  transform: none;
+  padding: 5px 0 6px;
+  font-size: var(--t-sm);
+  box-shadow: none;
+}
+body.sheet-up .tabs button[aria-current="page"] {
+  padding: 5px 0 6px;
+  box-shadow: var(--cut);
+}
+body.sheet-up .tabs button:active {
+  transform: translate(var(--lift-x), var(--lift-y));
+}

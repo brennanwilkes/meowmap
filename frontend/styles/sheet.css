@@ -37,14 +37,20 @@
 .sheet .when { font-size: var(--t-sm); color: var(--ink-soft); margin-top: 4px; }
 .sheet .label { border-top: 2px solid var(--ink); padding-top: 9px; }
 
-/* Petted is a sticker you earned, with a peeled corner — legible at full opacity,
-   not a faded stamp. */
-.petted {
-  position: absolute; right: 19px; top: 150px; z-index: 9;
+/* Petted is a sticker you earned, with a peeled corner — legible at full opacity, not a
+   faded stamp. It is slapped on the TOP-RIGHT CORNER of the print, overhanging it, at a
+   steeper angle than anything else on the page: it is the one thing here that was stuck
+   on afterwards rather than laid out.
+
+   Positioned against the print, not the sheet. It used to be `top: 150px`, a magic number
+   tied to the old fixed 190px photo height — once photos kept their own aspect ratio that
+   number pointed at nothing in particular. */
+.print .petted {
+  position: absolute; right: -10px; top: -12px; z-index: 9;
   font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
   background: var(--jade); color: var(--ink);
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  padding: 6px 14px; transform: rotate(-4deg);
+  padding: 6px 14px; transform: rotate(9deg);
   box-shadow: var(--cut), var(--lift-lg);
 }
 .petted[data-state="no"]   { background: var(--paper-hi); }

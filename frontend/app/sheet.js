@@ -1,7 +1,9 @@
-import { $, dateText, esc, whenText } from './dom.js';
+import { $, esc } from './dom.js';
 import { photoUrl } from './api.js';
-import { displayName, ringFor } from './catcolor.js';
+import { displayName, inkFor, ringFor } from './catcolor.js';
 import { navigate } from './nav.js';
+import { filmstrip, wireFilmstrip } from './components/filmstrip.js';
+import { staticChips } from './components/chips.js';
 
 /* The detail sheet. A sibling of the map div, not an L.popup — there is no L.popup or
  * L.tooltip anywhere in this codebase.
@@ -11,10 +13,10 @@ import { navigate } from './nav.js';
  * than as tappable-but-dead controls. "Open" goes to `#/sighting/<id>`, which is the
  * one place editing happens — one editor, not two that must agree. */
 
-const FILLS = ['var(--marigold)', 'var(--coral)', 'var(--jade)', 'var(--peri)'];
-const ON_DARK = new Set(['var(--coral)', 'var(--peri)']);
-
 let objectUrls = new Set();
+/** The frame currently on screen, so Edit opens what she is looking at. */
+let showing = null;
+let unstrip = null;
 
 function releaseUrls() {
   for (const u of objectUrls) URL.revokeObjectURL(u);
@@ -30,21 +32,7 @@ function photoFor(s) {
   return photoUrl(s.photoFull);
 }
 
-function tagSticker(label, i) {
-  const fill = FILLS[i % FILLS.length];
-  const dark = ON_DARK.has(fill) ? ' on-dark' : '';
-  const tilt = i % 2 === 0 ? '-2deg' : '1.5deg';
-  return `<span class="chip${dark}" aria-pressed="true" style="--fill:${fill};--tilt:${tilt}">${esc(label)}</span>`;
-}
-
-function pettedSticker(petted) {
-  if (petted === null || petted === undefined) return '';
-  if (petted !== 'yes' && petted !== 'no') throw new Error(`unknown petted value: ${petted}`);
-  const text = petted === 'yes' ? 'petted' : 'not petted';
-  return `<div class="petted" data-state="${esc(petted)}">${esc(text)}</div>`;
-}
-
-export function openSightingSheet(sighting, cat, members = null) {
+export function openSightingSheet(sighting, cat) {
   const sheet = $('#sheet');
   const veil = $('#veil');
   releaseUrls();
@@ -55,8 +43,6 @@ export function openSightingSheet(sighting, cat, members = null) {
    * still queued for upload has no cat yet — the Worker mints one when it lands — so
    * until then it carries the tags she typed on the capture form. */
   const tagged = cat === null || cat === undefined ? sighting : cat;
-  const tags = Array.isArray(tagged.coat) ? tagged.coat : [];
-  const others = members === null ? [] : members.slice(1);
 
   const pendingNote = sighting.pending === true
     ? `<div class="map-note" style="position:static;margin-bottom:12px">
@@ -64,33 +50,22 @@ export function openSightingSheet(sighting, cat, members = null) {
        </div>`
     : '';
 
+  /* EVERY photo of this cat, newest first, opened at the one she tapped. Not just the
+   * co-located cluster: pins bunch up, and "the other photos of this cat" is the question
+   * being asked when she taps a pile of them. A pending row has no cat yet, so it is its
+   * own single frame. */
+  const shots = cat === null || cat === undefined
+    ? [sighting]
+    : [...cat.sightings].sort((a, b) => b.seenAt - a.seenAt);
+  const startIndex = Math.max(0, shots.findIndex((x) => x.clientId === sighting.clientId));
+  showing = shots[startIndex] ?? sighting;
+
   sheet.innerHTML = `
     <div class="grabber"></div>
     ${pendingNote}
-    ${pettedSticker(tagged.petted)}
-    <figure class="print">
-      <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
-      <img src="${esc(photoFor(sighting))}" alt="${esc(name)}" crossorigin="anonymous"
-           width="${esc(String(sighting.photoW ?? ''))}" height="${esc(String(sighting.photoH ?? ''))}">
-      ${sighting.note === null || sighting.note === undefined || sighting.note === ''
-        ? '' : `<figcaption>${esc(sighting.note)}</figcaption>`}
-    </figure>
+    ${filmstrip(shots, { name, petted: tagged.petted, src: photoFor })}
     <div class="label">
-      <h2>${esc(name)}</h2>
-      <div class="when">${esc(dateText(sighting.seenAt))}</div>
-      ${tags.length === 0 && (tagged.size === null || tagged.size === undefined) ? '' : `
-        <hr class="rule">
-        <div class="chiprow">
-          ${tags.map(tagSticker).join('')}
-          ${tagged.size === null || tagged.size === undefined
-            ? '' : tagSticker(tagged.size, tags.length)}
-        </div>`}
-      ${others.length === 0 ? '' : `
-        <hr class="rule">
-        <div class="sub">Seen here ${others.length + 1} times</div>
-        <div class="chiprow">
-          ${others.map((o) => `<span class="chip" aria-pressed="false">${esc(whenText(o.seenAt))}</span>`).join('')}
-        </div>`}
+      ${staticChips(tagged)}
       ${sighting.pending === true ? '' : `
         <div class="sheet-acts">
           <button type="button" class="btn-stick" id="sheet-open">Edit</button>
@@ -98,21 +73,28 @@ export function openSightingSheet(sighting, cat, members = null) {
     </div>
     <div style="height:14px"></div>`;
 
+  if (unstrip !== null) { unstrip(); unstrip = null; }
+  // The Edit button follows the swipe: it must open the photo actually on screen.
+  unstrip = wireFilmstrip($('.filmstrip', sheet), startIndex, (i) => { showing = shots[i]; });
+
   // A queued sighting has no server id yet, so there is nothing to open.
   if (sighting.pending !== true) {
     $('#sheet-open').addEventListener('click', () => {
       closeSheet();
-      navigate(`#/sighting/${sighting.id}`);
+      navigate(`#/sighting/${showing.id}`);
     });
   }
 
   // --ring is read by the sheet's own sticker styling.
   sheet.style.setProperty('--ring', ring);
+  // The name tag fills with --ring, so its text colour has to travel with it.
+  sheet.style.setProperty('--ring-ink', inkFor(sighting.catId));
   veil.classList.add('open');
   sheet.classList.add('open');
 }
 
 export function closeSheet() {
+  if (unstrip !== null) { unstrip(); unstrip = null; }
   $('#veil').classList.remove('open');
   $('#sheet').classList.remove('open');
   releaseUrls();
@@ -138,15 +120,20 @@ const SHEET_DISMISS_PX = 70;
 (() => {
   const sheet = document.getElementById('sheet');
   let startY = 0;
+  let startX = 0;
   let dragging = false;
   let decided = false;
   let dy = 0;
 
   sheet.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
+    /* The filmstrip is its own scroller and owns sideways movement. Without this, paging
+     * to the next photo with any downward drift dismisses the sheet instead. */
+    if (e.target.closest('.filmstrip') !== null) return;
     const onGrabber = e.target.closest('.grabber') !== null;
     if (!onGrabber && sheet.scrollTop > 0) return;
     startY = e.touches[0].clientY;
+    startX = e.touches[0].clientX;
     dragging = true;
     decided = false;
     dy = 0;
@@ -156,9 +143,13 @@ const SHEET_DISMISS_PX = 70;
   sheet.addEventListener('touchmove', (e) => {
     if (!dragging) return;
     dy = e.touches[0].clientY - startY;
+    const dx = e.touches[0].clientX - startX;
     if (!decided) {
-      if (dy < 0) { dragging = false; sheet.style.transition = ''; return; }
-      if (dy < 8) return;
+      /* Wait for real movement before judging direction — the first millimetre is noise,
+       * and deciding from it abandons a genuine drag that started with a little wobble.
+       * Same rule as the detail layer in main.js. */
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dx) > Math.abs(dy) || dy < 0) { dragging = false; sheet.style.transition = ''; return; }
       decided = true;
     }
     e.preventDefault();

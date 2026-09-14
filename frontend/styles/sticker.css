@@ -123,3 +123,42 @@
   .btn-stick, .btn-ghost { min-height: 46px; }
   .chip { padding: 7px 13px; }
 }
+
+/* ── the filmstrip ─────────────────────────────────────────────────────────
+   A cat's photos, paged sideways. Native scroll-snap, not a JS carousel: momentum,
+   rubber-banding at the ends and VoiceOver all come free, and there is no gesture of
+   ours to fight the sheet's own drag-to-dismiss.
+
+   THE NEXT PRINT PEEKS, deliberately. Full-width frames give no hint that anything is
+   beside them; an edge of the next one showing is the affordance, and it reads as a
+   stack of prints rather than as a widget. Dots underneath say how many. */
+.filmstrip {
+  display: flex; gap: 12px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  /* Room for the die-cut margin and the tilt, which stick out past the layout box. */
+  padding: 2px 0 4px;
+}
+.filmstrip::-webkit-scrollbar { display: none; }
+.filmstrip .frame {
+  flex: 0 0 86%;
+  scroll-snap-align: start;
+  /* One swipe moves ONE photo, however hard it is flicked. Landing three along is
+     disorienting when each frame is a different cat photo that looks much like the last. */
+  scroll-snap-stop: always;
+  min-width: 0;
+}
+/* Nothing to page through: no peek, no wasted width. */
+.filmstrip.solo .frame { flex: 0 0 100%; }
+
+.strip-dots {
+  display: flex; justify-content: center; gap: 6px;
+  margin: 2px 0 8px;
+}
+.strip-dots span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ink-faint); opacity: .45;
+  transition: opacity var(--up), background var(--up);
+}
+.strip-dots span.on { background: var(--ink); opacity: 1; }
