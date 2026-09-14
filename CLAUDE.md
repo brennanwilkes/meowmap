@@ -183,6 +183,26 @@ picker's Location toggle is sticky (it did not need touching here).
 declaration across a buildless ES module and a TS Worker. `tests/vocab.test.mjs` reads
 both files and asserts they agree, so drift is a red test rather than a 400 at save time.
 
+## Caching — the two layers that fought each other
+
+A freshly uploaded cat did not appear for up to five minutes, and photos only rendered
+after a hard reload. Two separate caches, same symptom:
+
+- **`BULK_CACHE_CONTROL` had `s-maxage=300`.** The Cloudflare edge served `/sightings`
+  from its own copy without invoking the Worker, so the ETag revalidation never ran.
+  Removed. A warm client's conditional GET costs ONE row read (`app_meta.data_version`),
+  so edge caching bought almost nothing for two users and cost the app looking broken.
+  It also means an admin script's writes show up immediately instead of 5 minutes later.
+- **The service worker did stale-while-revalidate on `/sightings`.** The store already
+  does conditional GETs, so SWR was a second, conflicting cache: the page rendered last
+  launch's rows, believed them current because they arrived as a 200, and the
+  revalidation landed after the render. Now network-first with a cache fallback for
+  offline only.
+
+**One cache per piece of data, and the store owns the sightings list.** Photos keep their
+immutable year-long cache — content-addressed, so they can never go stale, and that is
+where the actual saving is.
+
 ## Service worker
 
 - **Every precache path must be relative.** GitHub Pages serves at `/meowmap/`, so a
@@ -216,6 +236,14 @@ tab beneath *without* writing the hash, or it navigates away before the detail o
   fields that actually changed.
 - **Re-render is suppressed while an input has focus or an edit is unsaved** — the store
   fires on every refresh, including the one a save triggers.
+- **A cat with zero sightings is an artefact, never intentional**, and is filtered out
+  of the Cats list. Grouping creates the cat before attaching sightings, so a failure
+  part-way (or unlinking the last one) leaves a shell that rendered as a grey box
+  captioned "seen 0 times" and read as a broken photo.
+- **`openDetail` records that the layer is open BEFORE mounting, and guards the mount.**
+  It used to set `detail` afterwards, so a page that threw left the sheet visible with
+  `detail === null` — and `closeDetail` returned early, leaving a blank panel that
+  nothing could dismiss until a reload. `closeDetail` now hides unconditionally.
 - **Detail views and the bottom sheet have NO back button — you swipe them down.** Both
   stop short of the top edge so the page behind shows, both wear a grabber, and in both
   a drag only starts on the grabber or at scrollTop 0 (otherwise a downward flick
@@ -255,7 +283,7 @@ All under `worker/scripts`, all remote, all dry-run by default where they destro
 
 | | |
 |---|---|
-| `npm run photos` | **Interactive.** Page one sighting at a time — cat, date, device, coordinates, tags — with `o` to open the image in a browser and `d` to delete it |
+| `npm run photos` | **Interactive full-screen browser.** j/k to move, space to mark, `d`/`D` to delete one or all marked, `o` to open in a browser, `-- --all` to include tombstones. Shows the photo inline on kitty/Ghostty/WezTerm/iTerm2, or via `chafa`/`viu` if installed |
 | `npm run backup` | Dump every table to `backups/meowmap-<ts>.json`. `--photos` also downloads the images, which is the only part R2 cannot give back |
 | `npm run restore <file>` | REPLACES the tables from a backup, preserving ids. `--check-photos` first says which images still exist |
 | `npm run purge -- …` | `--sighting`/`--cat`/`--before`/`--all`, `--apply` to commit |
@@ -263,7 +291,18 @@ All under `worker/scripts`, all remote, all dry-run by default where they destro
 | `npm run reconcile` / `gc` | Recompute R2 counters; `gc` also deletes unreferenced objects |
 | `scripts/db-sql 'SELECT …'` | Read-only escape hatch. Refuses to write |
 
-**Two traps these scripts exist to have already hit:**
+The TUI is hand-rolled in `tui.mjs` + `preview.mjs` — **no dependency, deliberately**.
+This repo has zero runtime deps in the Worker and zero in the frontend; pulling in ink
+(and React, and a build step) to draw three boxes would be the largest dependency in the
+project. Image preview hands the terminal the raw JPEG and lets it decode, so there is no
+image library either. `tui.test.ts` covers the part that actually breaks: visible width
+must ignore ANSI escapes, or every box drawn around coloured text comes out ragged.
+
+**Three traps these scripts exist to have already hit:**
+
+- **The command is `wrangler r2 object delete <bucket>/<key>`**, NOT
+  `wrangler r2 bucket object delete`. The wrong form is a plausible guess, and wrangler
+  answers it with a bucket help dump that never mentions the real command.
 
 - **`database_id` in `wrangler.toml` is the literal `__D1_ID__`.** CI patches it at deploy;
   nobody patches it locally. Passing the *name* does not help — wrangler resolves the name
@@ -277,6 +316,12 @@ All under `worker/scripts`, all remote, all dry-run by default where they destro
 
 **Deleting photos is always reachability-based**, never "delete the hashes of the row I
 just removed": keys are content-addressed, so two sightings can share one object.
+
+**Row first, object second, and a failed object delete is reported, never thrown.** The
+reverse order leaves a row pointing at a photo that does not exist, which is worse than
+an orphaned object. This order can strand an object, which `npm run gc` sweeps — and a
+throw mid-loop strands it with nothing left in D1 naming it, which is how the first real
+run lost track of two objects.
 
 `purge.mjs` HARD-deletes while the app soft-deletes. The app tombstones because recycled
 rowids would re-point an offline client's cache; that is about live data. Test data you

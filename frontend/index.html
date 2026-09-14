@@ -37,7 +37,7 @@
   <header class="topbar">
     <span class="wordmark" id="wordmark">Meowmap</span>
     <span class="place" id="place"></span>
-    <button class="cog stick" id="cog" type="button" aria-label="Settings">&#9881;</button>
+    <button class="cog" id="cog" type="button" aria-label="Settings">&#9881;</button>
   </header>
 
   <main class="stage" id="stage">
@@ -49,9 +49,12 @@
          slides UP over whichever tab is showing, so hierarchy never looks like lateral
          movement. It stops short of the top edge on purpose — the strip of the page
          behind it is what tells you it is a sheet you can push back down. -->
+    <!-- The exposed strip above the sheet. Dismisses on tap, like a backdrop. -->
+    <div class="detail-veil" id="detail-veil"></div>
+
     <section class="screen detail hide" id="s-detail" role="region">
       <div class="grab" id="detailGrab"><i></i></div>
-      <div class="detail-body ruled" id="s-detail-body"></div>
+      <div class="detail-body" id="s-detail-body"></div>
     </section>
   </main>
 

@@ -74,8 +74,11 @@ export async function r2List() {
   }
 }
 
+/* `wrangler r2 object delete`, NOT `r2 bucket object delete` — the latter is a plausible
+ * guess that does not exist, and wrangler's error for it is a bucket help dump that says
+ * nothing about the real command. */
 export function r2Delete(key) {
-  wrangler(['r2', 'bucket', 'object', 'delete', `${BUCKET}/${key}`, '--remote']);
+  wrangler(['r2', 'object', 'delete', `${BUCKET}/${key}`, '--remote']);
 }
 
 /* Device ids are opaque UUIDs minted in localStorage. Naming the ones we recognise is

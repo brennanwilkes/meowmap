@@ -148,10 +148,22 @@ function main() {
 
   console.log(`\n${candidates.size} photo object(s) no longer referenced.`);
   let freed = 0;
+  const stranded = [];
   for (const hash of candidates) {
-    r2Delete(`${PREFIX}${hash}`);
-    freed++;
-    console.log(`  deleted ${PREFIX}${hash}`);
+    // The rows are already gone, so a throw here would strand objects with nothing left
+    // in D1 naming them. Report and continue; `npm run gc` is the sweeper.
+    try {
+      r2Delete(`${PREFIX}${hash}`);
+      freed++;
+      console.log(`  deleted ${PREFIX}${hash}`);
+    } catch (err) {
+      stranded.push(hash);
+      console.error(`  STRANDED ${PREFIX}${hash}: ${err.message}`);
+    }
+  }
+  if (stranded.length > 0) {
+    console.error(`\n${stranded.length} object(s) stranded. Run \`npm run gc\` to sweep them.`);
+    process.exitCode = 1;
   }
 
   if (freed > 0) {

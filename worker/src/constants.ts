@@ -55,7 +55,19 @@ export const TURNSTILE_HOSTNAMES = [
  *  change, so `immutable` is not a lie. This is also the single biggest cost saving —
  *  a returning phone re-renders the whole map with zero photo requests. */
 export const PHOTO_CACHE_CONTROL = 'public, max-age=31536000, immutable';
-export const BULK_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, must-revalidate';
+/* NO s-maxage. It was 300, and that is why a freshly uploaded cat did not appear on the
+ * map for up to five minutes: the edge served its cached copy without ever asking the
+ * Worker, so the ETag revalidation that makes this endpoint cheap never ran.
+ *
+ * Losing the edge cache costs almost nothing here. A warm client sends If-None-Match and
+ * the Worker answers 304 after reading ONE row (app_meta.data_version), so even several
+ * hundred app opens a day is a rounding error against the 5M/day read limit. Edge
+ * caching only starts to matter with a wide, globally distributed audience — and if that
+ * ever happens, the fix is the R2 snapshot in the plan, not a staleness window that
+ * makes the app look broken for the two people who actually use it.
+ *
+ * The photos keep their immutable year-long cache, which is where the real saving is. */
+export const BULK_CACHE_CONTROL = 'public, max-age=0, must-revalidate';
 export const CONFIG_CACHE_CONTROL = 'public, max-age=300, s-maxage=86400';
 export const NO_STORE = 'no-store';
 

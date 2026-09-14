@@ -178,7 +178,11 @@ function drawPins(state) {
     const key = `${g.key}@${g.lat.toFixed(5)},${g.lon.toFixed(5)}`;
     seen.add(key);
 
-    const ring = head.pending === true ? 'var(--marigold)' : ringFor(head.catId);
+    // A queued upload keeps the amber treatment; everything else gets its cat's colour,
+    // or its own id's colour while it is still unidentified.
+    const ring = head.pending === true
+      ? 'var(--marigold)'
+      : ringFor(head.catId, head.id ?? null);
     const icon = pinIcon(head, ring, g.members.length);
 
     const existing = markers.get(key);

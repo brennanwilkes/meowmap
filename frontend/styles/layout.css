@@ -10,21 +10,21 @@
   display: flex; align-items: baseline; gap: 10px;
   z-index: 30;
 }
+/* A round ink stamp, not a sticker. A tilted square next to the wordmark read as a
+   stray UI chip; a true circle is the one radius besides 2px the design allows, and a
+   stamp is a thing that belongs on paper. No die-cut margin and no lift — a stamp is
+   printed INTO the page, so it has no shadow to collapse; the press darkens it instead. */
 .cog {
   margin-left: 8px; flex: 0 0 auto;
-  width: 34px; height: 34px; line-height: 1;
-  font-size: var(--t-lg); color: var(--ink);
-  background: var(--paper-hi);
-  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  box-shadow: var(--cut), var(--lift);
-  transform: rotate(-2deg);
-  transition: transform var(--up), box-shadow var(--up);
+  width: 32px; height: 32px; line-height: 1;
+  display: grid; place-items: center;
+  font-size: var(--t-md); color: var(--ink-soft);
+  background: none;
+  border: 2px solid var(--ink-faint); border-radius: 50%;
+  opacity: .85;
+  transition: color var(--up), border-color var(--up), opacity var(--up);
 }
-.cog:active {
-  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
-  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
-  transition: transform var(--down), box-shadow var(--down);
-}
+.cog:active { color: var(--ink); border-color: var(--ink); opacity: 1; }
 .wordmark { font-family: var(--font-stick); font-size: var(--t-xl); font-weight: 800; letter-spacing: -.02em; }
 .topbar .place { font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft); margin-left: auto; }
 .topbar .place:empty { margin-left: auto; }
@@ -63,7 +63,18 @@
 /* min-height: 0 is load-bearing. Without it this flex child refuses to shrink below its
    content and the inner .pad never scrolls — the same class of bug that collapsed the
    capture mini-map to zero height. */
-.detail-body { flex: 1 1 auto; min-height: 0; }
+/* NOT .ruled. The ruled paper is fixed to the screen while the content scrolls over it,
+   so the lines cut across every line of text at a different offset each frame and make
+   Settings genuinely hard to read. Ruling belongs on a page that does not scroll. */
+.detail-body { flex: 1 1 auto; min-height: 0; background: var(--paper); }
+
+/* Sits over the strip of page left showing above the sheet. Transparent — the point is
+   the page behind stays visible — but it swallows the tap. */
+.detail-veil {
+  position: absolute; left: 0; right: 0; top: 0; height: 54px;
+  z-index: 6; display: none;
+}
+.detail-veil.on { display: block; }
 
 .grab {
   flex: 0 0 auto;

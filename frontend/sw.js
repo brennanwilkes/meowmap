@@ -9,7 +9,7 @@
  * frontend change or the shell cache never rotates.
  */
 
-const BUILD = '2026-09-14b';
+const BUILD = '2026-09-14c';
 
 const SHELL = `shell-${BUILD}`;
 const API = 'api-v1';
@@ -148,18 +148,30 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // The bulk sightings fetch: stale-while-revalidate, so a cold launch paints
-  // immediately from cache and corrects itself a moment later.
+  /* The bulk sightings fetch: NETWORK FIRST, cache only as an offline fallback.
+   *
+   * This was stale-while-revalidate and it was wrong. The store already does its own
+   * conditional GET with an ETag, so SWR put a second, conflicting cache in front of it:
+   * the page got last launch's rows, believed them current because they arrived as a
+   * 200, and the revalidation landed after the render. The visible symptom was a map
+   * that did not show a cat you had just uploaded until a hard reload.
+   *
+   * One cache for this data, and the store owns it. A 304 is passed straight through —
+   * it has no body, and the store keeps what it has. */
   if (url.pathname === '/sightings') {
     e.respondWith((async () => {
       const cache = await caches.open(API);
-      const hit = await cache.match(req);
-      const update = fetch(req).then((res) => {
+      try {
+        const res = await fetch(req);
         if (res.status === 200) cache.put(req, res.clone());
         return res;
-      });
-      if (hit !== undefined) { update.catch(() => {}); return hit; }
-      return update;
+      } catch {
+        // Offline. A cached copy is much better than a blank map; if there is none,
+        // let the store surface the failure rather than inventing an empty result.
+        const hit = await cache.match(req);
+        if (hit !== undefined) return hit;
+        throw new Error('offline and nothing cached');
+      }
     })());
     return;
   }

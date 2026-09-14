@@ -104,26 +104,46 @@ function go(next, keepHash = false) {
 
 function openDetail(name, arg) {
   const el = $('#s-detail');
-  if (detail !== null) DETAILS[detail.name].unmount();
-  DETAILS[name].mount($('#s-detail-body'), arg);
-  el.style.transform = '';
+  const body = $('#s-detail-body');
+  const wasOpen = detail !== null;
+  if (wasOpen) DETAILS[detail.name].unmount();
 
+  /* `detail` is set BEFORE mount, and mount is guarded.
+   *
+   * It used to be set after. If a page's mount() threw, the sheet had already been made
+   * visible but `detail` was still null, so closeDetail() returned early and NOTHING
+   * could dismiss it — a blank panel stuck over the app until a reload. Recording that
+   * the layer is open is not the page's success story, it is the layer's own state. */
+  detail = { name, arg };
+
+  el.style.transform = '';
   el.classList.remove('hide', 'down');
-  if (detail === null) {
+  $('#detail-veil').classList.add('on');
+  if (!wasOpen) {
     el.classList.add('set-up');
     void el.offsetWidth;          // commit the off-screen position before transitioning
     el.classList.remove('set-up');
   }
-  detail = { name, arg };
   $('#wordmark').textContent = DETAIL_TITLES[name][0];
   $('#place').textContent = DETAIL_TITLES[name][1];
-  if (DETAILS[name].onShown !== undefined) DETAILS[name].onShown();
+
+  try {
+    DETAILS[name].mount(body, arg);
+    if (DETAILS[name].onShown !== undefined) DETAILS[name].onShown();
+  } catch (err) {
+    console.error(`[router] ${name} failed to mount:`, err);
+    body.innerHTML = `<div class="pad"><p class="empty">This page could not open.</p>
+      <p class="hand">swipe down to go back</p></div>`;
+  }
 }
 
 function closeDetail() {
-  if (detail === null) return;
   const el = $('#s-detail');
-  DETAILS[detail.name].unmount();
+  // Hide unconditionally, even if `detail` is somehow null: this is the only escape
+  // hatch, so it must not depend on the bookkeeping being right.
+  if (detail !== null) {
+    try { DETAILS[detail.name].unmount(); } catch (err) { console.error('[router] unmount:', err); }
+  }
   detail = null;
   el.style.transform = '';
   // Restore the tab's own title: the detail layer borrowed the topbar, it does not own it.
@@ -132,6 +152,7 @@ function closeDetail() {
     $('#place').textContent = TITLES[current][1];
   }
   el.classList.add('down');
+  $('#detail-veil').classList.remove('on');
   setTimeout(() => { if (detail === null) el.classList.add('hide'); }, 320);
 }
 
@@ -230,6 +251,10 @@ const DISMISS_VELOCITY = 0.5;   // px/ms — a quick flick counts even if it is 
   // The grabber is also a plain tap target: a gesture with no fallback strands anyone
   // who does not discover it, and it costs one listener.
   $('#detailGrab').addEventListener('click', () => { if (detail !== null) back(); });
+
+  // Tapping the strip of page left showing above the sheet dismisses it, the way a
+  // backdrop does. That strip exists precisely to say "there is something behind me".
+  $('#detail-veil').addEventListener('click', () => { if (detail !== null) back(); });
 })();
 
 // Cheap to call and a 304 costs the server one row read, so refresh on every return to

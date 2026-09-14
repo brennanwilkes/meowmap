@@ -28,18 +28,14 @@ function releaseUrls() {
 
 function catCard(cat) {
   const colour = catColour(cat.id);
-  const face = cat.sightings.length === 0
-    ? null
-    : cat.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
+  // Callers filter out empty cats, so there is always a face.
+  const face = cat.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
   const n = cat.sightings.length;
   return `
     <button type="button" class="cat-card" data-cat="${cat.id}" style="--ring:${esc(colour.hex)}">
-      ${face === null
-        ? '<span class="cat-face empty"></span>'
-        : `<img class="cat-face" src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">`}
+      <img class="cat-face" src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
       <span class="nm">${esc(displayName(cat))}</span>
-      <span class="why">${n === 1 ? 'seen once' : `seen ${n} times`}${
-        face === null ? '' : ` &middot; ${esc(whenText(face.seenAt))}`}</span>
+      <span class="why">${n === 1 ? 'seen once' : `seen ${n} times`} &middot; ${esc(whenText(face.seenAt))}</span>
     </button>`;
 }
 
@@ -66,7 +62,12 @@ function looseCard(s) {
 }
 
 function render(state) {
-  const cats = store.catsWithSightings(state);
+  /* A cat with no sightings is an ARTEFACT, never a thing she made on purpose. Grouping
+   * creates the cat first and then attaches sightings, so a part-way failure — or
+   * unlinking the last one — leaves an empty shell that rendered as a grey placeholder
+   * captioned "seen 0 times". It looks exactly like a broken photo. Hide them; the
+   * `db-orphans` script is where they get cleaned up. */
+  const cats = store.catsWithSightings(state).filter((c) => c.sightings.length > 0);
   const loose = store.looseSightings(state);
   // Drop selections whose sighting has gone (deleted elsewhere, or just grouped).
   releaseUrls();

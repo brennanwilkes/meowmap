@@ -41,11 +41,23 @@ export function catColour(id) {
   return CAT_PALETTE[(n * STRIDE) % CAT_PALETTE.length];
 }
 
-/** The ring/fill colour for a sighting: its cat's colour, or paper for an unidentified
- *  one. Unidentified pins are drawn dashed and desaturated by CSS, not by this. */
-export function ringFor(catId) {
+/**
+ * The ring colour for a pin.
+ *
+ * A cat's own colour when it has one. An unidentified sighting falls back to a colour
+ * derived from its OWN id, so a map of loose sightings is still readable as separate
+ * pins rather than a row of identical paper frames.
+ *
+ * The "not identified yet" meaning is carried by the DASHED frame, not by the absence of
+ * colour — which matters, because colour here must never be read as identity: two
+ * unlinked photos of the same cat will get different colours until they are linked. The
+ * dash is what says "this is not a claim about who this is".
+ */
+export function ringFor(catId, fallbackId = null) {
   const c = catColour(catId);
-  return c === null ? 'var(--paper-hi)' : c.hex;
+  if (c !== null) return c.hex;
+  const f = catColour(fallbackId);
+  return f === null ? 'var(--paper-hi)' : f.hex;
 }
 
 /** Text colour that stays legible on that fill. */
