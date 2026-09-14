@@ -108,6 +108,10 @@ header states the two rules that erode silently. In short:
   point count.
 - **No `L.popup` / `L.tooltip`** anywhere — a custom bottom sheet, sibling to the map div.
 - Tint `.leaflet-tile-pane`, never the marker pane.
+- **Attribution is behind an (i) button, not always-on.** Leaflet's own prefix is
+  optional and is gone. The OSM/Esri credit is a LICENCE CONDITION (ODbL), not a
+  courtesy — one tap away is the usual compromise, deleting it is not an option. If a
+  future basemap's terms require it always visible, it goes back.
 - **Tile providers betray you silently.** CARTO's free basemaps now stamp "API KEY REQUIRED"
   onto the imagery while still returning HTTP 200 with distinct per-tile bytes, so a status
   check does not catch it. Hence `TILE_SOURCES` (several keyless providers) plus a switcher
@@ -227,6 +231,30 @@ tab beneath *without* writing the hash, or it navigates away before the detail o
 
 `nav.js` holds `back()`/`navigate()` so pages do not import the router that imports them.
 
+## Cat identity — there is no wrong way to do it
+
+**Every sighting belongs to a cat from the moment it uploads.** The Worker mints an
+unnamed cat when the client sends no `catId`. The original model left `cat_id` NULL until
+she linked photos, and "not identified yet" was meant to be a comfortable resting state —
+on the phone it was not. A fresh upload had no colour, no territory and no page, and the
+only way to give it one was to open the Cats tab and declare a photo the same cat as
+itself. Cost: one extra row written per upload (4 → 5 against the 100k/day cap).
+
+Linking is therefore **merging two cats**, and it is phrased as a question in her words:
+
+- `I've seen this cat before` → faces of every other cat, nearest first → **one tap merges**.
+- `different cat` under a photo → that photo leaves and becomes its own cat.
+
+These are exact inverses, so every join is reversible by a single tap and nothing can be
+left half-done. **The older cat always survives a merge**, whichever way round she taps,
+so the one she met first keeps its name and colour.
+
+**NO SELECTION MODES ANYWHERE.** A multi-select merge was built and cut: one tap opened a
+cat and the next tap selected it, which is a mode you can be in without noticing. Design
+rule for this app — the user is not a power user and must never be able to mess it up:
+one tap, on a face, answering a question. No sequences, no confirmations for reversible
+things, no "right way".
+
 ## Editing
 
 - **The sheet is a glance; `#/sighting/<id>` is the only editor.** Two editors that must
@@ -249,6 +277,9 @@ tab beneath *without* writing the hash, or it navigates away before the detail o
   a drag only starts on the grabber or at scrollTop 0 (otherwise a downward flick
   mid-content dismisses instead of scrolling). The grabber is also a tap target: a
   gesture with no fallback strands anyone who does not discover it.
+- **Standalone action buttons are full width.** A lone button at its text width, inset
+  from the page edge, reads as floating debris — and a destructive one looked like it
+  belonged to whatever happened to sit above it.
 - **`.pad` sets `overflow-x: hidden`.** Every card carries a hand-stuck rotation, and a
   rotated box sticks out past its layout width, so a grid reaching the container edge
   produces a sideways scroll that looks like a bug and is the design working.
@@ -297,6 +328,32 @@ This repo has zero runtime deps in the Worker and zero in the frontend; pulling 
 project. Image preview hands the terminal the raw JPEG and lets it decode, so there is no
 image library either. `tui.test.ts` covers the part that actually breaks: visible width
 must ignore ANSI escapes, or every box drawn around coloured text comes out ragged.
+
+**The interactive browser is one key handler and one `mode` variable.** An earlier
+version awaited a nested key listener for the confirmation prompt; its teardown called
+`stdin.pause()` and `setRawMode(false)`, which are process-wide, so it took the main
+listener with it and the app stopped responding after the first confirmation. **A modal
+is a mode, not a second listener.**
+
+**Announce before you block.** Every wrangler call is synchronous and spawning `npx`
+costs seconds before it does any work, so the UI must paint its "working…" frame and
+yield to the event loop *first*. Use `d1Many` to put several statements in one
+invocation — a delete built from four separate calls spent most of its time starting
+processes, which is what made it feel hung.
+
+**`npm run migrate` applies migrations with your wrangler login, no token.** CI does the
+same through `ensure-bindings.mjs` against the same `schema_migrations` table, so they
+agree. It exists because an admin script that cannot run until you deploy is useless
+exactly when the thing you are fixing is the data — `npm run gc` failed with "no such
+table: r2_gc_queue" for precisely that reason. The scripts that need the journal apply
+pending migrations lazily rather than surfacing a raw SQLITE_ERROR.
+
+**Strip SQL comments BEFORE splitting on `;`.** 001's omission log contains "read with a
+bare SELECT; an index would be…", which split mid-sentence and sent `an index would be…`
+to D1 as a statement.
+
+**`package.json` documents every script** with a `//name` key above it — the scripts block
+has no comment syntax and this is the established idiom.
 
 **Three traps these scripts exist to have already hit:**
 

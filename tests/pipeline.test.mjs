@@ -10,7 +10,9 @@ import { fitLongEdge, halvingPlan } from '../frontend/app/resize.js';
 import {
   FRESH_PHOTO_WINDOW_MS, LOCATION_SOURCE, resolveLocation, resolveSeenAt,
 } from '../frontend/app/pipeline.js';
-import { FULL_LONG_EDGE, GEO_POOR_ACCURACY_M, THUMB_LONG_EDGE } from '../frontend/config.js';
+import {
+  FULL_EDGE_LADDER, FULL_LONG_EDGE, GEO_POOR_ACCURACY_M, THUMB_EDGE_LADDER, THUMB_LONG_EDGE,
+} from '../frontend/config.js';
 
 let pass = 0;
 const check = (name, fn) => {
@@ -77,6 +79,22 @@ check('halvingPlan never reduces by more than 2x in any single step', () => {
 
 check('halvingPlan is a single step when no halving is needed', () => {
   assert.deepStrictEqual(halvingPlan(600, 400, 480, 320), [{ w: 480, h: 320 }]);
+});
+
+check('the size ladders start at the nominal edge and only ever go DOWN', () => {
+  // The bug this guards: a normal iPhone photo came out at 645 KB at 2048/q0.55 and was
+  // REFUSED. Quality alone cannot always reach the budget, so the encoder steps the
+  // dimensions down instead. An ascending or equal step would loop without progress.
+  for (const [name, ladder, nominal] of [
+    ['full', FULL_EDGE_LADDER, FULL_LONG_EDGE],
+    ['thumb', THUMB_EDGE_LADDER, THUMB_LONG_EDGE],
+  ]) {
+    assert.strictEqual(ladder[0], nominal, `${name} ladder must start at the nominal edge`);
+    for (let i = 1; i < ladder.length; i++) {
+      assert.ok(ladder[i] < ladder[i - 1], `${name} ladder must descend: ${ladder}`);
+    }
+    assert.ok(ladder.length >= 2, `${name} ladder needs a fallback to be worth having`);
+  }
 });
 
 /* ── location resolution ───────────────────────────────────────────────── */

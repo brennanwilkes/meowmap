@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+// Circular with migrate.mjs, and safe: neither module calls the other while it is being
+// evaluated, and both export hoisted function declarations.
+import { ensureMigrations } from './migrate.mjs';
 
 /* Shared Cloudflare plumbing for the admin scripts.
  *
@@ -39,39 +42,82 @@ export function d1(sql) {
 }
 
 /**
- * List every object in the bucket.
+ * Several statements in ONE wrangler invocation, returning each statement's results.
  *
- * WRANGLER CANNOT DO THIS. `wrangler r2 object` only has get/put/delete — there is no
- * list subcommand in 4.131 — so this goes through the REST API and needs a token with
- * "Workers R2 Storage: Read". Scripts that only need to delete known keys should NOT
- * call this; compute reachability in SQL instead and stay on wrangler auth alone.
+ * Spawning `npx wrangler` costs a couple of seconds before it does any work, so a delete
+ * made of four one-statement calls spent most of its time starting processes — which is
+ * what made the interactive browser feel hung. Semicolon-separated statements cost that
+ * startup once.
  */
-export async function r2List() {
-  const token = process.env.CLOUDFLARE_API_TOKEN;
-  const account = process.env.CLOUDFLARE_ACCOUNT_ID ?? ACCOUNT_ID;
-  if (token === undefined || token === '') {
-    throw new Error(
-      'Listing R2 objects needs CLOUDFLARE_API_TOKEN (Workers R2 Storage: Read).\n'
-      + 'wrangler has no `r2 object list` command, so there is no OAuth path for it.',
-    );
-  }
-  const out = [];
-  let cursor = '';
-  for (;;) {
-    const url = new URL(`https://api.cloudflare.com/client/v4/accounts/${account}/r2/buckets/${BUCKET}/objects`);
-    url.searchParams.set('prefix', PREFIX);
-    url.searchParams.set('per_page', '1000');
-    if (cursor !== '') url.searchParams.set('cursor', cursor);
+export function d1Many(sqls) {
+  const raw = wrangler(['d1', 'execute', dbUuid(), '--remote', '--json', '--command', sqls.join('; ')]);
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map((r) => r.results ?? []);
+}
 
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    const body = await res.json();
-    if (!res.ok || body.success !== true) {
-      throw new Error(`R2 list failed: ${res.status} ${JSON.stringify(body.errors ?? body)}`);
-    }
-    for (const o of body.result) out.push({ key: o.key, size: Number(o.size ?? 0) });
-    cursor = body.result_info?.cursor ?? '';
-    if (cursor === '') return out;
+/**
+ * True object count and total bytes, straight from wrangler — no API token.
+ *
+ * `r2 bucket info` is the only enumeration wrangler offers (there is no `r2 object
+ * list`), and for the cost breaker it is exactly enough: the breaker cares how much is
+ * stored, not which keys. Knowing WHICH objects to delete is the deletion journal's job.
+ */
+export function bucketInfo() {
+  const raw = wrangler(['r2', 'bucket', 'info', BUCKET]);
+  const count = raw.match(/object_count:\s*(\d+)/);
+  const size = raw.match(/bucket_size:\s*([\d.]+)\s*(B|kB|MB|GB)/);
+  if (count === null || size === null) throw new Error(`could not parse r2 bucket info:\n${raw}`);
+  const unit = { B: 1, kB: 1e3, MB: 1e6, GB: 1e9 }[size[2]];
+  return { objects: Number(count[1]), bytes: Math.round(Number(size[1]) * unit) };
+}
+
+/* ── the deletion journal ──────────────────────────────────────────────── */
+
+/* The journal lives in a migration, so a database that has not been deployed since it
+ * was added does not have the table. Apply pending migrations lazily rather than failing
+ * with a raw SQLITE_ERROR — an admin script that cannot run until you deploy is useless
+ * precisely when you need it. Imported lazily to keep the dependency one-directional. */
+let schemaChecked = false;
+function ensureJournalTable() {
+  if (schemaChecked) return;
+  schemaChecked = true;
+  ensureMigrations();
+}
+
+/** Write the hashes down BEFORE the rows that name them are deleted. */
+export function journalForDelete(hashes, reason) {
+  ensureJournalTable();
+  if (hashes.length === 0) return [];
+  const now = Date.now();
+  return hashes.map((h) =>
+    `INSERT OR IGNORE INTO r2_gc_queue (hash, queued_at, reason) VALUES (${q(h)}, ${now}, ${q(reason)})`);
+}
+
+/**
+ * Delete every object named in the journal, clearing entries as they succeed.
+ *
+ * Safe to run at any time and safe to run twice: an entry is only queued once nothing
+ * references it, and a delete that fails stays queued for the next run.
+ */
+export function sweepJournal() {
+  ensureJournalTable();
+  const queued = d1('SELECT hash FROM r2_gc_queue');
+  // Belt and braces: never delete an object a row has come to reference again. Content
+  // addressing makes that possible — re-uploading the same photo revives the same key.
+  const live = new Set(
+    d1('SELECT photo_full AS k FROM sightings UNION SELECT photo_thumb FROM sightings').map((r) => r.k),
+  );
+  const done = [];
+  const failed = [];
+  for (const { hash } of queued) {
+    if (live.has(hash)) { done.push(hash); continue; }
+    try { r2Delete(`${PREFIX}${hash}`); done.push(hash); } catch { failed.push(hash); }
   }
+  if (done.length > 0) {
+    d1(`DELETE FROM r2_gc_queue WHERE hash IN (${done.map(q).join(',')})`);
+  }
+  return { deleted: done.length, failed };
 }
 
 /* `wrangler r2 object delete`, NOT `r2 bucket object delete` — the latter is a plausible

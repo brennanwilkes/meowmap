@@ -78,12 +78,27 @@ export const GEO_POOR_ACCURACY_M = 100;
 /* ── photos ────────────────────────────────────────────────────────────────
  * Budgets are enforced by a bounded quality search, not a fixed quality — a busy
  * cat-in-a-bush and a flat sleeping cat compress very differently. */
+/* The ladder the full-size encode walks down when a photo will not fit the byte budget
+ * at its quality floor.
+ *
+ * MEASURED IN THE FIELD: a normal iPhone photo came out at 645 KB at 2048px / q0.55 and
+ * the pipeline REFUSED IT. That is the wrong trade by a mile — a 1664px cat is still a
+ * perfectly good cat, and a photo she cannot upload is worth nothing at all. Dropping
+ * the long edge cuts pixels quadratically, so one step down is roughly a third fewer
+ * bytes, which clears the budget where another quality notch could not.
+ *
+ * The byte ceiling still holds, which is what keeps the R2 storage projection honest —
+ * we give up resolution, never the budget. */
 export const FULL_LONG_EDGE = 2048;
+export const FULL_EDGE_LADDER = [2048, 1664, 1280];
 export const FULL_MAX_BYTES = 550_000;
 export const FULL_START_QUALITY = 0.85;
 export const FULL_MIN_QUALITY = 0.55;
 
 export const THUMB_LONG_EDGE = 480;
+/** Same escape hatch as the full image: a thumbnail that will not fit is still better
+ *  small than absent, and the map only ever draws it at 46px anyway. */
+export const THUMB_EDGE_LADDER = [480, 384, 320];
 export const THUMB_MAX_BYTES = 45_000;
 export const THUMB_START_QUALITY = 0.72;
 export const THUMB_MIN_QUALITY = 0.45;

@@ -8,7 +8,6 @@ import { getPref } from './device.js';
 import { $, dateText, esc, whenText } from './dom.js';
 import { back, navigate } from './nav.js';
 import { LOCATION_SOURCE } from './pipeline.js';
-import { reasonText, suggestCats } from './suggest.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
@@ -107,13 +106,9 @@ function render(state) {
       <div class="mini-map" id="pin-map"></div>
       <p class="hand">tap or drag to move the pin</p>
 
-      ${cat === null ? linkSection(s, state) : `
-        <hr class="rule">
-        <button type="button" class="btn-ghost" id="unlink">Not ${esc(displayName(cat))}</button>`}
-
       <hr class="rule">
-      <button type="button" class="btn-ghost danger" id="del">Delete this sighting</button>
-      <div style="height:70px"></div>
+      <button type="button" class="btn-ghost wide danger" id="del">Delete this photo</button>
+      <div style="height:80px"></div>
     </div>
 
     <!-- Outside .pad, which is the scroll container: a save bar that scrolls away
@@ -145,31 +140,6 @@ function accuracyLine(d) {
   if (d.locationSource === LOCATION_SOURCE.manual) return 'Placed by hand';
   if (d.accuracyM === null) return '';
   return `Accurate to about ${Math.round(d.accuracyM)} m`;
-}
-
-/** Offered only for an unidentified sighting, and only when there is something nearby
- *  worth offering. Never auto-links. */
-function linkSection(s, state) {
-  const cats = store.catsWithSightings(state);
-  const candidates = suggestCats(s, cats, Date.now());
-  if (candidates.length === 0) return '';
-  const now = Date.now();
-  return `
-    <hr class="rule">
-    <h2 class="sec">Is this one of these?</h2>
-    <div class="suggest-row">
-      ${candidates.map((score) => {
-        const cat = cats.find((c) => c.id === score.catId);
-        const face = cat.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
-        return `
-        <button type="button" class="suggest" data-link="${cat.id}"
-                style="--ring:${esc(catColour(cat.id).hex)}">
-          <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
-          <span class="nm">${esc(displayName(cat))}</span>
-          <span class="why">${esc(reasonText(score, now))}</span>
-        </button>`;
-      }).join('')}
-    </div>`;
 }
 
 /* ── wiring ────────────────────────────────────────────────────────────── */
@@ -207,11 +177,6 @@ function wire(s) {
   $('#save', root).addEventListener('click', () => save(s.id));
   $('#del', root).addEventListener('click', () => remove(s.id));
 
-  const unlink = $('#unlink', root);
-  if (unlink !== null) unlink.addEventListener('click', () => link(s.id, null));
-  for (const btn of root.querySelectorAll('[data-link]')) {
-    btn.addEventListener('click', () => link(s.id, Number(btn.dataset.link)));
-  }
 }
 
 function drawPinMap(ring) {
@@ -292,19 +257,6 @@ async function save(id) {
     btn.insertAdjacentHTML('afterend', `<div class="map-note">${esc(err.message)}</div>`);
   } finally {
     saving = false;
-  }
-}
-
-async function link(id, catId) {
-  try {
-    await turnstile.ensurePass();
-    await patchSighting(id, { catId });
-    draft = null;
-    original = null;
-    await store.refresh();
-    render(store.get());
-  } catch (err) {
-    console.error('[sighting] link failed:', err);
   }
 }
 

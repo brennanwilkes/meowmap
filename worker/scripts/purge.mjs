@@ -24,7 +24,7 @@
  * honest outcome: the data really is gone.
  */
 
-import { d1, PREFIX, r2Delete } from './cf.mjs';
+import { bucketInfo, d1, d1Many, journalForDelete, sweepJournal } from './cf.mjs';
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -113,66 +113,41 @@ function main() {
   }
 
   const purged = sightings;
+  const hashes = [];
+  for (const s of purged) {
+    if (typeof s.photo_full === 'string') hashes.push(s.photo_full);
+    if (typeof s.photo_thumb === 'string') hashes.push(s.photo_thumb);
+  }
+
+  /* Journal the hashes BEFORE the rows go. See migrations/002 — this is what lets
+   * `npm run gc` finish the job after a crash without an API token. */
+  const statements = [...journalForDelete(hashes, 'purge')];
   if (purged.length > 0) {
-    d1(`DELETE FROM sightings WHERE id IN (${purged.map((s) => s.id).join(',')})`);
+    statements.push(`DELETE FROM sightings WHERE id IN (${purged.map((s) => s.id).join(',')})`);
   }
   if (catIds.length > 0) {
     // Any sighting still pointing at a purged cat reverts to unidentified rather than
     // being destroyed as collateral — the same rule the app's delete-cat follows.
-    d1(`UPDATE sightings SET cat_id = NULL WHERE cat_id IN (${catIds.join(',')})`);
-    d1(`DELETE FROM cats WHERE id IN (${catIds.join(',')})`);
+    statements.push(`UPDATE sightings SET cat_id = NULL WHERE cat_id IN (${catIds.join(',')})`);
+    statements.push(`DELETE FROM cats WHERE id IN (${catIds.join(',')})`);
   }
-  // The clients' ETag is derived from data_version, so without this bump a phone holding
-  // a 304 would keep showing rows that no longer exist.
-  d1(`UPDATE app_meta SET data_version = data_version + 1, updated_at = ${Date.now()} WHERE id = 1`);
+  // Clients' ETags derive from data_version, so without this bump a phone holding a 304
+  // keeps showing rows that no longer exist.
+  statements.push(`UPDATE app_meta SET data_version = data_version + 1, updated_at = ${Date.now()} WHERE id = 1`);
+  d1Many(statements);
   console.log('\nRows deleted.');
 
-  /* Reachability computed in SQL, deliberately — not by listing the bucket.
-   *
-   * Two reasons. Wrangler has no `r2 object list`, so listing would drag in a REST API
-   * token this script otherwise does not need. And "delete the hashes I just deleted
-   * rows for" would be WRONG: keys are content-addressed, so two sightings of the same
-   * photo share one object, and eager deletion would blank a photo still in use.
-   *
-   * So: the candidate set is the hashes the purged rows referenced, minus everything
-   * the surviving rows still reference. Orphans from older incidents are r2-reconcile's
-   * job, not this script's. */
-  const candidates = new Set();
-  for (const s of purged) {
-    if (typeof s.photo_full === 'string') candidates.add(s.photo_full);
-    if (typeof s.photo_thumb === 'string') candidates.add(s.photo_thumb);
-  }
-  for (const row of d1('SELECT photo_full AS k FROM sightings UNION SELECT photo_thumb FROM sightings')) {
-    candidates.delete(row.k);
-  }
-
-  console.log(`\n${candidates.size} photo object(s) no longer referenced.`);
-  let freed = 0;
-  const stranded = [];
-  for (const hash of candidates) {
-    // The rows are already gone, so a throw here would strand objects with nothing left
-    // in D1 naming them. Report and continue; `npm run gc` is the sweeper.
-    try {
-      r2Delete(`${PREFIX}${hash}`);
-      freed++;
-      console.log(`  deleted ${PREFIX}${hash}`);
-    } catch (err) {
-      stranded.push(hash);
-      console.error(`  STRANDED ${PREFIX}${hash}: ${err.message}`);
-    }
-  }
-  if (stranded.length > 0) {
-    console.error(`\n${stranded.length} object(s) stranded. Run \`npm run gc\` to sweep them.`);
+  const { deleted, failed } = sweepJournal();
+  console.log(`${deleted} photo object(s) deleted.`);
+  if (failed.length > 0) {
+    console.error(`${failed.length} still queued — they stay in r2_gc_queue; run \`npm run gc\`.`);
     process.exitCode = 1;
   }
 
-  if (freed > 0) {
-    // Approximate, and knowingly so: the exact byte count needs a bucket listing. This
-    // keeps the breaker's object count honest; `npm run reconcile` corrects the bytes.
-    d1(`UPDATE app_meta SET r2_objects = MAX(0, r2_objects - ${freed}), ` +
-       `updated_at = ${Date.now()} WHERE id = 1`);
-    console.log('\nRun `npm run reconcile` to re-sync the exact byte counters.');
-  }
+  const truth = bucketInfo();
+  d1(`UPDATE app_meta SET r2_objects = ${truth.objects}, r2_bytes = ${truth.bytes}, `
+     + `updated_at = ${Date.now()} WHERE id = 1`);
+  console.log(`counters re-synced from the bucket: ${truth.objects} objects, ${truth.bytes} bytes`);
 }
 
 main();

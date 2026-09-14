@@ -122,8 +122,9 @@
 .locate {
   position: absolute; right: max(12px, var(--safe-r)); z-index: 620;
   bottom: 62px;
+  display: grid; place-items: center;
   width: 42px; height: 42px; line-height: 1;
-  font-size: var(--t-xl); color: var(--ink);
+  color: var(--ink);
   background: var(--paper-hi);
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
   box-shadow: var(--cut), var(--lift);
@@ -150,3 +151,28 @@
 /* Any filter on: tint the strip so a half-scrolled row never hides the fact that pins
    are being withheld. */
 .coat-filter.on { background: linear-gradient(transparent, rgba(46, 42, 36, .09)); }
+
+/* Map credits, one tap away. See map_page.js for why they are not simply deleted. */
+.attrib-btn {
+  position: absolute; left: max(10px, var(--safe-l)); z-index: 620;
+  bottom: 62px;
+  width: 22px; height: 22px; line-height: 1;
+  font-family: var(--font-body); font-size: var(--t-xs); font-style: italic;
+  color: var(--ink-soft); background: rgba(244, 240, 230, .82);
+  border: 1.5px solid var(--ink-faint); border-radius: 50%;
+  opacity: .75;
+}
+.attrib-btn:active { opacity: 1; color: var(--ink); border-color: var(--ink); }
+.attrib {
+  position: absolute; left: 10px; right: 10px; z-index: 621;
+  bottom: 90px;
+  font-size: var(--t-xs); color: var(--ink-soft);
+  background: rgba(244, 240, 230, .95);
+  border: 1.5px solid var(--ink-faint); border-radius: var(--r-cut);
+  padding: 6px 9px;
+}
+.attrib a { color: inherit; }
+
+/* The locate glyph is drawn, not an emoji — same reason as the settings cog. */
+.locate svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+.locate svg .fill { fill: currentColor; stroke: none; }

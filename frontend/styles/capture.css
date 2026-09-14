@@ -304,7 +304,8 @@
 .btn-ghost.sm { font-size: var(--t-sm); padding: 5px 10px; }
 .btn-ghost.danger { color: #a8324a; border-color: #a8324a; }
 
-.sheet-acts { display: flex; justify-content: flex-end; margin-top: 14px; }
+.sheet-acts { margin-top: 16px; }
+.sheet-acts .btn-stick { display: block; width: 100%; text-align: center; }
 
 /* Pull to refresh. The indicator is pulled up out of view with a negative margin so it
    is REVEALED by the pad translating down, rather than riding down with it. */
@@ -318,3 +319,20 @@
 /* A queued sighting: present, clearly not finished, and not selectable. */
 .loose-card.waiting { opacity: .62; }
 .loose-card.waiting .why { color: var(--ink-soft); font-style: italic; }
+
+/* Full-width actions. A lone button sitting at its text width, inset from the page edge,
+   reads as floating debris — especially a destructive one, where the offset made it look
+   like it belonged to whatever happened to be above it. Full width ties it to the
+   section it ends. */
+.btn-stick.wide, .btn-ghost.wide {
+  display: block; width: 100%; text-align: center; margin-top: 4px;
+}
+
+/* A sighting inside a cat: the photo is the button, with its own actions underneath. */
+.loose-card .face {
+  display: block; width: 100%; padding: 0; background: none; border: 0;
+}
+.loose-card .face img { width: 100%; height: 88px; object-fit: cover; border-radius: var(--r-cut); }
+.loose-card .btn-ghost.sm { width: 100%; margin-top: 4px; font-size: var(--t-xs); padding: 4px 6px; }
+
+#cat-err:empty { display: none; }

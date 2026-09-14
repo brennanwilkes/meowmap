@@ -1,23 +1,26 @@
-import { photoUrl, createCat, patchSighting } from './api.js';
+import { photoUrl } from './api.js';
 import { catColour, displayName } from './catcolor.js';
 import { $, esc, whenText } from './dom.js';
 import { navigate } from './nav.js';
 import * as store from './store.js';
-import * as turnstile from './turnstile.js';
 
-/* The Cats tab: named and unnamed cats above, still-unidentified sightings below.
+/* The Cats tab.
  *
- * "Not identified yet" is a FIRST-CLASS, PERMANENT state, not a to-do list. Most
- * sightings will live there and that is the design working, so the loose section is
- * never styled as a warning and is never counted down.
+ * Every sighting arrives already belonging to a cat of its own (the Worker mints one on
+ * upload), so this is simply a list of cats and tapping one opens it.
  *
- * The one action here is grouping: select loose sightings, say "these are one cat".
+ * THERE IS NO SELECTION MODE HERE, deliberately. A multi-select merge was built and cut:
+ * it meant one tap opened a cat and the next tap selected it, which is a mode you can be
+ * in without realising, and a thing you can get wrong. Every join or split is now a
+ * single tap on a face, phrased as a question, on the cat's own page — so there is no
+ * sequence to learn and nothing to mess up.
+ *
+ * The loose section remains for any sighting with no cat. Nothing creates those any
+ * more, but a row from before the change would otherwise become invisible.
  */
 
 let root = null;
 let unsubscribe = null;
-let selected = new Set();
-let busy = false;
 /** Object URLs minted for queued thumbnails; leaking these OOMs an iPhone. */
 const objectUrls = new Set();
 
@@ -52,10 +55,8 @@ function looseCard(s) {
         <span class="why">${esc(s.state === 'failed' ? 'upload failed' : 'uploading…')}</span>
       </div>`;
   }
-  const on = selected.has(s.id);
   return `
-    <button type="button" class="loose-card${on ? ' picked' : ''}" data-loose="${s.id}"
-            aria-pressed="${on ? 'true' : 'false'}">
+    <button type="button" class="loose-card" data-loose="${s.id}">
       <img src="${esc(photoUrl(s.photoThumb))}" alt="" crossorigin="anonymous">
       <span class="why">${esc(whenText(s.seenAt))}</span>
     </button>`;
@@ -71,8 +72,6 @@ function render(state) {
   const loose = store.looseSightings(state);
   // Drop selections whose sighting has gone (deleted elsewhere, or just grouped).
   releaseUrls();
-  const liveIds = new Set(loose.map((s) => s.id));
-  for (const id of selected) if (!liveIds.has(id)) selected.delete(id);
 
   root.innerHTML = `
     <div class="pad" id="cats-pad">
@@ -85,16 +84,10 @@ function render(state) {
 
       ${loose.length === 0 ? '' : `
         <hr class="rule">
-        <h2 class="sec">Not identified yet</h2>
-        <p class="hand">tap a few that are the same cat</p>
+        <h2 class="sec">No cat yet</h2>
         <div class="loose-grid">${loose.map(looseCard).join('')}</div>`}
     </div>
-
-    <div class="group-bar${selected.size === 0 ? ' down' : ''}" id="group-bar">
-      <span>${selected.size} selected</span>
-      <button type="button" class="btn-ghost" id="clear-sel">Clear</button>
-      <button type="button" class="btn-stick" id="group-go">These are one cat</button>
-    </div>`;
+`;
 
   wire();
 }
@@ -103,55 +96,10 @@ function wire() {
   for (const btn of root.querySelectorAll('.cat-card')) {
     btn.addEventListener('click', () => navigate(`#/cat/${btn.dataset.cat}`));
   }
-  for (const btn of root.querySelectorAll('.loose-card')) {
-    btn.addEventListener('click', () => {
-      const id = Number(btn.dataset.loose);
-      if (selected.has(id)) selected.delete(id); else selected.add(id);
-      render(store.get());
-    });
+  for (const btn of root.querySelectorAll('.loose-card[data-loose]')) {
+    btn.addEventListener('click', () => navigate(`#/sighting/${btn.dataset.loose}`));
   }
-  $('#clear-sel', root).addEventListener('click', () => { selected.clear(); render(store.get()); });
-  $('#group-go', root).addEventListener('click', group);
   wirePull();
-}
-
-/**
- * Make one cat out of the selected sightings.
- *
- * Deliberately NOT atomic, and it cannot be: there is no bulk endpoint, so this is one
- * POST /cats followed by N PATCHes. A failure part-way leaves a real cat with some of
- * its sightings attached — which is recoverable by hand and visible on screen. The
- * alternative, rolling back by deleting the cat, risks destroying links that DID land.
- */
-async function group() {
-  if (selected.size === 0 || busy) return;
-  busy = true;
-  const bar = $('#group-bar', root);
-  const go = $('#group-go', root);
-  go.disabled = true;
-  go.textContent = 'Grouping…';
-
-  try {
-    await turnstile.ensurePass();
-    const { cat } = await createCat(null, null);
-    const ids = [...selected];
-    for (const id of ids) {
-      // eslint-disable-next-line no-await-in-loop -- serial on purpose; see above
-      await patchSighting(id, { catId: cat.id });
-    }
-    selected.clear();
-    await store.refresh();
-    navigate(`#/cat/${cat.id}`);
-  } catch (err) {
-    console.error('[cats] group failed:', err);
-    bar.insertAdjacentHTML('beforebegin',
-      `<div class="map-note" id="group-err">${esc(err.message)}</div>`);
-    console.error('[cats] surfaced:', err);
-    go.disabled = false;
-    go.textContent = 'These are one cat';
-  } finally {
-    busy = false;
-  }
 }
 
 /* Pull to refresh.
@@ -212,7 +160,6 @@ function wirePull() {
 
 export function mount(container) {
   root = container;
-  selected = new Set();
   unsubscribe = store.subscribe(render);
   store.refresh();
 }
@@ -220,6 +167,5 @@ export function mount(container) {
 export function unmount() {
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
   releaseUrls();
-  selected.clear();
   root = null;
 }

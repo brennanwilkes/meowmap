@@ -1,18 +1,24 @@
 import { DEFAULT_TILE_ID, LS, MAX_NAME_LEN, TILE_SOURCES } from '../config.js';
-import { deleteCat, patchCat, patchSighting, photoUrl } from './api.js';
+import { createCat, deleteCat, patchCat, patchSighting, photoUrl } from './api.js';
 import { catColour, displayName } from './catcolor.js';
 import { getPref } from './device.js';
-import { $, esc, whenText } from './dom.js';
-import { back, navigate } from './nav.js';
+import { $, distanceText, esc, whenText } from './dom.js';
+import { distanceM } from './suggest.js';
+import { navigate } from './nav.js';
 import { turfRing, shouldDrawTurf } from './turf.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
-/* One cat: rename, its sightings, its territory, and splitting a sighting back out.
+/* One cat: rename it, see where it lives, and answer two questions in plain language.
  *
- * DELETING A CAT DOES NOT DELETE ITS SIGHTINGS — they revert to unidentified. The
- * grouping is a label, and removing a label must never destroy the photographs it was
- * attached to.
+ *   "I've seen this cat before"  → pick another cat's face → the two become one.
+ *   "this is a different cat"    → that photo leaves and becomes its own cat.
+ *
+ * BOTH ARE SINGLE TAPS ON A FACE, and each undoes the other, so there is no sequence to
+ * learn and no way to get stuck with a wrong answer. That is the whole design rule for
+ * this page: no modes, no multi-select, nothing that can be half-done.
+ *
+ * Deleting a cat never deletes its photographs — they leave as cats of their own.
  */
 
 let root = null;
@@ -58,18 +64,20 @@ function render(state) {
 
       <div class="loose-grid">
         ${sightings.map((s) => `
-          <button type="button" class="loose-card" data-sighting="${s.id}">
-            <img src="${esc(photoUrl(s.photoThumb))}" alt="" crossorigin="anonymous">
+          <div class="loose-card">
+            <button type="button" class="face" data-sighting="${s.id}">
+              <img src="${esc(photoUrl(s.photoThumb))}" alt="" crossorigin="anonymous">
+            </button>
             <span class="why">${esc(whenText(s.seenAt))}</span>
-          </button>`).join('')}
+            ${sightings.length < 2 ? '' : `
+              <button type="button" class="btn-ghost sm" data-split="${s.id}">different cat</button>`}
+          </div>`).join('')}
       </div>
 
       <hr class="rule">
-      <button type="button" class="btn-ghost danger" id="ungroup">
-        Not one cat after all
-      </button>
-      <p class="hand">the photos stay, they just go back to unidentified</p>
-      <div class="map-note" id="ungroup-err" style="position:static"></div>
+      <button type="button" class="btn-stick wide" id="same-as">I&rsquo;ve seen this cat before</button>
+      <div id="merge-pick"></div>
+      <div class="map-note" id="cat-err" style="position:static"></div>
     </div>`;
 
   wire(cat);
@@ -90,7 +98,10 @@ function wire(cat) {
     saveTimer = setTimeout(() => saveName(cat.id, input.value), 900);
   });
 
-  $('#ungroup', root).addEventListener('click', () => ungroup(cat));
+  $('#same-as', root).addEventListener('click', () => showMergePicker(cat));
+  for (const btn of root.querySelectorAll('[data-split]')) {
+    btn.addEventListener('click', () => split(Number(btn.dataset.split), cat));
+  }
 }
 
 async function saveName(id, raw) {
@@ -111,31 +122,100 @@ async function saveName(id, raw) {
   }
 }
 
+function fail(err, what) {
+  console.error(`[cat] ${what} failed:`, err);
+  const note = $('#cat-err', root);
+  if (note !== null) note.textContent = err.message;
+}
+
 /**
- * Undo the grouping. Unlinks every sighting first, then removes the cat — that order
- * means a failure part-way leaves loose sightings and an empty cat, which is harmless
- * and visible. The other order would orphan sightings against a cat that no longer
- * exists.
+ * "I've seen this cat before" — show every OTHER cat as a face and merge on one tap.
+ *
+ * Nearest first, because the cat she means is almost always one she photographed near
+ * here. No search box, no multi-select, no confirmation: one tap is the whole gesture,
+ * and it is undone by tapping "different cat" on the photo that moved.
  */
-async function ungroup(cat) {
-  const btn = $('#ungroup', root);
+function showMergePicker(cat) {
+  const slot = $('#merge-pick', root);
+  const others = store.catsWithSightings()
+    .filter((o) => o.id !== cat.id && o.sightings.length > 0);
+
+  if (others.length === 0) {
+    slot.innerHTML = '<p class="hand">no other cats yet</p>';
+    return;
+  }
+  const here = cat.sightings[0];
+  const near = (o) => Math.min(...o.sightings.map(
+    (s) => distanceM(here.lat, here.lon, s.lat, s.lon)));
+  others.sort((a, b) => near(a) - near(b));
+
+  slot.innerHTML = `
+    <p class="hand">which one is it?</p>
+    <div class="suggest-row">
+      ${others.map((o) => {
+        const face = o.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
+        return `
+        <button type="button" class="suggest" data-merge="${o.id}"
+                style="--ring:${esc(catColour(o.id).hex)}">
+          <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
+          <span class="nm">${esc(displayName(o))}</span>
+          <span class="why">${esc(distanceText(near(o)))} away</span>
+        </button>`;
+      }).join('')}
+    </div>`;
+
+  for (const btn of slot.querySelectorAll('[data-merge]')) {
+    btn.addEventListener('click', () => merge(cat, Number(btn.dataset.merge)));
+  }
+}
+
+/**
+ * Fold this cat into another. The OLDER cat survives, so the one she met first keeps its
+ * name and colour whichever way round she taps.
+ *
+ * Not atomic and cannot be — there is no bulk endpoint — so a part-way failure leaves
+ * some photos moved and says so, rather than rolling back and risking undoing a link
+ * that did land.
+ */
+async function merge(cat, otherId) {
+  const survivor = Math.min(cat.id, otherId);
+  const absorbed = Math.max(cat.id, otherId);
+  const btn = $('#same-as', root);
   btn.disabled = true;
-  btn.textContent = 'Ungrouping…';
+  btn.textContent = 'Joining…';
   try {
     await turnstile.ensurePass();
-    for (const s of cat.sightings) {
-      // eslint-disable-next-line no-await-in-loop -- serial, and order matters here
-      await patchSighting(s.id, { catId: null });
+    const doomed = store.catsWithSightings().find((c) => c.id === absorbed);
+    for (const s of doomed.sightings) {
+      // eslint-disable-next-line no-await-in-loop -- serial; see above
+      await patchSighting(s.id, { catId: survivor });
     }
-    await deleteCat(cat.id);
+    await deleteCat(absorbed);
     await store.refresh();
-    back('#/cats');
+    navigate(`#/cat/${survivor}`);
   } catch (err) {
-    console.error('[cat] ungroup failed:', err);
     btn.disabled = false;
-    btn.textContent = 'Not one cat after all';
-    const note = $('#ungroup-err', root);
-    if (note !== null) note.textContent = err.message;
+    btn.textContent = 'I\u2019ve seen this cat before';
+    fail(err, 'merge');
+  }
+}
+
+/** "different cat" — this photo leaves and becomes a cat of its own. The exact inverse
+ *  of a merge, which is what makes every join safely reversible. */
+async function split(sightingId, cat) {
+  const btn = root.querySelector(`[data-split="${sightingId}"]`);
+  if (btn !== null) { btn.disabled = true; btn.textContent = 'moving…'; }
+  try {
+    await turnstile.ensurePass();
+    const { cat: fresh } = await createCat(null, null);
+    await patchSighting(sightingId, { catId: fresh.id });
+    // The cat this left may now be empty; tidy it up rather than leaving a shell.
+    if (cat.sightings.length === 1) await deleteCat(cat.id);
+    await store.refresh();
+    navigate(`#/cat/${fresh.id}`);
+  } catch (err) {
+    if (btn !== null) { btn.disabled = false; btn.textContent = 'different cat'; }
+    fail(err, 'split');
   }
 }
 

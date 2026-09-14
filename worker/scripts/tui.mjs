@@ -73,9 +73,16 @@ export function box(lines, { title = '', colour = c.grey, inner } = {}) {
 /**
  * Single keypress, no Enter. Returns a friendly name for arrows and control keys.
  *
- * Ctrl-C is handled here rather than via a SIGINT handler: in raw mode the terminal
- * does not generate the signal, so without this the only way out would be to kill the
- * process from another window — with the alternate screen buffer still active.
+ * CALL THIS EXACTLY ONCE. Its teardown pauses stdin and leaves raw mode, which is
+ * process-wide — so a second, nested listener that tears itself down takes the first one
+ * with it. That is not hypothetical: a `readKey()` helper used for confirmations did
+ * exactly this, and after the first confirmation the app stopped receiving keys and
+ * looked frozen. Modal prompts belong in the ONE handler as a mode, not as a nested
+ * listener.
+ *
+ * Ctrl-C is handled here rather than via a SIGINT handler: in raw mode the terminal does
+ * not generate the signal, so without this the only way out would be to kill the process
+ * from another window — with the alternate screen buffer still active.
  */
 export function onKey(handler) {
   const { stdin } = process;
@@ -102,9 +109,3 @@ export function onKey(handler) {
   };
 }
 
-/** One keystroke, awaited. Used for confirmations. */
-export function readKey() {
-  return new Promise((resolve) => {
-    const off = onKey((k) => { off(); resolve(k); });
-  });
-}

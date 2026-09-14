@@ -16,15 +16,20 @@
    printed INTO the page, so it has no shadow to collapse; the press darkens it instead. */
 .cog {
   margin-left: 8px; flex: 0 0 auto;
-  width: 32px; height: 32px; line-height: 1;
+  width: 34px; height: 34px; padding: 6px;
   display: grid; place-items: center;
-  font-size: var(--t-md); color: var(--ink-soft);
-  background: none;
-  border: 2px solid var(--ink-faint); border-radius: 50%;
-  opacity: .85;
-  transition: color var(--up), border-color var(--up), opacity var(--up);
+  color: var(--ink-soft);
+  background: none; border: 0;
+  transition: color var(--up), transform var(--up);
 }
-.cog:active { color: var(--ink); border-color: var(--ink); opacity: 1; }
+.cog svg {
+  width: 100%; height: 100%;
+  fill: none; stroke: currentColor;
+  /* Round caps and a slightly heavy stroke read as a pen line rather than an icon set. */
+  stroke-width: 1.9; stroke-linecap: round;
+  transform: rotate(-6deg);
+}
+.cog:active { color: var(--ink); transform: rotate(18deg); }
 .wordmark { font-family: var(--font-stick); font-size: var(--t-xl); font-weight: 800; letter-spacing: -.02em; }
 .topbar .place { font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft); margin-left: auto; }
 .topbar .place:empty { margin-left: auto; }

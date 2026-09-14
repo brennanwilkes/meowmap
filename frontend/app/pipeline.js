@@ -1,8 +1,8 @@
 import {
   EXIF_HEAD_BYTES,
-  FULL_LONG_EDGE, FULL_MAX_BYTES, FULL_MIN_QUALITY, FULL_START_QUALITY,
+  FULL_EDGE_LADDER, FULL_MAX_BYTES, FULL_MIN_QUALITY, FULL_START_QUALITY,
   GEO_POOR_ACCURACY_M,
-  THUMB_LONG_EDGE, THUMB_MAX_BYTES, THUMB_MIN_QUALITY, THUMB_START_QUALITY,
+  THUMB_EDGE_LADDER, THUMB_MAX_BYTES, THUMB_MIN_QUALITY, THUMB_START_QUALITY,
 } from '../config.js';
 import { decode, release } from './decode.js';
 import { captureTimeMs, readImageMeta } from './exif.js';
@@ -154,21 +154,45 @@ export async function processPhoto(file) {
     const srcW = source.width;
     const srcH = source.height;
 
-    fullCanvas = drawTo(source, srcW, srcH, FULL_LONG_EDGE);
-    const full = await encodeToBudget(fullCanvas, {
-      maxBytes: FULL_MAX_BYTES,
-      startQuality: FULL_START_QUALITY,
-      minQuality: FULL_MIN_QUALITY,
-    });
+    /* Walk the edge ladder until the budget is met. Quality alone is not always enough:
+     * a busy photo (a tabby in long grass) can sit above the ceiling even at the quality
+     * floor, and the old code threw there — refusing a photo she had just taken. */
+    let full = null;
+    for (const edge of FULL_EDGE_LADDER) {
+      if (fullCanvas !== null) releaseCanvas(fullCanvas);
+      fullCanvas = drawTo(source, srcW, srcH, edge);
+      try {
+        full = await encodeToBudget(fullCanvas, {
+          maxBytes: FULL_MAX_BYTES,
+          startQuality: FULL_START_QUALITY,
+          minQuality: FULL_MIN_QUALITY,
+        });
+        break;
+      } catch (err) {
+        if (err.name !== 'EncodeError' || edge === FULL_EDGE_LADDER.at(-1)) throw err;
+        // else: try the next size down
+      }
+    }
+    if (full === null) throw new Error('the encode ladder produced nothing');
 
     // From the full canvas, not the original: it guarantees the thumb is a pixel
     // consistent reduction of the image that actually ships.
-    thumbCanvas = drawTo(fullCanvas, fullCanvas.width, fullCanvas.height, THUMB_LONG_EDGE);
-    const thumb = await encodeToBudget(thumbCanvas, {
-      maxBytes: THUMB_MAX_BYTES,
-      startQuality: THUMB_START_QUALITY,
-      minQuality: THUMB_MIN_QUALITY,
-    });
+    let thumb = null;
+    for (const edge of THUMB_EDGE_LADDER) {
+      if (thumbCanvas !== null) releaseCanvas(thumbCanvas);
+      thumbCanvas = drawTo(fullCanvas, fullCanvas.width, fullCanvas.height, edge);
+      try {
+        thumb = await encodeToBudget(thumbCanvas, {
+          maxBytes: THUMB_MAX_BYTES,
+          startQuality: THUMB_START_QUALITY,
+          minQuality: THUMB_MIN_QUALITY,
+        });
+        break;
+      } catch (err) {
+        if (err.name !== 'EncodeError' || edge === THUMB_EDGE_LADDER.at(-1)) throw err;
+      }
+    }
+    if (thumb === null) throw new Error('the thumb ladder produced nothing');
 
     return {
       meta,

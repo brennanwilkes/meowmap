@@ -307,6 +307,24 @@ async function createSighting(
     deviceId,
   };
 
+  /* EVERY SIGHTING BELONGS TO A CAT. If the client did not name one, mint an unnamed cat
+   * for it here.
+   *
+   * The original model left cat_id NULL until she linked photos, and "not identified
+   * yet" was meant to be a comfortable resting state. On the phone it was not: a fresh
+   * upload had no colour, no territory and no page of its own, and the only way to give
+   * it one was to open the Cats tab and tell the app a photo was the same cat as itself.
+   *
+   * Linking now means MERGING two cats, which is the operation she was really doing all
+   * along. Cost is one extra row written per upload (4 -> 5 against the 100k/day cap),
+   * which buys every sighting an identity from the moment it lands. */
+  if (s.catId === null) {
+    const cat = await db.insertCat(env, null, null, now).run();
+    const newId = Number(cat.meta?.last_row_id ?? -1);
+    if (newId < 0) throw new Error('auto cat insert returned no id');
+    s.catId = newId;
+  }
+
   const [insert] = await env.MEOWMAP_DB.batch([
     db.insertSighting(env, s, now),
     db.bumpMeta(env, now),
