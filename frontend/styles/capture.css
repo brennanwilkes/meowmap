@@ -412,53 +412,71 @@
 .tag { position: relative; display: inline-block; max-width: 100%; }
 
 /* The split ring: a true circle, which is the only radius this design allows besides
-   2px. It takes the CAT'S COLOUR, so the identity colour that the plate used to carry as
-   a fill is not lost to the metal — it just moves to the hardware. */
+   2px. IT IS METAL, NOT THE CAT'S COLOUR. Filling it with --ring put a lime-green hoop
+   on a brass tag, which is not a thing that exists — the identity colour is already
+   carried by the pin, the turf and the card border, and hardware is hardware. The
+   four border sides take different tones so the ring catches light on one edge and
+   falls into shadow on the other, which is what makes a flat circle read as round. */
 .tag::before {
-  content: ''; position: absolute; left: -13px; top: 50%;
-  width: 19px; height: 19px; margin-top: -10px;
-  border-radius: 50%;
-  border: 4px solid var(--ring, var(--marigold));
-  box-shadow: 0 0 0 1.5px var(--ink), inset 0 0 0 1.5px var(--ink),
-              inset -2px -2px 0 rgba(46, 42, 36, .22);
+  content: ''; position: absolute; left: -15px; top: 50%;
+  width: 23px; height: 23px; margin-top: -12px;
+  border-radius: 50%; border: 4px solid;
+  border-top-color: #fff4d2; border-left-color: #e2c98a;
+  border-right-color: #cdac60; border-bottom-color: #977830;
+  box-shadow: 0 0 0 1.5px var(--ink), inset 0 0 0 1.5px var(--ink);
 }
 
-/* Brushed brass: alternating light and dark bands across the plate at a shallow angle,
-   which is what a turned metal surface does under a single light. Warm rather than
-   silver — cool grey next to scrapbook paper looks like a mistake. */
+/* A CLASSIC ENGRAVED BRASS NAMEPLATE: wide, domed, with a chamfered edge and a cut
+   border line inside it.
+
+   The dome is the vertical gradient — a dark chamfer at the top edge, brightening to a
+   specular band across the middle, falling away to a dark chamfer at the bottom. That
+   single gradient is what makes it read as a curved piece of metal rather than a
+   yellow rectangle; the earlier flat diagonal banding read as gold foil. The brushed
+   grain is a second, very faint layer over it, and the engraved border line is a bright
+   inset keyline with a darker groove just inside it, which is how an engraver's line
+   catches light on a convex surface.
+
+   Wide and roomy on purpose: a nameplate is a plaque, and a name in the middle of a lot
+   of metal is the whole look. */
 .nameplate, .plate {
   position: relative;      /* paints over the ring's right-hand side */
-  /* Handwritten, because engraving on a pet tag is a script. 17px clears the 16px iOS
-     no-zoom floor, which a form control must. */
-  font-family: var(--font-hand); font-size: var(--t-lg); font-weight: 700;
+  /* Handwritten, because engraving on a pet tag is a script. Comfortably over the 16px
+     iOS no-zoom floor, which a form control must clear. */
+  font-family: var(--font-hand); font-size: var(--t-xl); font-weight: 700;
   text-align: center;
   color: #4a3c1c;
   /* ENGRAVED, not printed: a light edge below the stroke and a dark one above reads as
      cut into the surface. Reversing the two would emboss it instead. */
-  text-shadow: 0 1px 0 rgba(255, 252, 235, .85), 0 -1px 0 rgba(74, 60, 28, .32);
-  padding: 9px 18px; min-height: 44px;
-  background: linear-gradient(104deg,
-    #fffbe9 0%, #f3e3ae 15%, #d8bd72 32%, #fff8e0 48%,
-    #e3cb8b 64%, #fdf4d6 80%, #cfae63 100%);
+  text-shadow: 0 1px 0 rgba(255, 252, 235, .9), 0 -1px 0 rgba(74, 60, 28, .35);
+  padding: 13px 34px; min-height: 54px; min-width: 190px;
+  background:
+    repeating-linear-gradient(92deg,
+      rgba(255, 255, 255, .10) 0 2px, rgba(120, 95, 35, .07) 2px 4px),
+    linear-gradient(180deg,
+      #8a6a26 0%, #d4b76c 8%, #f2e0ab 22%, #fffaea 44%, #fdf6e0 52%,
+      #efdca4 64%, #cfae63 82%, #8a6a26 100%);
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  /* Die-cut margin and hard offset shadow, same three rules as every other sticker, plus
-     a bevel: a bright top edge and a dark bottom one give the plate thickness. */
-  box-shadow: var(--cut), var(--lift),
-              inset 0 2px 0 rgba(255, 253, 240, .8),
-              inset 0 -2px 0 rgba(74, 60, 28, .3);
+  box-shadow:
+    /* the engraved border line: bright keyline, darker groove inside it */
+    inset 0 0 0 2px rgba(255, 252, 232, .62),
+    inset 0 0 0 3.5px rgba(120, 95, 35, .38),
+    var(--cut), var(--lift);
   transition: transform var(--up), box-shadow var(--up);
 }
-/* The tilt sits on the WRAPPER so the ring comes with it. */
+/* The tilt sits on the WRAPPER so the ring comes with it. A plaque hung by one ring
+   does not hang level. */
 .tag { transform: rotate(-1.6deg); }
 .nameplate, .plate { transform: none; }
 
-.nameplate { width: 100%; max-width: 260px; }
+.nameplate { width: 100%; max-width: 300px; }
 .plate { display: inline-block; }
 .plate:active {
   transform: translate(var(--lift-x), var(--lift-y));
-  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0),
-              inset 0 2px 0 rgba(255, 253, 240, .8),
-              inset 0 -2px 0 rgba(74, 60, 28, .3);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 252, 232, .62),
+    inset 0 0 0 3.5px rgba(120, 95, 35, .38),
+    var(--cut), 0 0 0 rgba(46, 42, 36, 0);
   transition: transform var(--down), box-shadow var(--down);
 }
 
@@ -468,7 +486,7 @@
 .nameplate:placeholder-shown {
   background: none; color: var(--ink-faint); text-shadow: none;
   border: 2px dashed var(--ink-faint);
-  box-shadow: none;
+  box-shadow: none; min-width: 0;
 }
 .tag:has(.nameplate:placeholder-shown)::before {
   border-color: var(--ink-faint);

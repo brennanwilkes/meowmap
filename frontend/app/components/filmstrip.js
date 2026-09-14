@@ -23,13 +23,26 @@ import { dateText, esc } from '../dom.js';
  * `overflow-x` then clipped in half. Moving it into the chin removes the overflow
  * entirely rather than fighting it, and a rubber stamp on the white margin is where a
  * note like this actually goes on a photograph. */
-function pettedStamp(petted) {
+function pettedStamp(petted, jitter) {
   if (petted === null || petted === undefined) return '';
   if (petted !== 'yes' && petted !== 'no') throw new Error(`unknown petted value: ${petted}`);
-  return petted === 'yes'
-    ? '<span class="stamp">petted</span>'
-    : '<span class="stamp pale">not petted</span>';
+  const cls = petted === 'yes' ? 'stamp' : 'stamp pale';
+  const text = petted === 'yes' ? 'petted' : 'not petted';
+  return `<span class="${cls}" style="${jitter}">${text}</span>`;
 }
+
+/* A hand does not write twice in the same place, and a stamp is never pressed square.
+ * The wobble is DETERMINISTIC from the sighting id rather than random: a re-render must
+ * not make the whole page twitch, and the same photo should look the same every time she
+ * opens it. Prime-ish moduli so the date's angle and the stamp's position do not fall
+ * into step with each other down a strip. */
+const WRITE_TILT = [-1.8, .9, -.6, 2.1, -1.2];
+const WRITE_INDENT = [0, 7, 3, 11, 5];
+const STAMP_TILT = [-8, 5, -13, 9, -4, 12];
+const STAMP_RIGHT = [4, 12, 0, 18, 8, 14];
+const STAMP_BOTTOM = [22, 34, 16, 28, 38, 20];
+
+function pick(list, n) { return list[Math.abs(n) % list.length]; }
 
 /**
  * One polaroid: the photo, the date and the petted stamp on the paper, the cat's name
@@ -48,6 +61,13 @@ export function frame(s, { name, petted, src, tag = null }) {
    * A row with no stored dimensions falls back to square rather than to nothing — the
    * frame still has to have a height. */
   const ar = s.photoW > 0 && s.photoH > 0 ? `${s.photoW}/${s.photoH}` : '1';
+  /* A pending row has no server id yet, so the wobble keys off seenAt instead — it only
+   * has to be stable for this photo, not unique across the app. */
+  const n = s.id ?? s.seenAt;
+  const wrote = `transform:rotate(${pick(WRITE_TILT, n)}deg);margin-left:${pick(WRITE_INDENT, n)}px`;
+  const stamped = `right:${pick(STAMP_RIGHT, n)}px;bottom:${pick(STAMP_BOTTOM, n)}px;`
+    + `transform:rotate(${pick(STAMP_TILT, n)}deg)`;
+
   return `
     <div class="frame">
       <figure class="polaroid" style="--ar:${esc(ar)}">
@@ -57,8 +77,8 @@ export function frame(s, { name, petted, src, tag = null }) {
                width="${esc(String(s.photoW ?? ''))}" height="${esc(String(s.photoH ?? ''))}">
         </span>
         <figcaption class="scrawl">
-          <span class="when">${esc(dateText(s.seenAt))}</span>
-          ${pettedStamp(petted)}
+          <span class="when" style="${wrote}">${esc(dateText(s.seenAt))}</span>
+          ${pettedStamp(petted, stamped)}
         </figcaption>
       </figure>
       <div class="plate-wrap">

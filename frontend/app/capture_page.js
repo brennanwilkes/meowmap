@@ -34,6 +34,24 @@ let objectUrl = null;
 
 /* ── rendering ─────────────────────────────────────────────────────────── */
 
+/* Both of these went out with `idleView` when the Snap tab became two nav glyphs, and
+ * nothing caught it: they are called from inside `ingest`, which is async and whose only
+ * caller does not await it — so the ReferenceError landed in an unhandled rejection and
+ * the screen simply stayed blank. Every path out of `ingest` writes one of these. */
+function busyView(message) {
+  return `<div class="pad capture-busy">
+    <div class="spinner" role="status" aria-live="polite"></div>
+    <p>${esc(message)}</p>
+  </div>`;
+}
+
+function errorView(message) {
+  return `<div class="pad">
+    <div class="map-note" style="position:static">${esc(message)}</div>
+    <button type="button" class="btn-stick" id="back">Try again</button>
+  </div>`;
+}
+
 function locationLine() {
   if (draft.lat === null) return 'No location yet — tap the map below';
   if (draft.locationSource === LOCATION_SOURCE.manual) return 'Placed by hand';
@@ -454,7 +472,15 @@ export function mount(container) {
   if (queued === null) throw new Error('capture mounted with no photo queued');
   const { file, fromCamera } = queued;
   queued = null;
-  ingest(file, fromCamera);
+  /* ingest() is async and nothing awaits it, so a throw inside it lands in an unhandled
+   * rejection and the screen just stays blank — which is exactly how a missing view
+   * builder went unnoticed. The screen must always say something. */
+  ingest(file, fromCamera).catch((err) => {
+    console.error('[capture] ingest threw:', err);
+    if (root === null) return;
+    root.innerHTML = errorView(err.message);
+    $('#back', root).addEventListener('click', leave);
+  });
 }
 
 export function unmount() {

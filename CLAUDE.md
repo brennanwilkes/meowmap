@@ -253,6 +253,13 @@ where the actual saving is.
 
 ## Capture is an action, not a place
 
+**`ingest()` is async and nothing awaits it**, so anything it throws lands in an unhandled
+rejection and the screen simply stays blank. That is how a missing `busyView` — deleted as
+collateral with `idleView` when the Snap tab became two glyphs — produced "photo upload
+leads to a blank page" on BOTH paths with no visible error. `mount()` now catches and
+renders `errorView`. The screen must always say something.
+
+
 **There is no Snap tab.** The nav is two page markers (Map, Cats) with TWO ROUND GLYPHS
 between them: camera and photo library, each opening its picker in one tap.
 
@@ -286,6 +293,24 @@ app cannot — `getUserMedia` gives ~1080p frames against a 12 MP still.
 - Nav tilts are by CLASS, not `nth-child`: the glyphs sit between the markers now, and a
   positional rule tilted them. A rotated circle looks identical; the camera inside it does
   not.
+
+## The icon
+
+`frontend/icons/make-icons.py` draws all four PNGs with PIL at 8x and downsamples —
+PIL's fills have hard edges and a cat is mostly curves, so supersampling IS the
+anti-aliasing strategy. Re-run it rather than editing a PNG.
+
+- **The face is placed from an explicit margin on all four sides.** The first version had
+  the ear tips ON the top edge with the chin well short of the bottom, so it read as
+  squashed against the top of the tile. The cheeks reach lower than the head circle does,
+  which is why the drawn mass sits below where the head geometry suggests.
+- **An inner ear is scaled about its own CENTROID**, never shrunk toward the tip —
+  shrinking toward the tip pushes it off to one side and the two ears then look like they
+  point in different directions.
+- **Two eyes and a nose is a dark blob at 32px.** Inner ears, slit pupils, catchlights, a
+  muzzle, a "w" mouth and whiskers are what make it recognisable in a tab.
+- The maskable variant scales the face into the middle 78%: Android crops to a circle
+  inscribed in the middle 80%.
 
 ## Routing
 
@@ -435,26 +460,58 @@ sightings on a cat card**.
 
 **A polaroid is ALWAYS PORTRAIT.** The frame's aspect ratio is fixed (`.8`); the window
 takes the PHOTO's aspect ratio, passed in as `--ar` from `photoW/photoH` and capped at
-74%; the chin is whatever is left. So a landscape shot does not letterbox onto grey — it
-gets more white space to write on, which is what a real polaroid does and why every frame
-in a strip is the same height. Nothing in `.polaroid` may use `overflow: hidden`.
+66%; the chin is whatever is left. So a landscape shot does not letterbox — it gets more
+white space to write on, which is what a real polaroid does and why every frame in a strip
+is the same height. Nothing in `.polaroid` may use `overflow: hidden`.
+
+- **The PHOTO sizes itself inside the window; the window has no fill.** The window used to
+  carry the image, the background and the keyline, with `object-fit: contain` letterboxing
+  onto `--paper` — so a portrait shot sat between two beige bars that read as a rendering
+  fault. The `<img>` now takes `max-width`/`max-height` and nothing else, so a portrait
+  photo is simply NARROWER and what shows beside it is the polaroid's own white mount.
+- **The keyline and shadow ride on the `<img>`, not the window**, so they hug the
+  photograph rather than the space it was offered. A hairline plus a soft drop shadow, not
+  a hard inset rule: a photo lying on paper has depth, and a 1px ink line butted straight
+  against the mount reads as a cropped div. `--r-cut` corners take the point off.
+- **The chin's two marks are NOT aligned to each other.** The date is written at a slight
+  angle with an indent; the stamp is absolutely positioned lower and further over, at its
+  own angle. Both jitter per photo, DETERMINISTICALLY from the sighting id (`seenAt` for a
+  pending row) — a re-render must not make the page twitch, and the same photo must look
+  the same every time she opens it. The moduli are deliberately co-prime-ish so the angle
+  and the position do not fall into step down a strip.
 
 **A lone photo must not scroll at all.** `.filmstrip.solo` is `overflow-x: hidden`; with
 it left auto a single frame still rubber-banded a few pixels under a sideways drag, which
 promises another photo that does not exist.
 
-**The cat's name is an ENGRAVED BRASS COLLAR TAG.** Third attempt, and the first two are
-why: a dashed outline is this app's vocabulary for "unselected chip", and a flat coloured
-plate with paper ears still read as a label someone printed. Metal is the trick — it is
-the only material in a paper scrapbook that is not paper, so the one object identifying an
-animal is the one object not part of the page. Brushed brass bands at a shallow angle, a
-bevel (bright top inset, dark bottom inset), the name cut in with a light-below/dark-above
-`text-shadow`, and a **split ring in the cat's colour** hanging off the left — which is
-where the identity colour went when the plate stopped being a coloured fill. Warm brass,
-never silver: cool grey next to scrapbook paper looks like a mistake. Unnamed still lies
-flat, dashed, with no metal and no ring, exactly as an unselected chip does. It is still
-an `<input>`, and the ring lives on the `.tag` WRAPPER because an `<input>` renders no
-`::before`.
+**The cat's name is a CLASSIC ENGRAVED BRASS NAMEPLATE.** Fourth attempt, and the first
+three are why: a dashed outline is this app's vocabulary for "unselected chip"; a flat
+coloured plate with paper ears read as a label someone printed; and a narrow plate with
+shallow diagonal banding read as gold foil. Metal is the trick — it is the only material
+in a paper scrapbook that is not paper, so the one object identifying an animal is the one
+object not part of the page. What makes it metal rather than a yellow rectangle is
+specifically:
+
+- **A VERTICAL dome gradient**, dark chamfer at the top edge → specular band across the
+  middle → dark chamfer at the bottom. Diagonal banding is foil; a vertical dome is a
+  curved piece of metal. The brushed grain is a faint second layer over it, not the effect
+  itself.
+- **An engraved border line**: a bright inset keyline with a darker groove just inside it,
+  which is how an engraver's cut catches light on a convex surface.
+- **Wide and roomy** (`min-width: 190px`, `--t-xl`). A plaque is mostly metal with a name
+  in the middle of it; sized to its text it is a button.
+- **The name cut in**, light edge below the stroke and dark above. Reversed, it embosses.
+- Warm brass, never silver: cool grey next to scrapbook paper looks like a mistake.
+
+**The split ring is METAL, NOT the cat's colour.** Filling it with `--ring` put a
+lime-green hoop on a brass tag, which is not a thing that exists. The identity colour is
+already carried by the pin, the turf and the card border. The ring's four border sides
+take different tones so it catches light on one edge and falls into shadow on the other —
+that is what makes a flat circle read as round.
+
+Unnamed still lies flat, dashed, with no metal and no ring, exactly as an unselected chip
+does. It is still an `<input>`, and the ring lives on the `.tag` WRAPPER because an
+`<input>` renders no `::before`.
 
 **`.btn-*.wide` stack with 14px, not 4px.** Each wears a 3.5px die-cut paper ring and sits
 3px off the page, so a nominal 4px gap is about zero actual daylight — "This is a
