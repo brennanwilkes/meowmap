@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Run an arbitrary read-only query against the remote D1. The escape hatch for questions
+# the purpose-built db-* scripts do not answer.
+#
+# Refuses to run anything that writes: use db-purge for deletions, so that destructive
+# work always goes through the path that names what it is about to destroy.
+source "$(dirname "$0")/db-common"
+show_help() { echo "Usage: db-sql 'SELECT ...' [--pretty]"; }
+SQL=""
+while [[ $# -gt 0 ]]; do case "$1" in
+  --pretty) PRETTY_FLAG="1"; shift;;
+  --help|-h) show_help; exit 0;;
+  *) SQL="$1"; shift;; esac; done
+[[ -z "$SQL" ]] && { show_help; exit 1; }
+if [[ "$SQL" =~ ^[[:space:]]*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE) ]]; then
+  echo "Error: db-sql is read-only. Use db-purge for destructive work." >&2
+  exit 1
+fi
+d1_query "$SQL"

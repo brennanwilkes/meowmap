@@ -1,4 +1,5 @@
 import { $ } from './dom.js';
+import { back } from './nav.js';
 import * as store from './store.js';
 import * as mapPage from './map_page.js';
 import * as capturePage from './capture_page.js';
@@ -89,6 +90,9 @@ function go(next, keepHash = false) {
   }
 
   current = next;
+  // Always revalidate on arriving at a tab. It is a conditional GET: unchanged costs the
+  // server one row read and us nothing, so there is no reason to show a stale map.
+  store.refresh();
   // keepHash is for a cold load straight onto a detail URL: the tab underneath must be
   // mounted, but writing the hash here would navigate away from the detail route before
   // it ever opened.
@@ -101,7 +105,8 @@ function go(next, keepHash = false) {
 function openDetail(name, arg) {
   const el = $('#s-detail');
   if (detail !== null) DETAILS[detail.name].unmount();
-  DETAILS[name].mount(el, arg);
+  DETAILS[name].mount($('#s-detail-body'), arg);
+  el.style.transform = '';
 
   el.classList.remove('hide', 'down');
   if (detail === null) {
@@ -120,6 +125,7 @@ function closeDetail() {
   const el = $('#s-detail');
   DETAILS[detail.name].unmount();
   detail = null;
+  el.style.transform = '';
   // Restore the tab's own title: the detail layer borrowed the topbar, it does not own it.
   if (current !== null) {
     $('#wordmark').textContent = TITLES[current][0];
@@ -155,6 +161,77 @@ window.addEventListener('hashchange', route);
 
 $('#cog').addEventListener('click', () => { location.hash = '#/settings'; });
 
+/* ── swipe the detail sheet back down ──────────────────────────────────── */
+
+/* There is no Back button on a detail page: the gesture IS the affordance, which is why
+ * the sheet stops short of the top edge and wears a grabber. Two rules make it not fight
+ * the page underneath it:
+ *   - a drag only starts at the grabber, or when the body is scrolled to the very top;
+ *   - once a vertical drag is committed the page must not also scroll, so the move
+ *     handler is non-passive and calls preventDefault.
+ */
+const DISMISS_PX = 90;
+const DISMISS_VELOCITY = 0.5;   // px/ms — a quick flick counts even if it is short
+
+(() => {
+  const el = $('#s-detail');
+  const body = $('#s-detail-body');
+  let startY = 0;
+  let startX = 0;
+  let startedAt = 0;
+  let dragging = false;
+  let decided = false;
+  let fromGrab = false;
+
+  el.addEventListener('touchstart', (e) => {
+    if (detail === null || e.touches.length !== 1) return;
+    fromGrab = e.target.closest('.grab') !== null;
+    if (!fromGrab && body.scrollTop > 0) return;
+    startY = e.touches[0].clientY;
+    startX = e.touches[0].clientX;
+    startedAt = e.timeStamp;
+    dragging = true;
+    decided = false;
+    el.style.transition = 'none';
+  }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const dy = e.touches[0].clientY - startY;
+    const dx = e.touches[0].clientX - startX;
+
+    if (!decided) {
+      // Let a horizontal swipe or an upward pull go to the page untouched.
+      if (Math.abs(dx) > Math.abs(dy) || dy < 0) { dragging = false; el.style.transition = ''; return; }
+      if (Math.abs(dy) < 8) return;
+      decided = true;
+    }
+    e.preventDefault();
+    // Resist slightly rather than tracking 1:1 — it reads as weight rather than slack.
+    el.style.transform = `translateY(${dy * 0.85}px)`;
+  }, { passive: false });
+
+  const end = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    el.style.transition = '';
+    const dy = (e.changedTouches?.[0]?.clientY ?? startY) - startY;
+    const velocity = dy / Math.max(1, e.timeStamp - startedAt);
+    if (decided && (dy > DISMISS_PX || velocity > DISMISS_VELOCITY)) {
+      el.style.transform = '';
+      back();
+      return;
+    }
+    el.style.transform = '';
+  };
+  el.addEventListener('touchend', end, { passive: true });
+  el.addEventListener('touchcancel', end, { passive: true });
+
+  // The grabber is also a plain tap target: a gesture with no fallback strands anyone
+  // who does not discover it, and it costs one listener.
+  $('#detailGrab').addEventListener('click', () => { if (detail !== null) back(); });
+})();
+
 // Cheap to call and a 304 costs the server one row read, so refresh on every return to
 // the app rather than polling on a timer.
 document.addEventListener('visibilitychange', () => {
@@ -168,7 +245,9 @@ store.refresh();
 // A 401 during a background flush means the pass expired, not that anything is wrong.
 // Registering the exchange here rather than in the capture page means a queue that
 // drains hours later can still re-verify.
-flush.onNeedsPass(turnstile.ensurePass);
+// renewPass, not ensurePass: a 401 means the pass we hold was REJECTED, so reusing the
+// stored one would loop forever.
+flush.onNeedsPass(turnstile.renewPass);
 
 pwa.register();
 // Ask every boot: persist() legitimately flips to granted once installed to the home

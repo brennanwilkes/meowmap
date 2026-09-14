@@ -49,7 +49,7 @@ function showUpdateBar() {
   if (document.getElementById('update-bar') !== null) return;
   const bar = document.createElement('button');
   bar.id = 'update-bar';
-  bar.className = 'update-bar sticker';
+  bar.className = 'update-bar';
   bar.textContent = 'A new version is ready — tap to reload';
   bar.addEventListener('click', () => {
     bar.disabled = true;
@@ -76,13 +76,6 @@ export async function ensurePersisted() {
   return { supported: true, persisted, standalone: isStandalone() };
 }
 
-export async function storageReport() {
-  const state = await ensurePersisted();
-  if (navigator.storage?.estimate === undefined) return { ...state, usage: null, quota: null };
-  const { usage, quota } = await navigator.storage.estimate();
-  return { ...state, usage, quota };
-}
-
 /* ── the install nudge ─────────────────────────────────────────────────── */
 
 /* iOS has no beforeinstallprompt, so installing cannot be offered as a button — it has
@@ -98,7 +91,7 @@ export function maybeOfferInstall(container) {
   card.innerHTML = `
     <p>Add Meowmap to your home screen so photos stay safe while they wait to upload.</p>
     <p class="hand">Share ${esc('→')} Add to Home Screen</p>
-    <button class="sticker sm" type="button">Got it</button>`;
+    <button class="btn-stick sm" type="button">Got it</button>`;
   card.querySelector('button').addEventListener('click', () => {
     localStorage.setItem(LS.installHintSeen, String(Date.now()));
     card.remove();

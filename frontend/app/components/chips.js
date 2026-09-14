@@ -9,7 +9,7 @@ import { esc } from '../dom.js';
  * keeps them reading as stickers rather than as badges.
  */
 
-const PETTED_LABEL = { yes: 'petted it', no: 'did not pet it', fled: 'it fled' };
+const PETTED_LABEL = { yes: 'petted it', no: 'did not pet it' };
 const FILLS = ['var(--marigold)', 'var(--coral)', 'var(--jade)', 'var(--peri)'];
 const ON_DARK = new Set(['var(--coral)', 'var(--peri)']);
 
@@ -28,9 +28,11 @@ export function chipRows(draft) {
     <div class="chiprow" data-chips="coat">
       ${COAT_TAGS.map((t, i) => chip(t, t, draft.coat.includes(t), 'coat', i)).join('')}
     </div>
+    <hr class="rule thin">
     <div class="chiprow" data-chips="size">
       ${SIZE_TAGS.map((t, i) => chip(t, t, draft.size === t, 'size', i + 1)).join('')}
     </div>
+    <hr class="rule thin">
     <div class="chiprow" data-chips="petted">
       ${PETTED_VALUES.map((v, i) => chip(PETTED_LABEL[v], v, draft.petted === v, 'petted', i + 2)).join('')}
     </div>`;

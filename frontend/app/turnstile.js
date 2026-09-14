@@ -1,4 +1,5 @@
 import { exchangeTurnstileToken, getConfig } from './api.js';
+import { clearPass, getPass } from './device.js';
 
 /* The Turnstile → upload pass exchange.
  *
@@ -40,6 +41,22 @@ function loadScript() {
  * failing 401 at once must produce ONE challenge, not one each.
  */
 export function ensurePass() {
+  // SHORT-CIRCUIT FIRST. Without this every save ran the full challenge even though a
+  // valid 30-day pass was already in localStorage — three Turnstile solves in four
+  // minutes showed up in the audit log on the first real device test. Sliding renewal is
+  // supposed to make this visible roughly once, ever.
+  const existing = getPass();
+  if (existing !== null) return Promise.resolve(existing);
+
+  if (inFlight !== null) return inFlight;
+  inFlight = run().finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+/** Force a new challenge regardless of what is stored. The 401 path uses this: the
+ *  server has just told us the pass we hold is no longer acceptable. */
+export function renewPass() {
+  clearPass();
   if (inFlight !== null) return inFlight;
   inFlight = run().finally(() => { inFlight = null; });
   return inFlight;

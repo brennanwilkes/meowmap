@@ -21,9 +21,15 @@
 }
 .sheet.open { transform: translateY(0); }
 
+/* Padded well beyond the visible pill so it is a real drag handle on a thumb, and
+   touch-action:none so iOS does not claim the gesture as a page scroll. */
 .grabber {
   width: 44px; height: 5px; border-radius: 99px;
   background: var(--ink-faint); margin: 10px auto 14px;
+  padding: 0; box-sizing: content-box;
+  border-top: 10px solid transparent; border-bottom: 10px solid transparent;
+  background-clip: content-box;
+  touch-action: none;
 }
 
 .sheet h2 { font-size: var(--t-xl); font-weight: 700; letter-spacing: -.01em; line-height: 1.1; }

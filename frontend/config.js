@@ -51,6 +51,15 @@ export const DEFAULT_TILE_ID = 'osm';
 export const FALLBACK_CENTRE = { lat: 48.4284, lon: -123.3656 };
 export const DEFAULT_ZOOM = 15;
 
+/** The default view: James Bay (SW) to Mount Tolmie (NE) — the walkable core of
+ *  Victoria. Fitting BOUNDS rather than setting a zoom is what keeps this correct on
+ *  every screen: the same zoom level shows wildly different areas on a phone and a
+ *  laptop, so a hardcoded number is right on exactly one device. */
+export const DEFAULT_BOUNDS = {
+  sw: { lat: 48.4130, lon: -123.3790 },
+  ne: { lat: 48.4620, lon: -123.3120 },
+};
+
 /* ── geolocation ───────────────────────────────────────────────────────────
  * She is WALKING, so a cached fix from five minutes ago is a block away —
  * maximumAge must stay 0. The first iOS fix is typically a 1–3 km cell estimate with
@@ -109,7 +118,7 @@ export const ACCEPT_TYPES = 'image/jpeg,image/png';
  * `tests/vocab.test.mjs` reads both and asserts they agree. */
 export const COAT_TAGS = ['orange', 'black', 'white', 'grey', 'tabby', 'tuxedo', 'calico'];
 export const SIZE_TAGS = ['kitten', 'adult', 'chonk'];
-export const PETTED_VALUES = ['yes', 'no', 'fled'];
+export const PETTED_VALUES = ['yes', 'no'];
 export const MAX_NOTE_LEN = 280;
 export const MAX_NAME_LEN = 60;
 

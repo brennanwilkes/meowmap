@@ -10,7 +10,12 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "reconcile": "node scripts/r2-reconcile.mjs",
-    "gc": "node scripts/r2-reconcile.mjs --gc"
+    "gc": "node scripts/r2-reconcile.mjs --gc",
+    "photos": "node scripts/photos.mjs",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
+    "purge": "node scripts/purge.mjs",
+    "wipe": "node scripts/purge.mjs --all --apply --yes-really"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260910.1",

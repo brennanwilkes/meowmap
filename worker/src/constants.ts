@@ -62,7 +62,7 @@ export const NO_STORE = 'no-store';
 /* ── validation ────────────────────────────────────────────────────────────── */
 export const COAT_TAGS = ['orange', 'black', 'white', 'grey', 'tabby', 'tuxedo', 'calico'] as const;
 export const SIZE_TAGS = ['kitten', 'adult', 'chonk'] as const;
-export const PETTED_VALUES = ['yes', 'no', 'fled'] as const;
+export const PETTED_VALUES = ['yes', 'no'] as const;
 export const LOCATION_SOURCES = ['exif', 'device', 'manual'] as const;
 export const MAX_NOTE_LEN = 280;
 export const MAX_NAME_LEN = 60;

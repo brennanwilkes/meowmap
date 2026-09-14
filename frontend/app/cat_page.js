@@ -31,10 +31,7 @@ function render(state) {
 
   const cat = store.catsWithSightings(state).find((c) => c.id === catId);
   if (cat === undefined) {
-    root.innerHTML = `<div class="pad">
-      <p class="empty">That cat is not here any more.</p>
-      <button type="button" class="btn-stick" id="back">Back</button></div>`;
-    $('#back', root).addEventListener('click', () => back('#/cats'));
+    root.innerHTML = '<div class="pad"><p class="empty">That cat is not here any more.</p></div>';
     return;
   }
 
@@ -44,7 +41,7 @@ function render(state) {
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(colour.hex)}">
       <div class="detail-head">
-        <button type="button" class="btn-ghost" id="back">Back</button>
+        <h1 class="sec">Edit cat</h1>
         <span class="swatch" aria-hidden="true"></span>
       </div>
 
@@ -72,6 +69,7 @@ function render(state) {
         Not one cat after all
       </button>
       <p class="hand">the photos stay, they just go back to unidentified</p>
+      <div class="map-note" id="ungroup-err" style="position:static"></div>
     </div>`;
 
   wire(cat);
@@ -79,8 +77,6 @@ function render(state) {
 }
 
 function wire(cat) {
-  $('#back', root).addEventListener('click', () => back('#/cats'));
-
   for (const btn of root.querySelectorAll('[data-sighting]')) {
     btn.addEventListener('click', () => navigate(`#/sighting/${btn.dataset.sighting}`));
   }
@@ -138,7 +134,8 @@ async function ungroup(cat) {
     console.error('[cat] ungroup failed:', err);
     btn.disabled = false;
     btn.textContent = 'Not one cat after all';
-    btn.insertAdjacentHTML('afterend', `<div class="map-note">${esc(err.message)}</div>`);
+    const note = $('#ungroup-err', root);
+    if (note !== null) note.textContent = err.message;
   }
 }
 

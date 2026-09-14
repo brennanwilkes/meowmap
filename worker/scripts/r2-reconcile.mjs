@@ -18,41 +18,14 @@
  * damage would stay invisible for weeks.
  */
 
-import { execFileSync } from 'node:child_process';
-
-const DB = 'meowmap';
-const BUCKET = 'meowmap-photos';
-const PREFIX = 'photos/';
+import { BUCKET, DB_NAME, d1, PREFIX, r2Delete, r2List } from './cf.mjs';
 
 const args = new Set(process.argv.slice(2));
 const APPLY = args.has('--apply') || args.has('--gc');
 const GC = args.has('--gc');
 
-function d1(sql) {
-  const raw = execFileSync(
-    'npx',
-    ['wrangler', 'd1', 'execute', DB, '--remote', '--json', '--command', sql],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-  );
-  const parsed = JSON.parse(raw);
-  return Array.isArray(parsed) ? (parsed[0]?.results ?? []) : [];
-}
-
-function r2List() {
-  // `wrangler r2 object list` paginates internally with --json.
-  const raw = execFileSync(
-    'npx',
-    ['wrangler', 'r2', 'bucket', 'object', 'list', BUCKET, '--prefix', PREFIX, '--json'],
-    { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 },
-  );
-  const parsed = JSON.parse(raw);
-  const objects = parsed.objects ?? parsed.result ?? parsed;
-  if (!Array.isArray(objects)) throw new Error('unexpected r2 list shape');
-  return objects.map((o) => ({ key: o.key, size: Number(o.size ?? 0) }));
-}
-
 function main() {
-  console.log(`Reconciling ${BUCKET} against ${DB}${APPLY ? '' : '  (dry run)'}\n`);
+  console.log(`Reconciling ${BUCKET} against ${DB_NAME}${APPLY ? '' : '  (dry run)'}\n`);
 
   const referenced = new Set();
   for (const row of d1(
@@ -92,10 +65,7 @@ function main() {
 
   if (GC && orphans.length > 0) {
     console.log(`Deleting ${orphans.length} orphaned objects (DeleteObject is free)…`);
-    for (const o of orphans) {
-      execFileSync('npx', ['wrangler', 'r2', 'bucket', 'object', 'delete', `${BUCKET}/${o.key}`],
-        { stdio: 'inherit' });
-    }
+    for (const o of orphans) r2Delete(o.key);
   } else if (orphans.length > 0) {
     console.log(`Pass --gc to delete ${orphans.length} orphans. Sample:`);
     for (const o of orphans.slice(0, 10)) console.log(`  ${o.key}  ${o.size}B`);

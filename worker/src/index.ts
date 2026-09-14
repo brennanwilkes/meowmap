@@ -40,25 +40,43 @@ export default {
     const now = Date.now();
     const audits: AuditFields[] = [];
 
+    // Only ever audit a request that got past auth; see audit.ts for why. `audits` is
+    // empty until then, which is what makes this safe to call unconditionally.
+    // EXACTLY ONE row, always the LAST pushed. A placeholder goes in the moment auth
+    // passes so a failure still has something to write; a handler then pushes the
+    // specific entry. Writing both would cost two rows per upload and break the budget
+    // this project is built around (4 rows/upload against a hard 100k/day cap).
+    const writeAudit = (over: Partial<AuditFields>) => {
+      if (audits.length === 0) return;
+      const f = audits[audits.length - 1];
+      ctx.waitUntil(
+        env.MEOWMAP_DB.batch([auditStatement(env, req, now, { ...f, ...over })])
+          .then(() => undefined)
+          .catch((e) => console.error('[audit] failed:', e)),
+      );
+    };
+
     try {
       const res = await route(req, env, ctx, path, now, audits);
+      // Successes are audited too. Without this the log only ever held /pass rows, so
+      // "did this upload reach the server, and what did it do" was unanswerable — which
+      // is the entire reason the table exists.
+      writeAudit({});
       return res;
     } catch (err) {
       if (err instanceof HttpError) {
-        // Only audit a failure that already got past auth; see audit.ts for why.
-        if (audits.length > 0) {
-          const f = audits[0];
-          ctx.waitUntil(
-            env.MEOWMAP_DB
-              .batch([auditStatement(env, req, now, { ...f, status: err.status, outcome: err.outcome })])
-              .then(() => undefined)
-              .catch((e) => console.error('[audit] failed:', e)),
-          );
-        }
+        writeAudit({ status: err.status, outcome: err.outcome });
         return errorJson(req, env, err.status, err.message);
       }
-      // Never leak internal error text to a public client.
+      // An unhandled error is the MOST important thing to record, not the least: it is
+      // the only failure mode with no status code to explain itself to the client.
       console.error('[fetch] unhandled:', err);
+      writeAudit({
+        status: 500,
+        outcome: 'internal',
+        detail: err instanceof Error ? err.message.slice(0, 300) : String(err).slice(0, 300),
+      });
+      // Never leak internal error text to a public client.
       return errorJson(req, env, 500, 'Internal error');
     }
   },

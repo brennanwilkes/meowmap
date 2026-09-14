@@ -18,6 +18,13 @@ let root = null;
 let unsubscribe = null;
 let selected = new Set();
 let busy = false;
+/** Object URLs minted for queued thumbnails; leaking these OOMs an iPhone. */
+const objectUrls = new Set();
+
+function releaseUrls() {
+  for (const u of objectUrls) URL.revokeObjectURL(u);
+  objectUrls.clear();
+}
 
 function catCard(cat) {
   const colour = catColour(cat.id);
@@ -36,7 +43,19 @@ function catCard(cat) {
     </button>`;
 }
 
+/* A queued sighting is shown but NOT selectable: grouping PATCHes by server id and it
+ * does not have one yet. Showing it greyed with "uploading" is honest; hiding it makes
+ * the app look like it lost a photo. */
 function looseCard(s) {
+  if (s.pending === true) {
+    const url = URL.createObjectURL(new Blob([s.thumbBytes], { type: 'image/jpeg' }));
+    objectUrls.add(url);
+    return `
+      <div class="loose-card waiting">
+        <img src="${esc(url)}" alt="">
+        <span class="why">${esc(s.state === 'failed' ? 'upload failed' : 'uploading…')}</span>
+      </div>`;
+  }
   const on = selected.has(s.id);
   return `
     <button type="button" class="loose-card${on ? ' picked' : ''}" data-loose="${s.id}"
@@ -50,11 +69,13 @@ function render(state) {
   const cats = store.catsWithSightings(state);
   const loose = store.looseSightings(state);
   // Drop selections whose sighting has gone (deleted elsewhere, or just grouped).
+  releaseUrls();
   const liveIds = new Set(loose.map((s) => s.id));
   for (const id of selected) if (!liveIds.has(id)) selected.delete(id);
 
   root.innerHTML = `
-    <div class="pad">
+    <div class="pad" id="cats-pad">
+      <div class="pull" id="pull"><span>pull to refresh</span></div>
       ${cats.length === 0 && loose.length === 0 ? `
         <p class="empty">No cats yet. Tap <strong>Snap</strong> and go find one.</p>` : ''}
 
@@ -90,6 +111,7 @@ function wire() {
   }
   $('#clear-sel', root).addEventListener('click', () => { selected.clear(); render(store.get()); });
   $('#group-go', root).addEventListener('click', group);
+  wirePull();
 }
 
 /**
@@ -123,6 +145,7 @@ async function group() {
     console.error('[cats] group failed:', err);
     bar.insertAdjacentHTML('beforebegin',
       `<div class="map-note" id="group-err">${esc(err.message)}</div>`);
+    console.error('[cats] surfaced:', err);
     go.disabled = false;
     go.textContent = 'These are one cat';
   } finally {
@@ -130,14 +153,72 @@ async function group() {
   }
 }
 
+/* Pull to refresh.
+ *
+ * Deliberately hand-rolled and deliberately local to this page: the map cannot have it
+ * (a downward drag there pans), and the detail sheet's downward drag already means
+ * dismiss. One gesture, one meaning, per surface.
+ *
+ * The listeners live on the .pad rather than the screen so they die with the innerHTML
+ * that created them — except the move handler, which must be non-passive to stop iOS
+ * rubber-banding the whole page while we are showing our own indicator.
+ */
+const PULL_TRIGGER_PX = 64;
+
+function wirePull() {
+  const pad = $('#cats-pad', root);
+  const ind = $('#pull', root);
+  let startY = 0;
+  let pulling = false;
+  let dy = 0;
+
+  const onStart = (e) => {
+    if (e.touches.length !== 1 || pad.scrollTop > 0) return;
+    startY = e.touches[0].clientY;
+    pulling = true;
+    dy = 0;
+    pad.style.transition = 'none';
+  };
+  const onMove = (e) => {
+    if (!pulling) return;
+    dy = e.touches[0].clientY - startY;
+    if (dy <= 0) { pulling = false; pad.style.transform = ''; pad.style.transition = ''; return; }
+    e.preventDefault();
+    // Rubber-band: the pull gets heavier the further it goes, so it cannot be dragged
+    // halfway down the screen.
+    const eased = Math.min(96, dy ** 0.85);
+    pad.style.transform = `translateY(${eased}px)`;
+    ind.classList.toggle('ready', dy > PULL_TRIGGER_PX);
+    ind.querySelector('span').textContent = dy > PULL_TRIGGER_PX ? 'release to refresh' : 'pull to refresh';
+  };
+  const onEnd = async () => {
+    if (!pulling) return;
+    pulling = false;
+    pad.style.transition = '';
+    pad.style.transform = '';
+    if (dy > PULL_TRIGGER_PX) {
+      ind.querySelector('span').textContent = 'refreshing…';
+      await store.refresh();
+    }
+    ind.classList.remove('ready');
+  };
+
+  pad.addEventListener('touchstart', onStart, { passive: true });
+  pad.addEventListener('touchmove', onMove, { passive: false });
+  pad.addEventListener('touchend', onEnd, { passive: true });
+  pad.addEventListener('touchcancel', onEnd, { passive: true });
+}
+
 export function mount(container) {
   root = container;
   selected = new Set();
   unsubscribe = store.subscribe(render);
+  store.refresh();
 }
 
 export function unmount() {
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
+  releaseUrls();
   selected.clear();
   root = null;
 }

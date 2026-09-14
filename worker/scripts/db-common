@@ -40,11 +40,31 @@ parse_common_flags() {
     set -- "${remaining[@]}"
 }
 
+# Resolve the real database UUID rather than trusting wrangler.toml.
+#
+# WHY: `database_id` in wrangler.toml is the literal placeholder `__D1_ID__`, which CI
+# patches at deploy time and nobody patches locally. Passing the NAME does not save you —
+# wrangler matches the name against the config first and then calls the API with the
+# placeholder, so every script failed with "database __D1_ID__ could not be found". That
+# went unnoticed for days because the old d1_query swallowed stderr, so a broken script
+# and an empty table looked identical. Never swallow stderr here again.
+D1_UUID=""
+resolve_db() {
+    [[ -n "$D1_UUID" ]] && return
+    D1_UUID="$(npx wrangler d1 list --json \
+        | python3 -c "import json,sys; print(next(d['uuid'] for d in json.load(sys.stdin) if d['name']=='meowmap'))")"
+    if [[ -z "$D1_UUID" ]]; then
+        echo "Error: could not resolve the 'meowmap' D1 database. Check 'npx wrangler whoami'." >&2
+        exit 1
+    fi
+}
+
 d1_query() {
     local sql="$1"
+    resolve_db
     if [[ -n "$PRETTY_FLAG" ]]; then
-        npx wrangler d1 execute meowmap --remote --command "$sql" 2>/dev/null
+        npx wrangler d1 execute "$D1_UUID" --remote --command "$sql"
     else
-        npx wrangler d1 execute meowmap --remote --json --command "$sql" 2>/dev/null
+        npx wrangler d1 execute "$D1_UUID" --remote --json --command "$sql"
     fi
 }

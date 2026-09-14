@@ -121,10 +121,12 @@ header states the two rules that erode silently. In short:
   pins are markers and `markerPane` sorts by latitude, so a `zIndexOffset` fight works by
   accident and breaks when a pin drifts north of the label.
 - Turf labels hide below zoom 16 and are tappable.
-- **The coat filter (`filter.js`) is OR, transient, and filters territory too.** OR is
-  monotone, so an extra chip can only reveal more. It is deliberately not persisted — a
-  filter surviving a relaunch looks like lost data. Filtering pins without also
-  filtering `catsWithSightings` draws a turf blob around points that are not there.
+- **The map filter (`filter.js`) covers coat, size and petted: OR within a group, AND
+  across groups.** Within-group OR keeps each chip monotone (it can only reveal more);
+  across-group AND is the only thing that makes a second group worth having. It is
+  deliberately not persisted — a filter surviving a relaunch looks like lost data — and
+  it filters `catsWithSightings` as well as pins, or a turf blob gets drawn around
+  points that are not on the map.
 
 ## iOS realities that shaped the build
 
@@ -214,11 +216,28 @@ tab beneath *without* writing the hash, or it navigates away before the detail o
   fields that actually changed.
 - **Re-render is suppressed while an input has focus or an edit is unsaved** — the store
   fires on every refresh, including the one a save triggers.
+- **Detail views and the bottom sheet have NO back button — you swipe them down.** Both
+  stop short of the top edge so the page behind shows, both wear a grabber, and in both
+  a drag only starts on the grabber or at scrollTop 0 (otherwise a downward flick
+  mid-content dismisses instead of scrolling). The grabber is also a tap target: a
+  gesture with no fallback strands anyone who does not discover it.
+- **`.pad` sets `overflow-x: hidden`.** Every card carries a hand-stuck rotation, and a
+  rotated box sticks out past its layout width, so a grid reaching the container edge
+  produces a sideways scroll that looks like a bug and is the design working.
+- **Action bars use `justify-content: space-between`, never `margin-left: auto`.** An
+  auto margin on an overflowing flex line pushes the first item off the left edge.
 - **Destructive actions arm on the first tap and fire on the second.** No `confirm()`:
   a native dialog in a standalone app looks like the browser breaking through.
 - **Multi-step mutations are not atomic and must fail visibly**, not roll back. Grouping
   is `POST /cats` + N PATCHes; ungrouping unlinks *before* deleting the cat, so a
   part-way failure leaves loose sightings rather than dangling references.
+- **Every mutation is audited, successes included.** The flush originally ran only in the
+  error path, so the log held nothing but `/pass` rows and "did this upload land, and what
+  did it do" was unanswerable. Exactly ONE row is written per request — the last entry
+  pushed — because two would break the 4-rows-per-upload budget.
+- **`ensurePass()` short-circuits on a stored pass.** It used to run the full Turnstile
+  flow on every save; the first device test logged three solves in four minutes. A 401
+  uses `renewPass()` instead, which clears first — reusing a rejected pass loops forever.
 - **`accuracyM` must be a whole number.** The Worker validates it with `int()`, both real
   sources are floats (EXIF 9.98, `coords.accuracy` a double), and the outbox treats a 400
   as terminal — so an unrounded value fails every upload permanently. Rounded once in
@@ -230,17 +249,46 @@ tab beneath *without* writing the hash, or it navigates away before the detail o
   documented `--screenshot` trick is unavailable. Verify markup structurally instead (JS
   parses, tags balance, external URLs 200) and get Brennan to look at anything visual.
 
-## Scripts
+## Admin scripts
 
-`npm run reconcile` recomputes true R2 bytes/objects from the bucket and corrects
-`app_meta` (the counters are incremental and `r2_reads_est` is 1-in-100 sampled, so they
-drift). `npm run gc` is the same script with `--gc`, which additionally deletes
-unreferenced objects. **There is no separate `r2-gc.mjs` and there should not be** — the
-reachability union lives in one place or the two copies drift. Both default to a dry run.
+All under `worker/scripts`, all remote, all dry-run by default where they destroy.
 
-Reachability includes soft-deleted rows: tombstones pin their bytes so undelete is free.
-The script reports `referenced − listed` (a row whose photo is gone) but never auto-fixes
-it — that needs a human.
+| | |
+|---|---|
+| `npm run photos` | **Interactive.** Page one sighting at a time — cat, date, device, coordinates, tags — with `o` to open the image in a browser and `d` to delete it |
+| `npm run backup` | Dump every table to `backups/meowmap-<ts>.json`. `--photos` also downloads the images, which is the only part R2 cannot give back |
+| `npm run restore <file>` | REPLACES the tables from a backup, preserving ids. `--check-photos` first says which images still exist |
+| `npm run purge -- …` | `--sighting`/`--cat`/`--before`/`--all`, `--apply` to commit |
+| `npm run wipe` | `purge --all --apply --yes-really` |
+| `npm run reconcile` / `gc` | Recompute R2 counters; `gc` also deletes unreferenced objects |
+| `scripts/db-sql 'SELECT …'` | Read-only escape hatch. Refuses to write |
+
+**Two traps these scripts exist to have already hit:**
+
+- **`database_id` in `wrangler.toml` is the literal `__D1_ID__`.** CI patches it at deploy;
+  nobody patches it locally. Passing the *name* does not help — wrangler resolves the name
+  against the config and then calls the API with the placeholder. So `cf.mjs` and
+  `db-common` look the UUID up via `wrangler d1 list`. The old helpers also piped stderr to
+  `/dev/null`, which made a broken script and an empty table look identical for days.
+  **Never swallow stderr in these scripts.**
+- **Wrangler has no `r2 object list`** (only get/put/delete), so listing needs the REST API
+  and a token. Scripts that merely delete known keys compute reachability in SQL instead
+  and stay on OAuth alone.
+
+**Deleting photos is always reachability-based**, never "delete the hashes of the row I
+just removed": keys are content-addressed, so two sightings can share one object.
+
+`purge.mjs` HARD-deletes while the app soft-deletes. The app tombstones because recycled
+rowids would re-point an offline client's cache; that is about live data. Test data you
+want gone should not keep pinning R2 bytes forever.
+
+`reconcile` recomputes true R2 bytes/objects from the bucket, because the counters are
+incremental and `r2_reads_est` is 1-in-100 sampled, so they drift. It needs
+`CLOUDFLARE_API_TOKEN` (the listing problem above). **There is no separate `r2-gc.mjs`
+and there should not be** — one reachability union, or the two copies drift. Its
+reachability includes soft-deleted rows, since tombstones pin their bytes so undelete is
+free, and it reports `referenced − listed` (a row whose photo is gone) without ever
+auto-fixing it: that needs a human.
 
 ## Reference
 

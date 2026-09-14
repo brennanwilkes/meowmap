@@ -39,7 +39,6 @@ function idleView() {
         <button type="button" class="btn-stick big" id="take">Take a photo</button>
         <button type="button" class="btn-ghost big" id="choose">Choose a photo</button>
       </div>
-      <p class="hand arrow-note">a photo from the camera uses where you are right now</p>
       <div id="install-slot"></div>
       <input type="file" id="file-camera" accept="${esc(ACCEPT_TYPES)}"
              capture="environment" hidden>

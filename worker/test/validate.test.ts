@@ -56,9 +56,13 @@ test('sorting coat tags makes storage order-independent', () => {
 });
 
 test('enum fields reject anything unlisted', () => {
-  assert.strictEqual(validators.petted('fled'), 'fled');
+  assert.strictEqual(validators.petted('yes'), 'yes');
   assert.strictEqual(validators.size('chonk'), 'chonk');
   assert.throws(() => validators.petted('maybe'), HttpError);
+  // 'fled' was a third petted option, cut after device testing. It must now be rejected
+  // rather than quietly accepted: no row uses it (checked in prod before removing), and
+  // an enum the client cannot produce must not stay writable through the API.
+  assert.throws(() => validators.petted('fled'), HttpError);
   assert.throws(() => validators.size('enormous'), HttpError);
   assert.throws(() => validators.locationSource('guess'), HttpError);
 });

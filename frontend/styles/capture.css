@@ -4,6 +4,7 @@
 
 /* A section break as a torn line of ruled paper, not a grey <hr>. Brennan's note:
    "maybe just some HR like lined paper ish to separate the sections". */
+.rule.thin { margin: 10px 0 8px; opacity: .6; }
 .rule {
   border: 0;
   height: 1px;
@@ -12,29 +13,8 @@
     90deg, var(--rule) 0 7px, transparent 7px 11px);
 }
 
-.capture-idle, .capture-draft { display: flex; flex-direction: column; }
-
 .shutter-row { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .btn-stick.big, .btn-ghost.big { font-size: var(--t-lg); padding: 16px 0; width: 100%; }
-
-/* Brennan: the old camera caption "kinda pointed from nowhere". It now sits directly
-   under the buttons it describes, with the arrow leading up to them rather than off
-   into empty page. */
-.arrow-note {
-  position: relative;
-  margin: 14px 0 0 46px;
-  font-size: var(--t-sm);
-  max-width: 22em;
-}
-.arrow-note::before {
-  content: '';
-  position: absolute; left: -34px; top: -4px;
-  width: 26px; height: 22px;
-  border-left: 2px solid var(--ink-faint);
-  border-top: 2px solid var(--ink-faint);
-  border-top-left-radius: 14px;
-  transform: rotate(-8deg);
-}
 
 .capture-busy { display: grid; place-items: center; gap: 14px; padding-top: 64px; }
 .spinner {
@@ -70,8 +50,11 @@
 .loc-line .when { font-size: var(--t-sm); color: var(--ink-soft); }
 .loc-line .sub { font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft); text-align: right; }
 
+/* height + flex-shrink:0. The container is a scrolling .pad, and any ancestor that ever
+   becomes a column flex box will otherwise collapse this to zero — which is exactly what
+   happened on the phone: the map was invisible and "tap the map" pointed at nothing. */
 .mini-map {
-  height: 190px; margin-top: 10px;
+  height: 190px; flex: 0 0 190px; min-height: 190px; margin-top: 10px;
   border: 2.5px solid var(--ink);
   border-radius: var(--r-cut);
   box-shadow: var(--lift);
@@ -192,6 +175,9 @@
 /* ── lists: cats, loose sightings, queue ───────────────────────────────── */
 
 .detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.detail-head h1 { margin: 0; }
+/* Empty until something fails, so it must not reserve space on a healthy page. */
+#ungroup-err:empty { display: none; }
 .detail-head .swatch {
   margin-left: auto; width: 20px; height: 20px; border-radius: 50%;
   background: var(--ring); box-shadow: var(--cut), var(--lift);
@@ -272,8 +258,13 @@
   box-shadow: var(--lift-lg);
   transition: transform var(--turn), opacity var(--turn);
 }
-.group-bar > span { font-family: var(--font-hand); font-size: var(--t-sm); }
-.group-bar .btn-stick, .save-bar .btn-stick { margin-left: auto; }
+.group-bar > span { font-family: var(--font-hand); font-size: var(--t-sm); min-width: 0; }
+/* justify-content, NOT margin-left:auto. An auto margin on an overflowing flex line
+   pushes the first item off the left edge, which is exactly what "Undo" did on the
+   phone. space-between degrades correctly instead. */
+.group-bar, .save-bar { justify-content: space-between; }
+.group-bar > *, .save-bar > * { flex: 0 1 auto; min-width: 0; }
+.save-bar .btn-stick, .group-bar .btn-stick { flex: 0 1 auto; white-space: nowrap; }
 .group-bar.down, .save-bar.down {
   transform: translateY(calc(100% + 24px + var(--safe-b)));
   opacity: 0; pointer-events: none;
@@ -315,3 +306,16 @@
 .btn-ghost.danger { color: #a8324a; border-color: #a8324a; }
 
 .sheet-acts { display: flex; justify-content: flex-end; margin-top: 14px; }
+
+/* Pull to refresh. The indicator is pulled up out of view with a negative margin so it
+   is REVEALED by the pad translating down, rather than riding down with it. */
+.pull {
+  height: 26px; margin-top: -34px;
+  display: grid; place-items: center;
+  font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-faint);
+}
+.pull.ready { color: var(--ink); }
+
+/* A queued sighting: present, clearly not finished, and not selectable. */
+.loose-card.waiting { opacity: .62; }
+.loose-card.waiting .why { color: var(--ink-soft); font-style: italic; }

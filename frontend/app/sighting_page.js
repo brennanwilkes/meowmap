@@ -62,10 +62,7 @@ function render(state) {
 
   const s = store.sightingById(sightingId, state);
   if (s === null) {
-    root.innerHTML = `<div class="pad">
-      <p class="empty">That sighting is not here any more.</p>
-      <button type="button" class="btn-stick" id="back">Back</button></div>`;
-    $('#back', root).addEventListener('click', () => back());
+    root.innerHTML = '<div class="pad"><p class="empty">That sighting is not here any more.</p></div>';
     return;
   }
 
@@ -78,10 +75,9 @@ function render(state) {
 
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(ring)}">
-      <div class="detail-head">
-        <button type="button" class="btn-ghost" id="back">Back</button>
-        ${cat === null ? '' : `<button type="button" class="btn-ghost" id="to-cat">${esc(displayName(cat))}</button>`}
-      </div>
+      ${cat === null ? '' : `<div class="detail-head">
+        <button type="button" class="btn-ghost" id="to-cat">${esc(displayName(cat))}</button>
+      </div>`}
 
       <figure class="print">
         <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
@@ -185,7 +181,6 @@ function markDirty() {
 }
 
 function wire(s) {
-  $('#back', root).addEventListener('click', () => back());
   const toCat = $('#to-cat', root);
   if (toCat !== null) toCat.addEventListener('click', () => navigate(`#/cat/${s.catId}`));
 

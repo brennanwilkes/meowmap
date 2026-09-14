@@ -11,10 +11,20 @@
   z-index: 30;
 }
 .cog {
-  margin-left: 6px; font-size: var(--t-lg); line-height: 1;
-  background: none; border: 0; color: var(--ink-soft); padding: 2px 4px;
+  margin-left: 8px; flex: 0 0 auto;
+  width: 34px; height: 34px; line-height: 1;
+  font-size: var(--t-lg); color: var(--ink);
+  background: var(--paper-hi);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  box-shadow: var(--cut), var(--lift);
+  transform: rotate(-2deg);
+  transition: transform var(--up), box-shadow var(--up);
 }
-.cog:active { color: var(--ink); }
+.cog:active {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
 .wordmark { font-family: var(--font-stick); font-size: var(--t-xl); font-weight: 800; letter-spacing: -.02em; }
 .topbar .place { font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft); margin-left: auto; }
 .topbar .place:empty { margin-left: auto; }
@@ -36,17 +46,46 @@
 .screen.rest-l { transform: translateX(-9%); opacity: .5; z-index: 1; }
 .screen.rest-r { transform: translateX(9%);  opacity: .5; z-index: 1; }
 /* A detail view slides UP from the bottom edge and sits above the tab screens, which
-   stay exactly where they were — going deeper is not the same gesture as going sideways. */
-.screen.detail { z-index: 5; transform: translateY(0); }
+   stay exactly where they were — going deeper is not the same gesture as going sideways.
+
+   It stops SHORT OF THE TOP EDGE deliberately: the strip of page visible behind it is
+   what says "this is a sheet, push it back down". A full-bleed sheet is just another
+   screen and needs a button to escape. There is no Back button; the gesture is it. */
+.screen.detail {
+  z-index: 5; top: 54px; transform: translateY(0);
+  display: flex; flex-direction: column;
+  border-top: 2.5px solid var(--ink);
+  box-shadow: 0 -8px 22px rgba(46, 42, 36, .3);
+}
 .screen.detail.set-up { transform: translateY(100%); transition: none; }
 .screen.detail.down   { transform: translateY(100%); }
+
+/* min-height: 0 is load-bearing. Without it this flex child refuses to shrink below its
+   content and the inner .pad never scrolls — the same class of bug that collapsed the
+   capture mini-map to zero height. */
+.detail-body { flex: 1 1 auto; min-height: 0; }
+
+.grab {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  padding: 9px 0 7px;
+  background: var(--paper-hi);
+  /* The whole strip is the tap/drag target, not just the visible pill. */
+  touch-action: none;
+}
+.grab i { display: block; width: 44px; height: 5px; background: var(--ink-faint); border-radius: 99px; }
+.grab:active i { background: var(--ink); }
 
 /* Start positions, committed with a reflow before the transition is re-enabled. */
 .screen.set-l  { transform: translateX(-100%); opacity: 1; z-index: 2; transition: none; }
 .screen.set-r  { transform: translateX(100%);  opacity: 1; z-index: 2; transition: none; }
 
+/* overflow-x: hidden is load-bearing, not tidiness. Every card on these pages carries a
+   hand-stuck rotation, and a rotated box sticks out past its own layout width — so a
+   grid that reaches the container edge produces a sideways scroll on the cat page that
+   looks like a layout bug and is actually the design working. */
 .pad {
-  height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;
   padding: 15px max(17px, var(--safe-l)) 24px max(17px, var(--safe-r));
 }
 

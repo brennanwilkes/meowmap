@@ -2,8 +2,6 @@ import { DEFAULT_TILE_ID, LS, TILE_SOURCES } from '../config.js';
 import { getHealth } from './api.js';
 import { deviceId, getPref, setPref } from './device.js';
 import { $, esc, whenText } from './dom.js';
-import { back } from './nav.js';
-import { storageReport } from './pwa.js';
 import * as flush from './flush.js';
 import * as outbox from './outbox.js';
 import * as store from './store.js';
@@ -36,12 +34,7 @@ function render(state) {
 
   root.innerHTML = `
     <div class="pad">
-      <div class="detail-head">
-        <button type="button" class="btn-ghost" id="back">Back</button>
-      </div>
-
       <h2 class="sec">Map style</h2>
-      <p class="hand">if the map ever says "API KEY REQUIRED", switch it here</p>
       <div class="chiprow" id="tiles">
         ${TILE_SOURCES.map((t, i) => `
           <button type="button" class="chip" data-tile="${esc(t.id)}"
@@ -55,22 +48,14 @@ function render(state) {
       <div id="queue">${queueView(queued)}</div>
 
       <hr class="rule">
-      <h2 class="sec">This phone</h2>
-      <dl class="facts" id="storage"><dt>Storage</dt><dd>checking…</dd></dl>
-
-      <hr class="rule">
       <h2 class="sec">Server</h2>
       <dl class="facts" id="health"><dt>Status</dt><dd>checking…</dd></dl>
 
       <hr class="rule">
-      <p class="fineprint">
-        Uploads log your IP address and browser for abuse prevention.<br>
-        Device id <code>${esc(deviceId())}</code>
-      </p>
+      <p class="fineprint">Device id <code>${esc(deviceId())}</code></p>
     </div>`;
 
   wire();
-  loadStorage();
   loadHealth();
 }
 
@@ -95,8 +80,6 @@ function queueView(rows) {
 }
 
 function wire() {
-  $('#back', root).addEventListener('click', () => back());
-
   $('#tiles', root).addEventListener('click', (e) => {
     const btn = e.target.closest('[data-tile]');
     if (btn === null) return;
@@ -126,21 +109,6 @@ function wire() {
       flush.discard(clientId).catch(console.error);
     }
   });
-}
-
-async function loadStorage() {
-  const el = $('#storage', root);
-  const r = await storageReport();
-  if (!el.isConnected) return;
-  el.innerHTML = `
-    <dt>Photos kept safe</dt>
-    <dd class="${r.persisted ? 'good' : 'warn'}">
-      ${r.persisted
-        ? 'Yes — iOS will not evict them'
-        : 'NOT GUARANTEED. Add Meowmap to your home screen and reopen this page.'}
-    </dd>
-    <dt>Installed</dt><dd>${r.standalone ? 'Yes' : 'No — running in Safari'}</dd>
-    <dt>Used</dt><dd>${esc(bytes(r.usage))} of ${esc(bytes(r.quota))}</dd>`;
 }
 
 async function loadHealth() {

@@ -39,7 +39,8 @@ function tagSticker(label, i) {
 
 function pettedSticker(petted) {
   if (petted === null || petted === undefined) return '';
-  const text = petted === 'yes' ? 'petted' : petted === 'no' ? 'not petted' : 'it fled';
+  if (petted !== 'yes' && petted !== 'no') throw new Error(`unknown petted value: ${petted}`);
+  const text = petted === 'yes' ? 'petted' : 'not petted';
   return `<div class="petted" data-state="${esc(petted)}">${esc(text)}</div>`;
 }
 
@@ -89,7 +90,7 @@ export function openSightingSheet(sighting, cat, members = null) {
         </div>`}
       ${sighting.pending === true ? '' : `
         <div class="sheet-acts">
-          <button type="button" class="btn-stick" id="sheet-open">Open</button>
+          <button type="button" class="btn-stick" id="sheet-open">Edit</button>
         </div>`}
     </div>
     <div style="height:14px"></div>`;
@@ -122,3 +123,58 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeSheet();
 });
+
+/* Swipe the sheet back down.
+ *
+ * Same rule as the detail layer: a drag only starts on the grabber or with the sheet
+ * scrolled to the top, and an upward or sideways drag is handed back to the content.
+ * The sheet scrolls internally, so without the scrollTop check a downward flick halfway
+ * through a long sighting would dismiss it instead of scrolling. */
+const SHEET_DISMISS_PX = 70;
+
+(() => {
+  const sheet = document.getElementById('sheet');
+  let startY = 0;
+  let dragging = false;
+  let decided = false;
+  let dy = 0;
+
+  sheet.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const onGrabber = e.target.closest('.grabber') !== null;
+    if (!onGrabber && sheet.scrollTop > 0) return;
+    startY = e.touches[0].clientY;
+    dragging = true;
+    decided = false;
+    dy = 0;
+    sheet.style.transition = 'none';
+  }, { passive: true });
+
+  sheet.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    dy = e.touches[0].clientY - startY;
+    if (!decided) {
+      if (dy < 0) { dragging = false; sheet.style.transition = ''; return; }
+      if (dy < 8) return;
+      decided = true;
+    }
+    e.preventDefault();
+    sheet.style.transform = `translateY(${dy * 0.9}px)`;
+  }, { passive: false });
+
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = '';
+    sheet.style.transform = '';
+    if (decided && dy > SHEET_DISMISS_PX) closeSheet();
+  };
+  sheet.addEventListener('touchend', end, { passive: true });
+  sheet.addEventListener('touchcancel', end, { passive: true });
+
+  // The grabber is a tap target too: a gesture with no fallback strands anyone who does
+  // not discover it.
+  sheet.addEventListener('click', (e) => {
+    if (e.target.closest('.grabber') !== null) closeSheet();
+  });
+})();

@@ -1,5 +1,5 @@
 import {
-  COAT_TAGS, DEFAULT_TILE_ID, DEFAULT_ZOOM, FALLBACK_CENTRE, LS, TILE_SOURCES,
+  COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, LS, PETTED_VALUES, SIZE_TAGS, TILE_SOURCES,
 } from '../config.js';
 import { esc } from './dom.js';
 import { getJsonPref, getPref, setJsonPref } from './device.js';
@@ -9,7 +9,8 @@ import { ringFor } from './catcolor.js';
 import { TURF_MIN_ZOOM, shouldDrawTurf, turfRing } from './turf.js';
 import { displayName } from './catcolor.js';
 import { openSightingSheet } from './sheet.js';
-import { filterCats, filterSightings, filterSummary } from './filter.js';
+import { emptyFilter, filterCats, filterSightings, isActive, toggle } from './filter.js';
+import { startLocating } from './geolocate.js';
 
 /* The map.
  *
@@ -31,7 +32,32 @@ const objectUrls = new Set();
 /* The coat filter. Module state rather than a pref ON PURPOSE — see filter.js: a
  * filter that survives a relaunch means opening the app tomorrow to a map missing most
  * of her cats, with nothing on screen explaining why. */
-const activeCoats = new Set();
+const active = emptyFilter();
+/** The "you are here" dot and its accuracy ring. */
+let meMarker = null;
+let meCircle = null;
+let locating = null;
+
+/* One scrollable strip holding every tag group, separated by a hairline so "orange |
+ * chonk" reads as two decisions rather than one long list. Each group keeps its own fill
+ * colour, which is what makes the AND-across-groups rule legible without a legend. */
+const FILTER_ROWS = [
+  { group: 'coat', values: COAT_TAGS, fill: 'var(--marigold)' },
+  { group: 'size', values: SIZE_TAGS, fill: 'var(--jade)' },
+  { group: 'petted', values: PETTED_VALUES, fill: 'var(--peri)', labels: { yes: 'petted', no: 'not petted' } },
+];
+
+function filterChips() {
+  return FILTER_ROWS.map((row, r) => {
+    const chips = row.values.map((v, i) => {
+      const label = row.labels === undefined ? v : (row.labels[v] ?? v);
+      return `<button type="button" class="chip" data-group="${esc(row.group)}"
+        data-value="${esc(v)}" aria-pressed="false"
+        style="--fill:${row.fill};--tilt:${i % 2 === 0 ? '-2deg' : '1.5deg'}">${esc(label)}</button>`;
+    }).join('');
+    return (r === 0 ? '' : '<span class="fdiv" aria-hidden="true"></span>') + chips;
+  }).join('');
+}
 
 function tileSource() {
   const id = getPref(LS.tileSource, DEFAULT_TILE_ID);
@@ -95,7 +121,7 @@ function drawTurf(state) {
   clearTurf();
   // Filtered here as well as in drawPins: a turf blob computed from points that are not
   // drawn is a shaded zone with nothing inside it.
-  for (const cat of filterCats(store.catsWithSightings(state), activeCoats)) {
+  for (const cat of filterCats(store.catsWithSightings(state), active)) {
     const pts = cat.sightings.map((s) => [s.lat, s.lon]);
     const ring = ringFor(cat.id);
 
@@ -144,7 +170,7 @@ function updateTurfLabels() {
 }
 
 function drawPins(state) {
-  const groups = collapse(filterSightings(store.renderableSightings(state), activeCoats));
+  const groups = collapse(filterSightings(store.renderableSightings(state), active));
   const seen = new Set();
 
   for (const g of groups) {
@@ -188,24 +214,29 @@ function renderBanner(state) {
 export function mount(el) {
   el.innerHTML = `
     <div id="map"></div>
-    <div class="coat-filter" id="coatFilter">
-      ${COAT_TAGS.map((t, i) => `
-        <button type="button" class="chip" data-coat="${esc(t)}" aria-pressed="false"
-                style="--fill:var(--marigold);--tilt:${i % 2 === 0 ? '-2deg' : '1.5deg'}"
-                >${esc(t)}</button>`).join('')}
-    </div>
-    <div class="filter-note" id="filterNote" style="display:none"></div>
+    <button type="button" class="locate" id="locate" aria-label="Show my location">&#9678;</button>
+    <div class="coat-filter" id="coatFilter">${filterChips()}</div>
     <div class="outbox-banner" id="outboxBanner" style="display:none"></div>`;
 
   const view = getJsonPref(LS.lastView, null);
-  const centre = view === null ? [FALLBACK_CENTRE.lat, FALLBACK_CENTRE.lon] : [view.lat, view.lon];
-  const zoom = view === null ? DEFAULT_ZOOM : view.zoom;
 
   map = L.map('map', {
     zoomControl: false,
     attributionControl: true,
     preferCanvas: true,
-  }).setView(centre, zoom);
+  });
+
+  if (view === null) {
+    // First run: frame the walkable core of Victoria, James Bay to Mount Tolmie. Fitting
+    // bounds rather than a fixed zoom means the same area is framed on a phone and on a
+    // laptop, instead of being right on whichever screen it was tuned against.
+    map.fitBounds([
+      [DEFAULT_BOUNDS.sw.lat, DEFAULT_BOUNDS.sw.lon],
+      [DEFAULT_BOUNDS.ne.lat, DEFAULT_BOUNDS.ne.lon],
+    ]);
+  } else {
+    map.setView([view.lat, view.lon], view.zoom);
+  }
 
   map.createPane('turf');
   map.getPane('turf').style.zIndex = '650';
@@ -227,35 +258,69 @@ export function mount(el) {
     setJsonPref(LS.lastView, { lat: c.lat, lon: c.lng, zoom: map.getZoom() });
   });
 
+  document.getElementById('locate').addEventListener('click', () => locateMe(true));
+  // Drop the dot on open without moving the view: she is usually looking at a place she
+  // chose, and yanking the map to her position would undo that.
+  locateMe(false);
+
   document.getElementById('coatFilter').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-coat]');
+    const btn = e.target.closest('[data-group]');
     if (btn === null) return;
-    const tag = btn.dataset.coat;
-    if (activeCoats.has(tag)) activeCoats.delete(tag); else activeCoats.add(tag);
-    btn.setAttribute('aria-pressed', activeCoats.has(tag) ? 'true' : 'false');
+    const { group, value } = btn.dataset;
+    toggle(active, group, value);
+    btn.setAttribute('aria-pressed', active[group].has(value) ? 'true' : 'false');
+    document.getElementById('coatFilter').classList.toggle('on', isActive(active));
     redraw(store.get());
   });
 
   unsubscribe = store.subscribe(redraw);
 }
 
+/**
+ * Put a "you are here" dot on the map.
+ *
+ * A one-shot converged fix rather than a live watchPosition: the dot only has to answer
+ * "am I near that pin", and holding the GPS on for the whole session to keep it perfect
+ * costs battery on the device she is out walking with.
+ */
+function locateMe(recentre) {
+  if (locating !== null) locating.cancel();
+  const btn = document.getElementById('locate');
+  if (btn !== null) btn.classList.add('seeking');
+
+  locating = startLocating();
+  locating.result.then((fix) => {
+    if (map === null) return;
+    const at = [fix.lat, fix.lon];
+
+    if (meMarker === null) {
+      meMarker = L.marker(at, {
+        keyboard: false,
+        // Its own pane would be overkill; a high offset is enough because this is one
+        // marker and it must always win against photo pins.
+        zIndexOffset: 1000,
+        icon: L.divIcon({ className: 'me-dot', html: '<i></i>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+      }).addTo(map);
+      meCircle = L.circle(at, { radius: fix.accuracyM, interactive: false, className: 'me-ring' }).addTo(map);
+    } else {
+      meMarker.setLatLng(at);
+      meCircle.setLatLng(at).setRadius(fix.accuracyM);
+    }
+    if (recentre) map.setView(at, Math.max(map.getZoom(), 17));
+  }).catch((err) => {
+    // Denied or unavailable is not an error state for the map — it just has no dot.
+    console.warn('[map] location unavailable:', err.message);
+  }).finally(() => {
+    const b = document.getElementById('locate');
+    if (b !== null) b.classList.remove('seeking');
+  });
+}
+
 function redraw(state) {
   if (map === null) return;
   drawTurf(state);
   drawPins(state);
-  renderFilterNote(state);
   renderBanner(state);
-}
-
-/** A filter must never be silent: hidden pins with no explanation read as data loss. */
-function renderFilterNote(state) {
-  const el = document.getElementById('filterNote');
-  if (el === null) return;
-  const all = store.renderableSightings(state);
-  const text = filterSummary(activeCoats, filterSightings(all, activeCoats).length, all.length);
-  if (text === null) { el.style.display = 'none'; return; }
-  el.style.display = '';
-  el.textContent = text;
 }
 
 export function onShown() {
@@ -264,7 +329,10 @@ export function onShown() {
 
 export function unmount() {
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
-  activeCoats.clear();
+  if (locating !== null) { locating.cancel(); locating = null; }
+  meMarker = null;
+  meCircle = null;
+  for (const g of Object.values(active)) g.clear();
   for (const url of objectUrls) URL.revokeObjectURL(url);
   objectUrls.clear();
   markers.clear();

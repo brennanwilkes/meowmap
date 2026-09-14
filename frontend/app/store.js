@@ -100,8 +100,18 @@ export function catsWithSightings(s = state) {
   return s.cats.map((cat) => ({ ...cat, sightings: byCat.get(cat.id) ?? [] }));
 }
 
+/**
+ * Unidentified sightings, INCLUDING ones still queued for upload.
+ *
+ * Pending rows were originally excluded, which meant a photo that failed to upload was
+ * drawn on the map but absent from the Cats page — the one place you would go looking
+ * for it. A photo the app is holding must never be invisible anywhere it belongs.
+ *
+ * Pending rows have a clientId and no server id, so callers must key off `pending`
+ * rather than assuming `id` exists.
+ */
 export function looseSightings(s = state) {
-  return s.sightings.filter((x) => x.catId === null || x.catId === undefined);
+  return renderableSightings(s).filter((x) => x.catId === null || x.catId === undefined);
 }
 
 export function sightingById(id, s = state) {
