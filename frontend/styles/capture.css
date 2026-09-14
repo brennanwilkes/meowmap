@@ -13,7 +13,6 @@
     90deg, var(--rule) 0 7px, transparent 7px 11px);
 }
 
-.shutter-row { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .btn-stick.big, .btn-ghost.big { font-size: var(--t-lg); padding: 16px 0; width: 100%; }
 
 .capture-busy { display: grid; place-items: center; gap: 14px; padding-top: 64px; }

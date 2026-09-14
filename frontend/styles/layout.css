@@ -120,13 +120,13 @@
    between them — a continuous full-width bar reads as chrome and fights the conceit. */
 .tabs {
   flex: 0 0 auto;
-  display: flex; gap: 11px; align-items: flex-end; justify-content: center;
+  display: flex; gap: 10px; align-items: center; justify-content: center;
   padding: 0 14px calc(14px + var(--safe-b));
   background: var(--paper);
   z-index: 30;
 }
 .tabs button {
-  flex: 0 1 106px;
+  flex: 0 1 92px;
   font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
   background: var(--paper-hi); color: var(--ink-soft);
   border: 2.5px solid var(--ink-faint); border-radius: var(--r-cut);
@@ -135,23 +135,61 @@
   transition: padding var(--up), background var(--up), color var(--up),
               border-color var(--up), box-shadow var(--up), transform var(--up);
 }
-.tabs button:nth-child(1) { transform: rotate(-1.8deg); }
-.tabs button:nth-child(2) { transform: rotate(1.1deg); }
-.tabs button:nth-child(3) { transform: rotate(-.6deg); }
+/* By CLASS, not nth-child: the two round actions sit between the markers now, and a
+   positional rule tilted their glyphs. A rotated circle looks identical, but the camera
+   inside it does not. */
+.tabs .t1 { transform: rotate(-1.8deg); }
+.tabs .t3 { transform: rotate(1.1deg); }
 .tabs button[aria-current="page"] {
   background: var(--accent); color: var(--ink);
   border: 2.5px solid var(--ink);
   padding: 14px 0 15px;
   box-shadow: var(--cut), 3px 4px 0 rgba(46, 42, 36, .32);
 }
-.tabs button:active {
+.tabs .t1:active, .tabs .t3:active {
   transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
   box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
   transition: transform var(--down), box-shadow var(--down);
 }
 .tabs .t1 { --accent: var(--coral); }
-.tabs .t2 { --accent: var(--marigold); }
 .tabs .t3 { --accent: var(--jade); }
+
+/* ── the two capture actions ───────────────────────────────────────────────
+   ROUND, because they are not places. The rectangular markers either side are where you
+   can BE; a circle is a thing you press. Capture stopped being a tab for exactly this
+   reason — "Snap" was a destination whose only content was two buttons, which is why it
+   looked empty and cost a tap on both paths.
+
+   A true circle is the one radius besides 2px the design allows, so these are the only
+   shape available that says "not a page" without inventing a new one. */
+.tabs .act {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 52px; height: 52px; padding: 0;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+  background: var(--paper-hi); color: var(--ink);
+  box-shadow: var(--cut), var(--lift);
+  transition: transform var(--up), box-shadow var(--up), background var(--up);
+}
+/* The camera is the dominant action of the whole app, so it is the one that is filled. */
+.tabs .act.shoot { background: var(--marigold); width: 58px; height: 58px; }
+.tabs .act:active {
+  transform: translate(var(--lift-x), var(--lift-y));
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
+.tabs .act svg {
+  width: 26px; height: 26px;
+  fill: none; stroke: currentColor;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
+.tabs .act.shoot svg { width: 29px; height: 29px; }
+
+/* Under a sheet the actions shrink with everything else, and lose their lift. */
+body.sheet-up .tabs .act { width: 40px; height: 40px; box-shadow: var(--cut); }
+body.sheet-up .tabs .act.shoot { width: 44px; height: 44px; }
+body.sheet-up .tabs .act svg { width: 21px; height: 21px; }
 
 /* ── the nav, while a sheet is up ──────────────────────────────────────────
    A detail sheet is the thing being read, and the nav underneath it is only there to
@@ -165,16 +203,16 @@ body.sheet-up .tabs {
   padding-bottom: calc(6px + var(--safe-b));
   gap: 8px;
 }
-body.sheet-up .tabs button {
+body.sheet-up .tabs .t1, body.sheet-up .tabs .t3 {
   transform: none;
   padding: 5px 0 6px;
   font-size: var(--t-sm);
   box-shadow: none;
 }
-body.sheet-up .tabs button[aria-current="page"] {
+body.sheet-up .tabs .t1[aria-current="page"], body.sheet-up .tabs .t3[aria-current="page"] {
   padding: 5px 0 6px;
   box-shadow: var(--cut);
 }
-body.sheet-up .tabs button:active {
+body.sheet-up .tabs .t1:active, body.sheet-up .tabs .t3:active {
   transform: translate(var(--lift-x), var(--lift-y));
 }

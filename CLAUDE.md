@@ -235,12 +235,51 @@ where the actual saving is.
   offline.
 - Buildless means no content hashing: `BUILD` in `sw.js` is hand-written. **Bump it on
   every frontend change** or the shell cache never rotates.
+- **Navigations serve the CACHED index.html first, not the network.** They used to be
+  network-first, which handed the browser a FRESH index.html alongside the PREVIOUS
+  build's JavaScript — half-old-half-new, exactly what the no-automatic-`skipWaiting` rule
+  exists to prevent, just across a reload instead of within a session. It crashed on a
+  real device: the new HTML had dropped an element the cached `main.js` still wrote to.
+  HTML and modules must come from ONE generation and swap together.
+- **A new module must be added to `FILES`.** Missing it breaks offline silently, and it
+  has been missed three times: `minimap.js`, `identity.js`, `filmstrip.js`. Check with
+  `for f in app/*.js app/components/*.js; do grep -q "'./$f'" sw.js || echo MISSING $f; done`.
 - Precache with `cache: 'reload'` — GH Pages puts a ~10 min CDN TTL on `index.html`.
 - **No automatic `skipWaiting()`.** Swapping ES module versions under a running page gives
   half-old-half-new state; the update bar asks first.
 - `cache.keys()` returns insertion order, so the photo cap is free FIFO — no LRU table.
 - Every `<img>` at the Worker needs `crossorigin="anonymous"`, or the SW sees an opaque
   response whose padded quota accounting blows through storage.
+
+## Capture is an action, not a place
+
+**There is no Snap tab.** The nav is two page markers (Map, Cats) with TWO ROUND GLYPHS
+between them: camera and photo library, each opening its picker in one tap.
+
+A tab is somewhere you go, and "Snap" was a destination whose entire content was two
+buttons — which is why it looked empty (there was nothing to put there) and cost a tap on
+BOTH paths. Firing the system camera from a nav tab tap was considered and rejected: it is
+not a pattern anywhere, and it makes the library path worse. Instagram-style
+"camera tab opens the camera" works only because it shows an in-app viewfinder, which this
+app cannot — `getUserMedia` gives ~1080p frames against a 12 MP still.
+
+- **Round, because they are not places.** The rectangular markers are where you can be; a
+  circle is a thing you press. A true circle is the only other radius the design allows.
+- **The file inputs live in the SHELL** (`index.html`), not on a page: `.click()` must
+  happen synchronously inside the tap, and an input that does not exist until a page
+  mounts cannot manage that.
+- **`#/snap` is a screen but not a destination.** It renders a photo that has just been
+  picked. The ROUTER redirects it to the map when nothing is queued — redirecting from
+  `mount()` does not work, because `go()` rewrites the hash after mount returns, so the
+  navigate is undone and the app sticks on an empty screen.
+- **Picking while already on the draft ingests directly.** The hash does not change, so no
+  route fires and no remount happens; without that the photo strands in `queued` and the
+  screen keeps showing the previous one.
+- The install hint moved to the map, bottom edge — the outbox banner owns the top and is
+  the more urgent of the two.
+- Nav tilts are by CLASS, not `nth-child`: the glyphs sit between the markers now, and a
+  positional rule tilted them. A rotated circle looks identical; the camera inside it does
+  not.
 
 ## Routing
 

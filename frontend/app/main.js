@@ -17,6 +17,10 @@ import * as pwa from './pwa.js';
  * MUST release every subscription, listener, object URL and the Leaflet instance —
  * leaking object URLs in a photo app is how you OOM an iPhone. */
 
+/* Routable screens, in left-to-right order — `go()` reads this to pick the page-turn
+ * direction. `snap` is still a screen (it renders the draft) but NOT a tab: capture is
+ * an action fired from the nav glyphs, and arriving at it without a photo bounces to the
+ * map. See capture_page.openPicker. */
 const SCREENS = ['map', 'snap', 'cats'];
 
 /* The wordmark is CONSTANT. It used to change per page, with a faint subtitle beside it
@@ -159,8 +163,21 @@ function route() {
     return;
   }
   closeDetail();
+  /* #/snap is a screen but not a destination: it renders a photo that has just been
+   * picked. Landing there without one — a cold load on the URL, or a bounce after a
+   * discard — goes to the map instead. */
+  if (head === 'snap' && !capturePage.hasQueued()) { go('map'); return; }
   go(SCREENS.includes(head) ? head : 'map');
 }
+
+/* The camera and library glyphs. `openPicker` clicks the hidden input SYNCHRONOUSLY
+ * inside this handler — nothing may be awaited between the tap and that call, or iOS
+ * silently drops the picker. */
+$('#tabs').addEventListener('click', (e) => {
+  const act = e.target.closest('[data-pick]');
+  if (act === null) return;
+  capturePage.openPicker(act.dataset.pick);
+});
 
 $('#tabs').addEventListener('click', (e) => {
   const btn = e.target.closest('button');

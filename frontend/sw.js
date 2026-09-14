@@ -9,7 +9,7 @@
  * frontend change or the shell cache never rotates.
  */
 
-const BUILD = '2026-09-14k';
+const BUILD = '2026-09-14m';
 
 const SHELL = `shell-${BUILD}`;
 const API = 'api-v1';
@@ -128,13 +128,24 @@ self.addEventListener('fetch', (e) => {
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
       const cache = await caches.open(SHELL);
+      /* THE CACHED SHELL WINS, and this is the whole point rather than an optimisation.
+       *
+       * This used to fetch the network first. But modules below are served cache-first
+       * from `shell-<BUILD>`, so a network-first navigation handed the browser a FRESH
+       * index.html alongside the PREVIOUS build's JavaScript — half-old-half-new, exactly
+       * what the no-automatic-skipWaiting rule exists to prevent, just across a reload
+       * instead of within a session. It crashed on a real device: new index.html had
+       * dropped an element that the cached main.js still wrote to.
+       *
+       * HTML and modules must come from one generation. They swap together when the new
+       * worker activates, which is what the update prompt is for. */
+      const hit = await cache.match('./index.html');
+      if (hit !== undefined) return hit;
       try {
         const fresh = await fetch(req);
         if (fresh.status === 200) return fresh;
-      } catch { /* offline — fall through */ }
-      return (await cache.match('./index.html'))
-        ?? (await cache.match('./offline.html'))
-        ?? Response.error();
+      } catch { /* offline and nothing precached — fall through */ }
+      return (await cache.match('./offline.html')) ?? Response.error();
     })());
     return;
   }

@@ -5,6 +5,7 @@ import {
 import { esc } from './dom.js';
 import { getJsonPref, getPref, setJsonPref } from './device.js';
 import { photoUrl } from './api.js';
+import * as pwa from './pwa.js';
 import * as store from './store.js';
 import { ringFor } from './catcolor.js';
 import { TURF_MIN_ZOOM, shouldDrawTurf, turfRing } from './turf.js';
@@ -246,7 +247,8 @@ export function mount(el) {
   el.innerHTML = `
     <div id="map"></div>
     <div class="coat-filter" id="coatFilter">${filterChips()}</div>
-    <div class="outbox-banner" id="outboxBanner" style="display:none"></div>`;
+    <div class="outbox-banner" id="outboxBanner" style="display:none"></div>
+    <div id="install-slot"></div>`;
 
   /* EVERY FRESH PAGE LOAD OPENS ON VICTORIA, whatever was saved and wherever the cats
    * are. The saved view only survives switching tabs within one session, which is the
@@ -299,6 +301,11 @@ export function mount(el) {
   // chose, and yanking the map to her position would undo that. There is no recentre
   // button any more, so this is the only caller.
   locateMe();
+
+  /* The install hint lived on the Snap page, which no longer exists. It has to live
+   * SOMEWHERE: installing is what makes storage.persist() likely to be granted, and an
+   * evicted outbox loses the only copy of a photo taken with the in-app camera. */
+  pwa.maybeOfferInstall(document.getElementById('install-slot'));
 
   document.getElementById('coatFilter').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-group]');

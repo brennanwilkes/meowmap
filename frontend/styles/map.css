@@ -143,3 +143,16 @@
 .coat-filter.on { background: linear-gradient(transparent, rgba(46, 42, 36, .09)); }
 
 
+
+/* The install hint, rehomed onto the map when the Snap page stopped existing.
+   BOTTOM, not top: the outbox banner owns the top edge and is the more urgent of the two,
+   and stacking them there would need a rule that reads the banner's inline display —
+   which is exactly the kind of selector that breaks the next time that line is edited. */
+#install-slot .install-hint {
+  position: absolute; left: 12px; right: 12px; bottom: 54px; z-index: 619;
+  margin: 0;
+  background: var(--paper-hi);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 11px 13px;
+  box-shadow: var(--cut), var(--lift);
+}

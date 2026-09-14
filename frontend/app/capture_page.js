@@ -11,8 +11,8 @@ import { LOCATION_SOURCE, processPhoto, resolveLocation, resolveSeenAt } from '.
 import { distanceM, reasonText, suggestCats } from './suggest.js';
 import { chipRows, wireChips } from './components/chips.js';
 import * as flush from './flush.js';
-import * as pwa from './pwa.js';
 import { keepSized } from './minimap.js';
+import { navigate } from './nav.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
@@ -33,34 +33,6 @@ let unsize = null;
 let objectUrl = null;
 
 /* ── rendering ─────────────────────────────────────────────────────────── */
-
-function idleView() {
-  return `
-    <div class="pad capture-idle">
-      <div class="shutter-row">
-        <button type="button" class="btn-stick big" id="take">Take a photo</button>
-        <button type="button" class="btn-ghost big" id="choose">Choose a photo</button>
-      </div>
-      <div id="install-slot"></div>
-      <input type="file" id="file-camera" accept="${esc(ACCEPT_TYPES)}"
-             capture="environment" hidden>
-      <input type="file" id="file-library" accept="${esc(ACCEPT_TYPES)}" hidden>
-    </div>`;
-}
-
-function busyView(message) {
-  return `<div class="pad capture-busy">
-    <div class="spinner" role="status" aria-live="polite"></div>
-    <p>${esc(message)}</p>
-  </div>`;
-}
-
-function errorView(message) {
-  return `<div class="pad">
-    <div class="map-note" style="position:static">${esc(message)}</div>
-    <button type="button" class="btn-stick" id="back">Try again</button>
-  </div>`;
-}
 
 function locationLine() {
   if (draft.lat === null) return 'No location yet — tap the map below';
@@ -235,37 +207,58 @@ function releasePhoto() {
   if (objectUrl !== null) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
 }
 
-function showIdle() {
+/* CAPTURE IS AN ACTION, NOT A PLACE.
+ *
+ * The glyphs in the nav fire these pickers from wherever she is, and this screen only
+ * exists once there is a photo on it. It used to be a tab whose entire content was two
+ * buttons — which looked empty, because there was nothing to put there, and cost a tap
+ * on BOTH paths.
+ *
+ * The file inputs live in the SHELL rather than on this page: `.click()` must happen
+ * synchronously inside the tap, and an input that does not exist until a page has
+ * mounted cannot manage that.
+ */
+
+/** The photo waiting to be ingested when this screen mounts. */
+let queued = null;
+
+/** The router asks before routing here: #/snap with no photo is not a page. */
+export function hasQueued() { return queued !== null; }
+
+export function openPicker(kind) {
+  const fromCamera = kind === 'camera';
+  const input = document.getElementById(fromCamera ? 'file-camera' : 'file-library');
+
+  input.value = '';   // or re-picking the same photo fires no change event at all
+  input.accept = ACCEPT_TYPES;
+  /* SYNCHRONOUS, inside the gesture. Never await before this or iOS silently drops the
+   * picker. Geolocation therefore starts AFTER, and gets the seconds the picker is open
+   * to converge for free. */
+  input.click();
+
+  if (locating !== null) locating.cancel();
+  locating = startLocating();
+
+  input.onchange = () => {
+    const file = input.files?.[0];
+    if (file === undefined) return;
+    /* Already on this screen — she shot another cat straight from the draft. The hash is
+     * unchanged, so no route fires and no remount happens; ingest it directly or the
+     * photo strands in `queued` and the screen keeps showing the previous one. */
+    if (root !== null) { ingest(file, fromCamera); return; }
+    queued = { file, fromCamera };
+    navigate('#/snap');
+  };
+}
+
+/** Nothing to show here without a photo, so leaving means going back to the map. */
+function leave() {
   // A watch left running after a discard keeps the GPS radio warm for nothing.
   if (locating !== null) { locating.cancel(); locating = null; }
   destroyMiniMap();
   releasePhoto();
   draft = null;
-  root.innerHTML = idleView();
-  pwa.maybeOfferInstall($('#install-slot', root));
-  wireIdle();
-}
-
-function wireIdle() {
-  const camera = $('#file-camera', root);
-  const library = $('#file-library', root);
-
-  const open = (input, fromCamera) => {
-    // The click MUST happen synchronously inside the user gesture — never await before
-    // it, or iOS silently drops the picker. Geolocation therefore starts AFTER.
-    input.value = '';   // or re-picking the same photo fires no change event at all
-    input.click();
-    if (locating !== null) locating.cancel();
-    locating = startLocating();
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (file === undefined) return;
-      ingest(file, fromCamera);
-    };
-  };
-
-  $('#take', root).addEventListener('click', () => open(camera, true));
-  $('#choose', root).addEventListener('click', () => open(library, false));
+  navigate('#/map');
 }
 
 async function ingest(file, fromCamera) {
@@ -308,7 +301,7 @@ async function ingest(file, fromCamera) {
   } catch (err) {
     console.error('[capture] ingest failed:', err);
     root.innerHTML = errorView(err.message);
-    $('#back', root).addEventListener('click', showIdle);
+    $('#back', root).addEventListener('click', leave);
   } finally {
     if (locating !== null) { locating.cancel(); locating = null; }
   }
@@ -318,7 +311,7 @@ function wireDraft() {
   $('#f-note', root).addEventListener('input', (e) => {
     draft.note = e.target.value.trim() === '' ? null : e.target.value.trim();
   });
-  $('#discard', root).addEventListener('click', showIdle);
+  $('#discard', root).addEventListener('click', leave);
   $('#save', root).addEventListener('click', save);
 
   if (draft.catId === null) {
@@ -418,7 +411,7 @@ async function save() {
       <p class="saved-note hand">Saved! They&rsquo;re on the map.</p>
       <button type="button" class="btn-stick" id="again">Another cat</button>
     </div>`;
-    $('#again', root).addEventListener('click', showIdle);
+    $('#again', root).addEventListener('click', leave);
     return;
   }
 
@@ -437,14 +430,14 @@ async function link(clientId, catId) {
 }
 
 function wireSuggestion(saved) {
-  $('#again', root).addEventListener('click', showIdle);
+  $('#again', root).addEventListener('click', leave);
   for (const btn of root.querySelectorAll('.suggest')) {
     btn.addEventListener('click', () => {
       // A queued row has no server id yet, so the link rides along with the insert.
       // If it already uploaded — a fast connection and a slow tap — patch it instead;
       // silently dropping a link she explicitly made would be the worse failure.
       link(saved.clientId, Number(btn.dataset.cat))
-        .then(showIdle)
+        .then(leave)
         .catch((err) => console.error('[capture] link failed:', err));
     });
   }
@@ -454,7 +447,14 @@ function wireSuggestion(saved) {
 
 export function mount(container) {
   root = container;
-  showIdle();
+  /* The router guarantees a photo is waiting — it redirects #/snap to the map otherwise,
+   * because redirecting from HERE does not work: go() rewrites the hash after mount()
+   * returns, so a navigate() inside mount is immediately undone and the app sticks on an
+   * empty screen. */
+  if (queued === null) throw new Error('capture mounted with no photo queued');
+  const { file, fromCamera } = queued;
+  queued = null;
+  ingest(file, fromCamera);
 }
 
 export function unmount() {
