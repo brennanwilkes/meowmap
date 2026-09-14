@@ -14,10 +14,10 @@
  * because the table it depends on only existed in a file on disk.
  */
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { d1 } from './cf.mjs';
+import { d1, d1File } from './cf.mjs';
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 
@@ -42,21 +42,13 @@ export function ensureMigrations() {
   const done = applied();
   const pending = migrations().filter((m) => !done.has(m.id));
   for (const m of pending) {
-    const sql = readFileSync(join(DIR, m.file), 'utf8');
-    /* Statement by statement: a migration file is a script and wrangler's --command takes
-     * one string, so the split happens here.
-     *
-     * STRIP COMMENTS FIRST, THEN SPLIT. The other order breaks on a semicolon inside a
-     * comment — 001's omission log contains "read with a bare SELECT; an index would
-     * be…", which split mid-sentence and sent `an index would be…` to D1 as SQL. */
-    const statements = sql
-      .split('\n')
-      .filter((l) => !l.trim().startsWith('--'))
-      .join('\n')
-      .split(';')
-      .map((x) => x.trim())
-      .filter((x) => x !== '');
-    for (const stmt of statements) d1(stmt);
+    /* Hand the FILE to wrangler and let it parse the script. The previous version split
+     * on `;` here, which is not something you can do to SQL with a regex: 001 alone
+     * contains "null when unnamed; see the unique index below" and "read with a bare
+     * SELECT; an index would be…" in trailing comments, each of which split mid-sentence
+     * and sent English to D1 as a statement. CI has always used --file for this reason;
+     * now both paths parse identically, which is the point of them sharing a table. */
+    d1File(join(DIR, m.file));
     d1(`INSERT INTO schema_migrations (id, applied_at) VALUES (${m.id}, ${Date.now()})`);
     console.log(`applied ${m.file}`);
   }

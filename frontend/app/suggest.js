@@ -51,10 +51,9 @@ export function scoreCandidate(sighting, cat, now) {
 
   let nearestM = Infinity;
   let newestAt = -Infinity;
-  let nearest = null;
   for (const s of cat.sightings) {
     const d = distanceM(sighting.lat, sighting.lon, s.lat, s.lon);
-    if (d < nearestM) { nearestM = d; nearest = s; }
+    if (d < nearestM) nearestM = d;
     if (s.seenAt > newestAt) newestAt = s.seenAt;
   }
   if (nearestM > MAX_DISTANCE_M) return null;
@@ -62,7 +61,10 @@ export function scoreCandidate(sighting, cat, now) {
   // 1 at zero metres, 0 at the cutoff.
   const proximity = 1 - nearestM / MAX_DISTANCE_M;
 
-  const overlap = coatOverlap(sighting.coat, nearest === null ? [] : nearest.coat);
+  /* The candidate's coat comes from the CAT, not from its nearest sighting — tags
+   * describe the animal since migration 003. `sighting.coat` is still the draft's own,
+   * because a photo being saved has no cat yet. */
+  const overlap = coatOverlap(sighting.coat, cat.coat);
   // Absent tags score neutral (0.5), so an untagged sighting is neither rewarded nor
   // punished relative to a tagged one.
   const coatScore = overlap === null ? 0.5 : overlap;
@@ -75,8 +77,8 @@ export function scoreCandidate(sighting, cat, now) {
 }
 
 /**
- * @param sighting  { lat, lon, coat }
- * @param cats      [{ id, sightings: [{ lat, lon, seenAt, coat }] }]
+ * @param sighting  { lat, lon, coat }  — the draft being saved, carrying its own tags
+ * @param cats      [{ id, coat, sightings: [{ lat, lon, seenAt }] }]
  * @returns at most MAX_SUGGESTIONS, best first
  */
 export function suggestCats(sighting, cats, now) {

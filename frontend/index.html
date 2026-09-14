@@ -7,14 +7,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#e9e4d6">
-<title>Meowmap</title>
+<title>MeowMap</title>
 
 <!-- iOS does not reliably take the home-screen glyph from the manifest icons array,
      so the legacy tags stay alongside it. -->
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Meowmap">
+<meta name="apple-mobile-web-app-title" content="MeowMap">
 <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-180.png">
 <link rel="icon" href="./icons/icon-192.png">
 
@@ -35,15 +35,23 @@
 
 <div id="app">
   <header class="topbar">
-    <span class="wordmark" id="wordmark">Meowmap</span>
+    <span class="wordmark" id="wordmark">MeowMap</span>
     <span class="place" id="place"></span>
     <!-- Drawn, not &#9881;. iOS renders that codepoint as a full-colour emoji, which is
-         the one thing on this page that could not look less like ink on paper. -->
+         the one thing on this page that could not look less like ink on paper.
+
+         TEETH ON A RIM, not spokes from the centre. The first drawn version was a small
+         circle with eight lines radiating out of it, which is a sun — the gear reads only
+         when the tooth stubs sit outside a closed rim and the hub is a hole. -->
     <button class="cog" id="cog" type="button" aria-label="Settings">
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="3.4"/>
-        <path d="M12 3.2v3M12 17.8v3M3.2 12h3M17.8 12h3
-                 M5.8 5.8l2.1 2.1M16.1 16.1l2.1 2.1M18.2 5.8l-2.1 2.1M7.9 16.1l-2.1 2.1"/>
+        <path d="M10.25 4.71 L10.68 1.89 L13.32 1.89 L13.75 4.71 L15.92 5.61 L18.22 3.92
+                 L20.08 5.78 L18.39 8.08 L19.29 10.25 L22.11 10.68 L22.11 13.32 L19.29 13.75
+                 L18.39 15.92 L20.08 18.22 L18.22 20.08 L15.92 18.39 L13.75 19.29 L13.32 22.11
+                 L10.68 22.11 L10.25 19.29 L8.08 18.39 L5.78 20.08 L3.92 18.22 L5.61 15.92
+                 L4.71 13.75 L1.89 13.32 L1.89 10.68 L4.71 10.25 L5.61 8.08 L3.92 5.78
+                 L5.78 3.92 L8.08 5.61 Z"/>
+        <circle cx="12" cy="12" r="3.5"/>
       </svg>
     </button>
   </header>

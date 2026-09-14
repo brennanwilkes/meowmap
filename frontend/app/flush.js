@@ -44,6 +44,9 @@ async function sendOne(row) {
   const { sighting } = await api.createSighting({
     clientId: row.clientId,
     catId: row.catId ?? null,
+    // Names the cat the Worker mints for this sighting. Ignored when catId is set, so
+    // linking at save time can never rename the cat she picked.
+    catName: row.name ?? null,
     lat: row.lat,
     lon: row.lon,
     locationSource: row.locationSource,

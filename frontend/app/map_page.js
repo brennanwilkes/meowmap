@@ -170,7 +170,8 @@ function updateTurfLabels() {
 }
 
 function drawPins(state) {
-  const groups = collapse(filterSightings(store.renderableSightings(state), active));
+  const catsById = new Map(state.cats.map((c) => [c.id, c]));
+  const groups = collapse(filterSightings(store.renderableSightings(state), catsById, active));
   const seen = new Set();
 
   for (const g of groups) {
@@ -218,27 +219,15 @@ function renderBanner(state) {
 export function mount(el) {
   el.innerHTML = `
     <div id="map"></div>
-    <button type="button" class="locate" id="locate" aria-label="Show my location">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="6.2"/><circle cx="12" cy="12" r="1.6" class="fill"/>
-        <path d="M12 1.6v3.2M12 19.2v3.2M1.6 12h3.2M19.2 12h3.2"/>
-      </svg>
-    </button>
-    <button type="button" class="attrib-btn" id="attribBtn" aria-label="Map credits">i</button>
-    <div class="attrib" id="attrib" hidden></div>
     <div class="coat-filter" id="coatFilter">${filterChips()}</div>
     <div class="outbox-banner" id="outboxBanner" style="display:none"></div>`;
 
   const view = getJsonPref(LS.lastView, null);
 
-  /* attributionControl: false, and then we render it ourselves behind an (i).
-   *
-   * The LEAFLET prefix is optional — Leaflet documents removing it — but the OSM/Esri
-   * attribution is a LICENCE CONDITION (ODbL for OSM), not a courtesy, so it does not
-   * get deleted. Putting it one tap away rather than permanently across the bottom of a
-   * phone screen is the usual compromise and keeps it reasonably accessible, which is
-   * what the licence asks for. If we ever ship a basemap whose terms demand it be
-   * always-visible, this goes back. */
+  /* No attribution control at all, and no credits button — Brennan's call for a private
+   * two-person app after the (i) button was tried and judged clutter. Noted rather than
+   * silently done: OSM's ODbL does ask for credit, so this is a deliberate decision and
+   * not an oversight. If Meowmap is ever made public, the credits go back. */
   map = L.map('map', {
     zoomControl: false,
     attributionControl: false,
@@ -277,16 +266,10 @@ export function mount(el) {
     setJsonPref(LS.lastView, { lat: c.lat, lon: c.lng, zoom: map.getZoom() });
   });
 
-  const attrib = document.getElementById('attrib');
-  attrib.innerHTML = `${esc(src.attribution)} &middot; Leaflet`;
-  document.getElementById('attribBtn').addEventListener('click', () => {
-    attrib.hidden = !attrib.hidden;
-  });
-
-  document.getElementById('locate').addEventListener('click', () => locateMe(true));
   // Drop the dot on open without moving the view: she is usually looking at a place she
-  // chose, and yanking the map to her position would undo that.
-  locateMe(false);
+  // chose, and yanking the map to her position would undo that. There is no recentre
+  // button any more, so this is the only caller.
+  locateMe();
 
   document.getElementById('coatFilter').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-group]');
@@ -308,11 +291,8 @@ export function mount(el) {
  * "am I near that pin", and holding the GPS on for the whole session to keep it perfect
  * costs battery on the device she is out walking with.
  */
-function locateMe(recentre) {
+function locateMe() {
   if (locating !== null) locating.cancel();
-  const btn = document.getElementById('locate');
-  if (btn !== null) btn.classList.add('seeking');
-
   locating = startLocating();
   locating.result.then((fix) => {
     if (map === null) return;
@@ -331,13 +311,9 @@ function locateMe(recentre) {
       meMarker.setLatLng(at);
       meCircle.setLatLng(at).setRadius(fix.accuracyM);
     }
-    if (recentre) map.setView(at, Math.max(map.getZoom(), 17));
   }).catch((err) => {
     // Denied or unavailable is not an error state for the map — it just has no dot.
     console.warn('[map] location unavailable:', err.message);
-  }).finally(() => {
-    const b = document.getElementById('locate');
-    if (b !== null) b.classList.remove('seeking');
   });
 }
 

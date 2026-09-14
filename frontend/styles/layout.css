@@ -4,18 +4,22 @@
 
 .topbar {
   flex: 0 0 auto;
-  padding: calc(13px + var(--safe-t)) 17px 11px;
+  padding: calc(12px + var(--safe-t)) 17px 12px;
   background: var(--paper-hi);
   border-bottom: 2.5px solid var(--ink);
   display: flex; align-items: baseline; gap: 10px;
   z-index: 30;
 }
-/* A round ink stamp, not a sticker. A tilted square next to the wordmark read as a
-   stray UI chip; a true circle is the one radius besides 2px the design allows, and a
-   stamp is a thing that belongs on paper. No die-cut margin and no lift — a stamp is
-   printed INTO the page, so it has no shadow to collapse; the press darkens it instead. */
+/* A drawn gear, inked straight onto the page: no die-cut margin and no lift, because a
+   stamp is printed INTO the paper and so has no shadow to collapse. The press darkens
+   and turns it instead.
+
+   align-self CENTRE while the topbar aligns everything else on the BASELINE. The cog is a
+   replaced element with no text in it, so its flex baseline is its bottom margin edge —
+   baseline-aligning it hangs it below the wordmark. Centring it against the line box is
+   the only thing that puts it level, which is why the topbar padding is symmetric. */
 .cog {
-  margin-left: 8px; flex: 0 0 auto;
+  margin-left: 8px; flex: 0 0 auto; align-self: center;
   width: 34px; height: 34px; padding: 6px;
   display: grid; place-items: center;
   color: var(--ink-soft);
@@ -26,7 +30,7 @@
   width: 100%; height: 100%;
   fill: none; stroke: currentColor;
   /* Round caps and a slightly heavy stroke read as a pen line rather than an icon set. */
-  stroke-width: 1.9; stroke-linecap: round;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
   transform: rotate(-6deg);
 }
 .cog:active { color: var(--ink); transform: rotate(18deg); }

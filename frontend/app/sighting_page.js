@@ -3,15 +3,19 @@ import {
 } from '../config.js';
 import { deleteSighting, patchSighting, photoUrl } from './api.js';
 import { catColour, displayName } from './catcolor.js';
-import { chipRows, wireChips } from './components/chips.js';
 import { getPref } from './device.js';
-import { $, dateText, esc, whenText } from './dom.js';
+import { $, dateText, esc } from './dom.js';
 import { back, navigate } from './nav.js';
 import { LOCATION_SOURCE } from './pipeline.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
-/* One sighting, fully editable: tags, note, date, pin, which cat it belongs to.
+/* One sighting: its note, when it was taken, and where.
+ *
+ * WHAT IS *NOT* HERE: coat, size and petted. Those describe the animal, not the
+ * encounter, so since migration 003 they live on the cat and are edited on the cat page.
+ * This page is the photo's own facts — the two questions only a particular photo can
+ * answer.
  *
  * EDITS ARE EXPLICIT, NOT LIVE. Every PATCH is a D1 write plus an app_meta bump against
  * a hard 100k/day cap, and a chip row is very easy to fiddle with — autosaving each tap
@@ -34,10 +38,7 @@ let saving = false;
 
 function dirty() {
   if (draft === null || original === null) return false;
-  return draft.coat.join(',') !== original.coat.join(',')
-    || draft.size !== original.size
-    || draft.petted !== original.petted
-    || draft.note !== original.note
+  return draft.note !== original.note
     || draft.seenAt !== original.seenAt
     || draft.lat !== original.lat
     || draft.lon !== original.lon;
@@ -83,10 +84,7 @@ function render(state) {
         <img src="${esc(photoUrl(s.photoFull))}" alt="" crossorigin="anonymous"
              style="height:230px">
       </figure>
-      <p class="hand">${esc(whenText(s.seenAt))} &middot; ${esc(dateText(s.seenAt))}</p>
-
-      <hr class="rule">
-      ${chipRows(draft)}
+      <p class="hand">${esc(dateText(s.seenAt))}</p>
 
       <hr class="rule">
       <label class="field">
@@ -124,9 +122,6 @@ function render(state) {
 
 function snapshot(s) {
   return {
-    coat: Array.isArray(s.coat) ? [...s.coat] : [],
-    size: s.size ?? null,
-    petted: s.petted ?? null,
     note: s.note ?? null,
     seenAt: s.seenAt,
     lat: s.lat,
@@ -153,8 +148,6 @@ function markDirty() {
 function wire(s) {
   const toCat = $('#to-cat', root);
   if (toCat !== null) toCat.addEventListener('click', () => navigate(`#/cat/${s.catId}`));
-
-  wireChips(root, draft, markDirty);
 
   $('#f-note', root).addEventListener('input', (e) => {
     draft.note = e.target.value.trim() === '' ? null : e.target.value.trim();
@@ -234,9 +227,6 @@ async function save(id) {
     await turnstile.ensurePass();
     // Send only what changed: an unchanged field in the body is still a column written.
     const patch = {};
-    if (draft.coat.join(',') !== original.coat.join(',')) patch.coat = draft.coat;
-    if (draft.size !== original.size) patch.size = draft.size;
-    if (draft.petted !== original.petted) patch.petted = draft.petted;
     if (draft.note !== original.note) patch.note = draft.note;
     if (draft.seenAt !== original.seenAt) patch.seenAt = draft.seenAt;
     if (draft.lat !== original.lat || draft.lon !== original.lon) {

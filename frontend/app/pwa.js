@@ -89,7 +89,7 @@ export function maybeOfferInstall(container) {
   const card = document.createElement('div');
   card.className = 'install-hint taped';
   card.innerHTML = `
-    <p>Add Meowmap to your home screen so photos stay safe while they wait to upload.</p>
+    <p>Add MeowMap to your home screen so photos stay safe while they wait to upload.</p>
     <p class="hand">Share ${esc('→')} Add to Home Screen</p>
     <button class="btn-stick sm" type="button">Got it</button>`;
   card.querySelector('button').addEventListener('click', () => {

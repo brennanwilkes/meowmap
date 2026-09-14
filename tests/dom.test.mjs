@@ -69,9 +69,24 @@ check('dateText produces a readable absolute date', () => {
   // Rendered in the VIEWER's zone by design, so this asserts shape rather than an exact
   // hour — pinning the hour would make the suite fail in a different timezone.
   const s = dateText(Date.UTC(2026, 7, 14, 18, 42));
-  assert.match(s, /^\d{1,2} \w+, \d{1,2}:\d{2}(am|pm)$/, `got "${s}"`);
+  assert.match(s, /^\w+ \d{1,2}(st|nd|rd|th) \d{1,2}:\d{2}(am|pm)$/, `got "${s}"`);
   assert.ok(!s.includes('.'), 'the day period must be "pm", not "p.m."');
   assert.strictEqual(dateText(null), '');
+});
+
+check('dateText ordinals, including the 11-13 trap every naive version gets wrong', () => {
+  // Local-time constructor so the day cannot shift under the viewer's zone.
+  const on = (d) => dateText(new Date(2026, 8, d, 13, 26).getTime()).split(' ')[1];
+  assert.strictEqual(on(1), '1st');
+  assert.strictEqual(on(2), '2nd');
+  assert.strictEqual(on(3), '3rd');
+  assert.strictEqual(on(4), '4th');
+  assert.strictEqual(on(11), '11th');
+  assert.strictEqual(on(12), '12th');
+  assert.strictEqual(on(13), '13th');
+  assert.strictEqual(on(21), '21st');
+  assert.strictEqual(on(22), '22nd');
+  assert.strictEqual(on(23), '23rd');
 });
 
 console.log(`dom: ${pass} checks passed`);

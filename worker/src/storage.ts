@@ -105,13 +105,12 @@ export async function getDataVersion(env: Env): Promise<number> {
 export async function getBulk(env: Env): Promise<{ cats: CatDto[]; sightings: SightingDto[] }> {
   const [catsRes, sightRes] = await env.MEOWMAP_DB.batch<CatRow | SightingRow>([
     env.MEOWMAP_DB.prepare(
-      `SELECT id, name, notes, created_at, updated_at
+      `SELECT id, name, notes, coat, size, petted, created_at, updated_at
          FROM cats WHERE deleted_at IS NULL`,
     ),
     env.MEOWMAP_DB.prepare(
       `SELECT id, client_id, cat_id, lat, lon, location_source, accuracy_m, seen_at,
-              coat, size, petted, note, photo_full, photo_thumb, photo_w, photo_h,
-              created_at, updated_at
+              note, photo_full, photo_thumb, photo_w, photo_h, created_at, updated_at
          FROM sightings WHERE deleted_at IS NULL`,
     ),
   ]);
@@ -140,6 +139,9 @@ export async function getSightingByClientId(env: Env, clientId: string): Promise
 export function toCatDto(r: CatRow): CatDto {
   return {
     id: r.id, name: r.name, notes: r.notes,
+    coat: r.coat === null || r.coat === '' ? [] : r.coat.split(','),
+    size: r.size as CatDto['size'],
+    petted: r.petted as CatDto['petted'],
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -155,9 +157,6 @@ export function toSightingDto(r: SightingRow): SightingDto {
     locationSource: r.location_source as SightingDto['locationSource'],
     accuracyM: r.accuracy_m,
     seenAt: r.seen_at,
-    coat: r.coat === null || r.coat === '' ? [] : r.coat.split(','),
-    size: r.size as SightingDto['size'],
-    petted: r.petted as SightingDto['petted'],
     note: r.note,
     photoFull: r.photo_full,
     photoThumb: r.photo_thumb,
@@ -210,9 +209,6 @@ export interface NewSighting {
   locationSource: string;
   accuracyM: number | null;
   seenAt: number;
-  coat: string[];
-  size: string | null;
-  petted: string | null;
   note: string | null;
   photoFull: string;
   photoThumb: string;
@@ -229,15 +225,14 @@ export function insertSighting(env: Env, s: NewSighting, now: number): D1Prepare
     .prepare(
       `INSERT INTO sightings
          (client_id, cat_id, lat, lon, location_source, accuracy_m, seen_at,
-          coat, size, petted, note, photo_full, photo_thumb, photo_w, photo_h,
+          note, photo_full, photo_thumb, photo_w, photo_h,
           device_id, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?17)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14)
        ON CONFLICT(client_id) DO NOTHING`,
     )
     .bind(
       s.clientId, s.catId, s.lat, s.lon, s.locationSource, s.accuracyM, s.seenAt,
-      s.coat.length === 0 ? null : [...s.coat].sort().join(','),
-      s.size, s.petted, s.note, s.photoFull, s.photoThumb, s.photoW, s.photoH,
+      s.note, s.photoFull, s.photoThumb, s.photoW, s.photoH,
       s.deviceId, now,
     );
 }
@@ -247,7 +242,6 @@ export function insertSighting(env: Env, s: NewSighting, now: number): D1Prepare
 export function patchSighting(
   env: Env, id: number, p: Partial<NewSighting>, now: number,
 ): D1PreparedStatement {
-  const coat = p.coat === undefined ? null : (p.coat.length === 0 ? '' : [...p.coat].sort().join(','));
   return env.MEOWMAP_DB
     .prepare(
       `UPDATE sightings SET
@@ -257,11 +251,8 @@ export function patchSighting(
          location_source = COALESCE(?6, location_source),
          accuracy_m      = CASE WHEN ?7 = 1 THEN ?8 ELSE accuracy_m END,
          seen_at         = COALESCE(?9, seen_at),
-         coat            = COALESCE(?10, coat),
-         size            = COALESCE(?11, size),
-         petted          = COALESCE(?12, petted),
-         note            = COALESCE(?13, note),
-         updated_at      = ?14
+         note            = COALESCE(?10, note),
+         updated_at      = ?11
        WHERE id = ?1 AND deleted_at IS NULL`,
     )
     .bind(
@@ -272,7 +263,7 @@ export function patchSighting(
       p.catId === undefined ? 0 : 1, p.catId ?? null,
       p.lat ?? null, p.lon ?? null, p.locationSource ?? null,
       p.accuracyM === undefined ? 0 : 1, p.accuracyM ?? null,
-      p.seenAt ?? null, coat, p.size ?? null, p.petted ?? null, p.note ?? null,
+      p.seenAt ?? null, p.note ?? null,
       now,
     );
 }
@@ -287,28 +278,61 @@ export function slugify(name: string): string {
   return name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-export function insertCat(env: Env, name: string | null, notes: string | null, now: number): D1PreparedStatement {
-  return env.MEOWMAP_DB
-    .prepare('INSERT INTO cats (name, slug, notes, created_at, updated_at) VALUES (?1,?2,?3,?4,?4)')
-    .bind(name, name === null ? null : slugify(name), notes, now);
+/** What a cat actually holds. Every field optional so the same shape serves the insert
+ *  (absent = not given) and the patch (absent = leave alone). */
+export interface CatFields {
+  name?: string | null;
+  notes?: string | null;
+  coat?: string[];
+  size?: string | null;
+  petted?: string | null;
 }
 
-export function patchCat(
-  env: Env, id: number, name: string | null | undefined, notes: string | null | undefined, now: number,
-): D1PreparedStatement {
+/** Sorted and comma-joined, so the stored string is canonical and two cats tagged the
+ *  same way compare equal. Empty is stored as NULL, never ''. */
+function coatColumn(coat: string[] | undefined): string | null {
+  if (coat === undefined || coat.length === 0) return null;
+  return [...coat].sort().join(',');
+}
+
+export function insertCat(env: Env, c: CatFields, now: number): D1PreparedStatement {
+  const name = c.name ?? null;
+  return env.MEOWMAP_DB
+    .prepare(
+      `INSERT INTO cats (name, slug, notes, coat, size, petted, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?7)`,
+    )
+    .bind(
+      name, name === null ? null : slugify(name), c.notes ?? null,
+      coatColumn(c.coat), c.size ?? null, c.petted ?? null, now,
+    );
+}
+
+export function patchCat(env: Env, id: number, c: CatFields, now: number): D1PreparedStatement {
+  const { name } = c;
   return env.MEOWMAP_DB
     .prepare(
       `UPDATE cats SET
          name       = CASE WHEN ?2 = 1 THEN ?3 ELSE name END,
          slug       = CASE WHEN ?2 = 1 THEN ?4 ELSE slug END,
          notes      = COALESCE(?5, notes),
-         updated_at = ?6
+         coat       = CASE WHEN ?6 = 1 THEN ?7 ELSE coat END,
+         size       = CASE WHEN ?8 = 1 THEN ?9 ELSE size END,
+         petted     = CASE WHEN ?10 = 1 THEN ?11 ELSE petted END,
+         updated_at = ?12
        WHERE id = ?1 AND deleted_at IS NULL`,
     )
     .bind(
       id, name === undefined ? 0 : 1, name ?? null,
       name === undefined || name === null ? null : slugify(name),
-      notes ?? null, now,
+      c.notes ?? null,
+      /* Clearing every chip is a real edit, so these need the present/absent flag rather
+       * than COALESCE — which cannot tell "not sent" from "set to nothing" and would make
+       * un-tagging a cat impossible. */
+      c.coat === undefined ? 0 : 1, coatColumn(c.coat),
+      c.size === undefined ? 0 : 1, c.size ?? null,
+      c.petted === undefined ? 0 : 1, c.petted ?? null,
+      now,
     );
 }
 

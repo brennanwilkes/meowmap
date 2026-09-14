@@ -23,10 +23,12 @@ const file = argv.find((a) => !a.startsWith('--'));
 const APPLY = has('--apply');
 
 const COLUMNS = {
-  cats: ['id', 'name', 'notes', 'created_at', 'updated_at', 'deleted_at'],
+  // coat/size/petted describe the animal, so they sit on cats since migration 003.
+  cats: ['id', 'name', 'slug', 'notes', 'coat', 'size', 'petted',
+    'created_at', 'updated_at', 'deleted_at'],
   sightings: [
     'id', 'client_id', 'cat_id', 'device_id', 'lat', 'lon', 'location_source',
-    'accuracy_m', 'seen_at', 'coat', 'size', 'petted', 'note',
+    'accuracy_m', 'seen_at', 'note',
     'photo_full', 'photo_thumb', 'photo_w', 'photo_h',
     'embedding', 'coat_suggested', 'created_at', 'updated_at', 'deleted_at',
   ],

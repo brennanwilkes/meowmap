@@ -22,7 +22,9 @@ export interface Env {
   PASS_SIGNING_SECRET: string;
 }
 
-export type Petted = 'yes' | 'no' | 'fled';
+/* 'fled' was a third option, cut after device testing. The validator has rejected it
+ * since, so the type had been lying; migration 003 normalises any leftover row. */
+export type Petted = 'yes' | 'no';
 export type SizeTag = 'kitten' | 'adult' | 'chonk';
 export type LocationSource = 'exif' | 'device' | 'manual';
 export type PhotoVariant = 'full' | 'thumb';
@@ -39,9 +41,6 @@ export interface SightingDto {
   locationSource: LocationSource;
   accuracyM: number | null;
   seenAt: number;
-  coat: string[];
-  size: SizeTag | null;
-  petted: Petted | null;
   note: string | null;
   photoFull: string;
   photoThumb: string;
@@ -55,6 +54,11 @@ export interface CatDto {
   id: number;
   name: string | null;
   notes: string | null;
+  /* Coat, size and petted describe the ANIMAL, so they live here rather than on each
+   * sighting — see migration 003. */
+  coat: string[];
+  size: SizeTag | null;
+  petted: Petted | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -68,9 +72,6 @@ export interface SightingRow {
   location_source: string;
   accuracy_m: number | null;
   seen_at: number;
-  coat: string | null;
-  size: string | null;
-  petted: string | null;
   note: string | null;
   photo_full: string;
   photo_thumb: string;
@@ -84,6 +85,9 @@ export interface CatRow {
   id: number;
   name: string | null;
   notes: string | null;
+  coat: string | null;
+  size: string | null;
+  petted: string | null;
   created_at: number;
   updated_at: number;
 }

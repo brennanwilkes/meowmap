@@ -20,7 +20,7 @@ import * as pwa from './pwa.js';
 const SCREENS = ['map', 'snap', 'cats'];
 
 const TITLES = {
-  map: ['Meowmap', ''],
+  map: ['MeowMap', ''],
   snap: ['Snap', 'point it at a cat'],
   cats: ['Cats', ''],
 };
@@ -40,8 +40,8 @@ const DETAILS = {
 };
 
 const DETAIL_TITLES = {
-  cat: ['Meowmap', 'a cat'],
-  sighting: ['Meowmap', 'one sighting'],
+  cat: ['MeowMap', 'a cat'],
+  sighting: ['MeowMap', 'one sighting'],
   settings: ['Settings', ''],
 };
 
@@ -190,60 +190,109 @@ $('#cog').addEventListener('click', () => { location.hash = '#/settings'; });
  *   - a drag only starts at the grabber, or when the body is scrolled to the very top;
  *   - once a vertical drag is committed the page must not also scroll, so the move
  *     handler is non-passive and calls preventDefault.
+ *
+ * THREE THINGS MAKE IT FEEL NATIVE rather than jittery, and all three were wrong first:
+ *
+ *   1. The transform is written ONCE PER FRAME from a rAF, not on every touchmove. iOS
+ *      fires touchmove faster than it paints, so writing straight from the handler queues
+ *      several layout-affecting writes per frame and the sheet visibly stutters.
+ *   2. Velocity is measured over the LAST ~100 ms, not the whole gesture. Averaging from
+ *      touchstart means a quick flick followed by holding still still reads as fast, so
+ *      the sheet flew away after she had already decided not to dismiss it — the "can't
+ *      cancel mid-drag" complaint. Measuring recent motion makes stopping a real cancel.
+ *   3. The committed threshold is SUBTRACTED from the offset. Deciding at 8px and then
+ *      translating by the full 8 made the sheet jump under the finger at the exact moment
+ *      it started tracking.
+ *
+ * Tracking is 1:1 downward, which is what every iOS sheet does; the earlier 0.85 factor
+ * meant the sheet lagged behind the finger and never felt attached to it.
  */
 const DISMISS_PX = 90;
 const DISMISS_VELOCITY = 0.5;   // px/ms — a quick flick counts even if it is short
+const COMMIT_PX = 8;            // slop before a drag is a drag rather than a tap
+const VELOCITY_WINDOW_MS = 100;
 
 (() => {
   const el = $('#s-detail');
   const body = $('#s-detail-body');
   let startY = 0;
   let startX = 0;
-  let startedAt = 0;
   let dragging = false;
   let decided = false;
-  let fromGrab = false;
+  let offset = 0;
+  let frame = 0;
+  /* Recent samples only — anything older than the window is dropped, so `velocity` below
+   * describes what the finger is doing NOW rather than what it did on the way here. */
+  let samples = [];
+
+  const paint = () => {
+    frame = 0;
+    el.style.transform = offset === 0 ? '' : `translateY(${offset}px)`;
+  };
+
+  const settle = () => {
+    if (frame !== 0) { cancelAnimationFrame(frame); frame = 0; }
+    el.style.transition = '';
+    el.style.transform = '';
+  };
 
   el.addEventListener('touchstart', (e) => {
     if (detail === null || e.touches.length !== 1) return;
-    fromGrab = e.target.closest('.grab') !== null;
+    const fromGrab = e.target.closest('.grab') !== null;
     if (!fromGrab && body.scrollTop > 0) return;
     startY = e.touches[0].clientY;
     startX = e.touches[0].clientX;
-    startedAt = e.timeStamp;
     dragging = true;
     decided = false;
+    offset = 0;
+    samples = [{ y: startY, t: e.timeStamp }];
     el.style.transition = 'none';
   }, { passive: true });
 
   el.addEventListener('touchmove', (e) => {
     if (!dragging) return;
-    const dy = e.touches[0].clientY - startY;
-    const dx = e.touches[0].clientX - startX;
+    const y = e.touches[0].clientY;
+    const dy = y - startY;
 
     if (!decided) {
       // Let a horizontal swipe or an upward pull go to the page untouched.
+      const dx = e.touches[0].clientX - startX;
       if (Math.abs(dx) > Math.abs(dy) || dy < 0) { dragging = false; el.style.transition = ''; return; }
-      if (Math.abs(dy) < 8) return;
+      if (dy < COMMIT_PX) return;
       decided = true;
     }
     e.preventDefault();
-    // Resist slightly rather than tracking 1:1 — it reads as weight rather than slack.
-    el.style.transform = `translateY(${dy * 0.85}px)`;
+
+    samples.push({ y, t: e.timeStamp });
+    while (samples.length > 2 && e.timeStamp - samples[0].t > VELOCITY_WINDOW_MS) samples.shift();
+
+    // Never above the resting position: this gesture only ever pushes the sheet DOWN.
+    offset = Math.max(0, dy - COMMIT_PX);
+    if (frame === 0) frame = requestAnimationFrame(paint);
   }, { passive: false });
 
   const end = (e) => {
     if (!dragging) return;
     dragging = false;
-    el.style.transition = '';
-    const dy = (e.changedTouches?.[0]?.clientY ?? startY) - startY;
-    const velocity = dy / Math.max(1, e.timeStamp - startedAt);
-    if (decided && (dy > DISMISS_PX || velocity > DISMISS_VELOCITY)) {
-      el.style.transform = '';
+    if (!decided) { settle(); return; }
+
+    const last = samples[samples.length - 1];
+    const first = samples[0];
+    const dt = last.t - first.t;
+    // Zero elapsed time means one sample: no recent motion, so no flick.
+    const velocity = dt <= 0 ? 0 : (last.y - first.y) / dt;
+
+    if (offset > DISMISS_PX || velocity > DISMISS_VELOCITY) {
+      /* Hand the rest of the travel to CSS from wherever the finger left it, so the
+       * dismissal continues the gesture instead of restarting it. Restoring the
+       * transition BEFORE back() is the whole trick: closeDetail() adds .down and clears
+       * the inline transform, and with the transition live that animates from the
+       * finger's last position to off-screen in one movement. */
+      el.style.transition = '';
       back();
       return;
     }
-    el.style.transform = '';
+    settle();
   };
   el.addEventListener('touchend', end, { passive: true });
   el.addEventListener('touchcancel', end, { passive: true });

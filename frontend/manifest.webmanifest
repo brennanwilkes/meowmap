@@ -1,6 +1,6 @@
 {
-  "name": "Meowmap",
-  "short_name": "Meowmap",
+  "name": "MeowMap",
+  "short_name": "MeowMap",
   "description": "Cats seen in public, on a map.",
   "id": "/meowmap/",
   "start_url": "./#/map",

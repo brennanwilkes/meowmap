@@ -51,7 +51,11 @@ export function openSightingSheet(sighting, cat, members = null) {
 
   const name = cat === null || cat === undefined ? 'Not named yet' : displayName(cat);
   const ring = ringFor(sighting.catId);
-  const tags = Array.isArray(sighting.coat) ? sighting.coat : [];
+  /* Coat, size and petted describe the animal, so they come off the CAT. A sighting
+   * still queued for upload has no cat yet — the Worker mints one when it lands — so
+   * until then it carries the tags she typed on the capture form. */
+  const tagged = cat === null || cat === undefined ? sighting : cat;
+  const tags = Array.isArray(tagged.coat) ? tagged.coat : [];
   const others = members === null ? [] : members.slice(1);
 
   const pendingNote = sighting.pending === true
@@ -63,7 +67,7 @@ export function openSightingSheet(sighting, cat, members = null) {
   sheet.innerHTML = `
     <div class="grabber"></div>
     ${pendingNote}
-    ${pettedSticker(sighting.petted)}
+    ${pettedSticker(tagged.petted)}
     <figure class="print">
       <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
       <img src="${esc(photoFor(sighting))}" alt="${esc(name)}"
@@ -73,14 +77,13 @@ export function openSightingSheet(sighting, cat, members = null) {
     </figure>
     <div class="label">
       <h2>${esc(name)}</h2>
-      <div class="sub">${esc(whenText(sighting.seenAt))}</div>
       <div class="when">${esc(dateText(sighting.seenAt))}</div>
-      ${tags.length === 0 && (sighting.size === null || sighting.size === undefined) ? '' : `
+      ${tags.length === 0 && (tagged.size === null || tagged.size === undefined) ? '' : `
         <hr class="rule">
         <div class="chiprow">
           ${tags.map(tagSticker).join('')}
-          ${sighting.size === null || sighting.size === undefined
-            ? '' : tagSticker(sighting.size, tags.length)}
+          ${tagged.size === null || tagged.size === undefined
+            ? '' : tagSticker(tagged.size, tags.length)}
         </div>`}
       ${others.length === 0 ? '' : `
         <hr class="rule">

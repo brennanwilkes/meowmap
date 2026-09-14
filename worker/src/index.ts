@@ -2,7 +2,7 @@ import type { Env, PhotoVariant } from './types.ts';
 import { HttpError } from './types.ts';
 import {
   BULK_CACHE_CONTROL, CONFIG_CACHE_CONTROL, FULL_LONG_EDGE, FULL_MAX_BYTES,
-  JPEG_CT, MAX_PHOTO_BYTES, PHOTO_CACHE_CONTROL, THUMB_LONG_EDGE, THUMB_MAX_BYTES,
+  JPEG_CT, MAX_NAME_LEN, MAX_PHOTO_BYTES, PHOTO_CACHE_CONTROL, THUMB_LONG_EDGE, THUMB_MAX_BYTES,
 } from './constants.ts';
 import { corsHeaders, handleOptions } from './cors.ts';
 import { errorJson, json, noContent, notModified } from './http.ts';
@@ -286,6 +286,9 @@ async function createSighting(
   if (catId !== null && !(await db.catExists(env, catId))) {
     throw new HttpError(400, 'catId does not exist');
   }
+  /* Only meaningful when no catId was sent: it names the cat minted below. Linking to an
+   * existing cat must never rename it from a capture form. */
+  const catName = optStr(b.catName, 'catName', MAX_NAME_LEN);
 
   const s: db.NewSighting = {
     clientId,
@@ -296,9 +299,6 @@ async function createSighting(
     accuracyM: b.accuracyM === undefined || b.accuracyM === null
       ? null : int(b.accuracyM, 'accuracyM', 0, 100_000),
     seenAt: seenAt(b.seenAt, now),
-    coat: coatTags(b.coat, 'coat') ?? [],
-    size: validators.size(b.size) ?? null,
-    petted: validators.petted(b.petted) ?? null,
     note: validators.note(b.note),
     photoFull: db.assertHash(String(b.photoFull ?? '')),
     photoThumb: db.assertHash(String(b.photoThumb ?? '')),
@@ -319,7 +319,16 @@ async function createSighting(
    * along. Cost is one extra row written per upload (4 -> 5 against the 100k/day cap),
    * which buys every sighting an identity from the moment it lands. */
   if (s.catId === null) {
-    const cat = await db.insertCat(env, null, null, now).run();
+    /* The tags ride the create into the NEW cat. When she instead answered "already seen
+     * this cat" and sent a catId, they are ignored: that cat already has its own coat and
+     * size, and letting a capture form overwrite them would rewrite history from a
+     * screen that never showed her the old values. */
+    const cat = await db.insertCat(env, {
+      name: catName,
+      coat: coatTags(b.coat, 'coat'),
+      size: validators.size(b.size) ?? null,
+      petted: validators.petted(b.petted) ?? null,
+    }, now).run();
     const newId = Number(cat.meta?.last_row_id ?? -1);
     if (newId < 0) throw new Error('auto cat insert returned no id');
     s.catId = newId;
@@ -368,12 +377,6 @@ async function updateSighting(
     patch.accuracyM = b.accuracyM === null ? null : int(b.accuracyM, 'accuracyM', 0, 100_000);
   }
   if (b.seenAt !== undefined) patch.seenAt = seenAt(b.seenAt, now);
-  const coat = coatTags(b.coat, 'coat');
-  if (coat !== undefined) patch.coat = coat;
-  const size = validators.size(b.size);
-  if (size !== undefined) patch.size = size;
-  const petted = validators.petted(b.petted);
-  if (petted !== undefined) patch.petted = petted;
   if (b.note !== undefined) patch.note = validators.note(b.note);
 
   await env.MEOWMAP_DB.batch([db.patchSighting(env, id, patch, now), db.bumpMeta(env, now)]);
@@ -400,14 +403,23 @@ async function createCat(
   req: Request, env: Env, now: number, extra: Record<string, string>, audits: AuditFields[],
 ): Promise<Response> {
   const b = await readJson(req);
-  const name = validators.name(b.name);
-  const notes = optStr(b.notes, 'notes', 500);
-  const [ins] = await env.MEOWMAP_DB.batch([db.insertCat(env, name, notes, now), db.bumpMeta(env, now)]);
+  const fields: db.CatFields = {
+    name: validators.name(b.name),
+    notes: optStr(b.notes, 'notes', 500),
+    coat: coatTags(b.coat, 'coat'),
+    size: validators.size(b.size) ?? null,
+    petted: validators.petted(b.petted) ?? null,
+  };
+  const [ins] = await env.MEOWMAP_DB.batch([db.insertCat(env, fields, now), db.bumpMeta(env, now)]);
   const id = Number(ins.meta?.last_row_id ?? -1);
   if (id < 0) throw new Error('cat insert returned no id');
   audits.push({ method: 'POST', path: '/cats', status: 201, outcome: 'ok', targetId: id });
   return json(req, env, 201, {
-    cat: { id, name, notes, createdAt: now, updatedAt: now },
+    cat: {
+      id, name: fields.name ?? null, notes: fields.notes ?? null,
+      coat: fields.coat ?? [], size: fields.size ?? null, petted: fields.petted ?? null,
+      createdAt: now, updatedAt: now,
+    },
   }, extra);
 }
 
@@ -417,9 +429,13 @@ async function updateCat(
 ): Promise<Response> {
   if (!(await db.catExists(env, id))) throw new HttpError(404, 'Cat not found', 'notfound');
   const b = await readJson(req);
-  const name = b.name === undefined ? undefined : validators.name(b.name);
-  const notes = b.notes === undefined ? undefined : optStr(b.notes, 'notes', 500);
-  await env.MEOWMAP_DB.batch([db.patchCat(env, id, name, notes, now), db.bumpMeta(env, now)]);
+  const fields: db.CatFields = {};
+  if (b.name !== undefined) fields.name = validators.name(b.name);
+  if (b.notes !== undefined) fields.notes = optStr(b.notes, 'notes', 500);
+  if (b.coat !== undefined) fields.coat = coatTags(b.coat, 'coat');
+  if (b.size !== undefined) fields.size = validators.size(b.size) ?? null;
+  if (b.petted !== undefined) fields.petted = validators.petted(b.petted) ?? null;
+  await env.MEOWMAP_DB.batch([db.patchCat(env, id, fields, now), db.bumpMeta(env, now)]);
   audits.push({ method: 'PATCH', path: '/cats/:id', status: 200, outcome: 'ok', targetId: id });
   return json(req, env, 200, { ok: true }, extra);
 }

@@ -159,11 +159,12 @@ export async function deleteSighting(id) {
   await request(`/sightings/${id}`, { method: 'DELETE', auth: true });
 }
 
-export async function createCat(name, notes) {
+/** @param fields {{name?, notes?, coat?, size?, petted?}} — all optional. */
+export async function createCat(fields) {
   const res = await request('/cats', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, notes }),
+    body: JSON.stringify(fields),
     auth: true,
   });
   return await res.json();

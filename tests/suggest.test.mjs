@@ -16,17 +16,17 @@ const NOW = Date.UTC(2026, 8, 10);
 const DAY = 86_400_000;
 const HERE = { lat: 48.4266, lon: -123.3505, coat: ['orange', 'tabby'] };
 
-/** Offset a point by n metres north / east of HERE. */
+/** Offset a point by n metres north / east of HERE. A sighting carries no tags since
+ *  migration 003 — they describe the animal and live on the cat. */
 function at(northM, eastM, extra = {}) {
   return {
     lat: HERE.lat + northM / 111_320,
     lon: HERE.lon + eastM / (111_320 * Math.cos(HERE.lat * Math.PI / 180)),
     seenAt: NOW - DAY,
-    coat: [],
     ...extra,
   };
 }
-const cat = (id, sightings) => ({ id, sightings });
+const cat = (id, sightings, over = {}) => ({ id, coat: [], size: null, petted: null, ...over, sightings });
 
 check('distanceM is accurate enough at neighbourhood scale', () => {
   const p = at(100, 0);
@@ -49,8 +49,8 @@ check('a closer-older cat outranks a farther-newer one', () => {
 });
 
 check('a coat mismatch demotes but does not exclude', () => {
-  const mismatch = cat(1, [at(0, 30, { coat: ['black', 'tuxedo'] })]);
-  const match = cat(2, [at(0, 60, { coat: ['orange', 'tabby'] })]);
+  const mismatch = cat(1, [at(0, 30)], { coat: ['black', 'tuxedo'] });
+  const match = cat(2, [at(0, 60)], { coat: ['orange', 'tabby'] });
   const out = suggestCats(HERE, [mismatch, match], NOW);
   assert.strictEqual(out.length, 2, 'mismatch must still be offered');
   assert.strictEqual(out[0].catId, 2, 'matching coat should win despite being farther');
@@ -58,8 +58,8 @@ check('a coat mismatch demotes but does not exclude', () => {
 
 check('an untagged sighting still ranks sanely — the common case', () => {
   const untagged = { lat: HERE.lat, lon: HERE.lon, coat: [] };
-  const near = cat(1, [at(0, 25, { coat: ['black'] })]);
-  const far = cat(2, [at(0, 200, { coat: ['orange', 'tabby'] })]);
+  const near = cat(1, [at(0, 25)], { coat: ['black'] });
+  const far = cat(2, [at(0, 200)], { coat: ['orange', 'tabby'] });
   const out = suggestCats(untagged, [far, near], NOW);
   assert.strictEqual(out[0].catId, 1, 'with no tags, distance should decide');
   assert.strictEqual(out[0].coatOverlap, null, 'no tags means no overlap signal, not zero');

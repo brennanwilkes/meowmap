@@ -1,8 +1,12 @@
 import { COAT_TAGS, PETTED_VALUES, SIZE_TAGS } from '../../config.js';
 import { esc } from '../dom.js';
 
-/* The coat / size / petted chip rows, shared by the capture page and the sighting
- * editor — the same three rows in the same order, so they are one implementation.
+/* The coat / size / petted chip rows, shared by the capture page and the cat editor —
+ * the same three rows in the same order, so they are one implementation.
+ *
+ * These describe the ANIMAL, so they belong to a cat, not to a sighting (migration 003).
+ * On the capture page they seed the cat the Worker mints for a new photo; on the cat page
+ * they edit it.
  *
  * Unselected chips LIE FLAT on the page: dashed outline, no fill, no tilt, no shadow.
  * Selected ones are stuck on. Both states come from the same physics, which is what
@@ -22,7 +26,7 @@ function chip(label, value, selected, group, i) {
     style="--fill:${fill};--tilt:${tilt}">${esc(label)}</button>`;
 }
 
-/** @param draft {{coat: string[], size: string|null, petted: string|null}} */
+/** @param draft  anything carrying {coat: string[], size, petted} — a capture draft or a cat. */
 export function chipRows(draft) {
   return `
     <div class="chiprow" data-chips="coat">

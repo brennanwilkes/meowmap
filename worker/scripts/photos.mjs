@@ -43,9 +43,10 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 function load() {
   const where = SHOW_DELETED ? '' : 'WHERE s.deleted_at IS NULL';
   rows = d1(`SELECT s.id, s.cat_id, s.device_id, s.lat, s.lon, s.location_source,
-                    s.accuracy_m, s.seen_at, s.coat, s.size, s.petted, s.note,
+                    s.accuracy_m, s.seen_at, s.note,
                     s.photo_full, s.photo_thumb, s.photo_w, s.photo_h, s.created_at,
-                    s.deleted_at, c.name AS cat_name
+                    s.deleted_at, c.name AS cat_name,
+                    c.coat AS cat_coat, c.size AS cat_size, c.petted AS cat_petted
              FROM sightings s LEFT JOIN cats c ON c.id = s.cat_id
              ${where} ORDER BY s.seen_at DESC`);
   if (i >= rows.length) i = Math.max(0, rows.length - 1);
@@ -70,7 +71,8 @@ function detailLines(s) {
     ? paint('not identified', c.grey)
     : paint(`${s.cat_name ?? 'unnamed'} (#${s.cat_id})`, c.pink);
   const acc = s.accuracy_m === null ? '' : ` ±${s.accuracy_m}m`;
-  const tags = [s.coat, s.size, s.petted].filter((x) => x !== null && x !== '').join(' · ');
+  // The cat's, not the photo's — see migration 003.
+  const tags = [s.cat_coat, s.cat_size, s.cat_petted].filter((x) => x !== null && x !== '').join(' · ');
 
   const lines = [
     `${paint('cat    ', c.grey)} ${cat}`,

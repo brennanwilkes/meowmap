@@ -9,7 +9,7 @@
  * frontend change or the shell cache never rotates.
  */
 
-const BUILD = '2026-09-14e';
+const BUILD = '2026-09-14g';
 
 const SHELL = `shell-${BUILD}`;
 const API = 'api-v1';

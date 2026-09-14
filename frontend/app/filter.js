@@ -1,5 +1,8 @@
-/* Filtering the map by the tags a sighting carries: coat, size, and whether she got to
- * pet it.
+/* Filtering the map by the tags a CAT carries: coat, size, and whether she got to pet it.
+ *
+ * These moved from the sighting to the cat in migration 003 — they describe the animal,
+ * not the encounter — so a filter is really a question about cats, and the sightings that
+ * survive it are the ones belonging to a cat that matched.
  *
  * This is what makes the chips worth tapping. Tagging costs a tap at save time and only
  * pays off if "show me the orange ones" works later.
@@ -24,8 +27,8 @@
  * covering the map it was describing.
  */
 
-/** The groups, in the order they appear on the strip. `coat` is multi-valued per
- *  sighting; `size` and `petted` are single. */
+/** The groups, in the order they appear on the strip. `coat` is multi-valued per cat;
+ *  `size` and `petted` are single. */
 export const FILTER_GROUPS = ['coat', 'size', 'petted'];
 
 export function emptyFilter() {
@@ -41,39 +44,54 @@ export function toggle(f, group, value) {
   return f;
 }
 
-function groupMatches(sighting, group, active) {
+function groupMatches(tagged, group, active) {
   if (active.size === 0) return true;          // an untouched group constrains nothing
   if (group === 'coat') {
-    const coat = Array.isArray(sighting.coat) ? sighting.coat : [];
+    const coat = Array.isArray(tagged.coat) ? tagged.coat : [];
     for (const tag of coat) if (active.has(tag)) return true;
     return false;
   }
-  const v = sighting[group];
+  const v = tagged[group];
   return v !== null && v !== undefined && active.has(v);
 }
 
-export function matches(sighting, f) {
-  return FILTER_GROUPS.every((g) => groupMatches(sighting, g, f[g]));
-}
-
-export function filterSightings(sightings, f) {
-  if (!isActive(f)) return sightings;
-  return sightings.filter((s) => matches(s, f));
+/** `tagged` is a cat, or a pending sighting still carrying its own tags. */
+export function matches(tagged, f) {
+  return FILTER_GROUPS.every((g) => groupMatches(tagged, g, f[g]));
 }
 
 /**
- * Cats, keeping only their matching sightings, and dropping any cat left with none.
+ * Where a sighting's tags actually live.
  *
- * Filtering the sightings but NOT the territory is the bug this exists to prevent: a
- * turf blob computed from points that are not drawn is a shaded zone with nothing
- * inside it.
+ * Normally on its cat. A sighting still queued for upload has no cat yet — the Worker
+ * mints one when it lands — so until then it carries the tags she typed on the capture
+ * form, and filtering has to read them from the row itself or a pending orange cat
+ * vanishes the moment she taps "orange".
+ *
+ * A cat id pointing at no cat means the two halves of the store are briefly out of step.
+ * Treated as untagged rather than crashing the map: it is transient and self-correcting,
+ * and this is a render path.
+ */
+export function tagsFor(sighting, catsById) {
+  if (sighting.catId === null || sighting.catId === undefined) return sighting;
+  const cat = catsById.get(sighting.catId);
+  return cat === undefined ? {} : cat;
+}
+
+export function filterSightings(sightings, catsById, f) {
+  if (!isActive(f)) return sightings;
+  return sightings.filter((s) => matches(tagsFor(s, catsById), f));
+}
+
+/**
+ * Cats matching the filter, with every one of their sightings.
+ *
+ * Whole cats in or out, because the tags belong to the cat: there is no longer such a
+ * thing as an orange sighting of a grey cat. That also removes the bug the old
+ * per-sighting version existed to avoid — a turf blob drawn around points that were
+ * themselves filtered out.
  */
 export function filterCats(cats, f) {
   if (!isActive(f)) return cats;
-  const out = [];
-  for (const cat of cats) {
-    const sightings = cat.sightings.filter((s) => matches(s, f));
-    if (sightings.length > 0) out.push({ ...cat, sightings });
-  }
-  return out;
+  return cats.filter((cat) => matches(cat, f));
 }

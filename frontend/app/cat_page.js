@@ -1,6 +1,7 @@
 import { DEFAULT_TILE_ID, LS, MAX_NAME_LEN, TILE_SOURCES } from '../config.js';
 import { createCat, deleteCat, patchCat, patchSighting, photoUrl } from './api.js';
-import { catColour, displayName } from './catcolor.js';
+import { catColour, displayName, inkFor } from './catcolor.js';
+import { chipRows, wireChips } from './components/chips.js';
 import { getPref } from './device.js';
 import { $, distanceText, esc, whenText } from './dom.js';
 import { distanceM } from './suggest.js';
@@ -9,7 +10,13 @@ import { turfRing, shouldDrawTurf } from './turf.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
-/* One cat: rename it, see where it lives, and answer two questions in plain language.
+/* One cat: everything true of the ANIMAL, plus where it lives and two questions in
+ * plain language.
+ *
+ * Name, coat, size and petted all live here since migration 003. They describe the cat,
+ * not any one photograph, so a grouped cat has ONE answer to "what colour is it" instead
+ * of one per sighting that could disagree with each other. Date and location belong to
+ * the individual photo and are edited by tapping it.
  *
  *   "I've seen this cat before"  → pick another cat's face → the two become one.
  *   "this is a different cat"    → that photo leaves and becomes its own cat.
@@ -26,6 +33,11 @@ let catId = null;
 let unsubscribe = null;
 let miniMap = null;
 let saveTimer = null;
+/* The working copy of everything that describes the animal. Chips mutate it in place and
+ * one debounced PATCH sends whatever actually differs. `pendingFor` is the cat that
+ * debounce belongs to, so unmount can flush it without the DOM. */
+let edit = null;
+let pendingFor = null;
 
 function render(state) {
   // The store fires on every refresh, including the one this page triggers after a
@@ -33,6 +45,9 @@ function render(state) {
   // the only safe moment to rebuild is when the name field is not being used.
   const input = $('#f-name', root);
   if (input !== null && document.activeElement === input) return;
+  // A pending debounce means a tap she has made is not on the server yet; rebuilding
+  // from server state would silently undo it in front of her.
+  if (saveTimer !== null) return;
   if (miniMap !== null) { miniMap.remove(); miniMap = null; }
 
   const cat = store.catsWithSightings(state).find((c) => c.id === catId);
@@ -45,18 +60,21 @@ function render(state) {
   const sightings = [...cat.sightings].sort((a, b) => b.seenAt - a.seenAt);
 
   root.innerHTML = `
-    <div class="pad" style="--ring:${esc(colour.hex)}">
+    <div class="pad" style="--ring:${esc(colour.hex)};--ring-ink:${esc(inkFor(cat.id))}">
       <div class="detail-head">
         <h1 class="sec">Edit cat</h1>
         <span class="swatch" aria-hidden="true"></span>
       </div>
 
-      <label class="field">
-        <span>Name <em>(optional)</em></span>
-        <input type="text" id="f-name" maxlength="${MAX_NAME_LEN}"
+      <div class="plate-wrap">
+        <input type="text" class="nameplate" id="f-name" maxlength="${MAX_NAME_LEN}"
+               aria-label="This cat's name"
                placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">
-      </label>
+      </div>
       <p class="hand" id="save-state">&nbsp;</p>
+
+      <hr class="rule">
+      ${chipRows(cat)}
 
       <hr class="rule">
       <h2 class="sec">${sightings.length === 1 ? 'Seen once' : `Seen ${sightings.length} times`}</h2>
@@ -80,6 +98,7 @@ function render(state) {
       <div class="map-note" id="cat-err" style="position:static"></div>
     </div>`;
 
+  edit = { name: cat.name ?? null, coat: [...cat.coat], size: cat.size, petted: cat.petted };
   wire(cat);
   if (sightings.length >= 2) drawTerritory(sightings, colour);
 }
@@ -91,12 +110,15 @@ function wire(cat) {
 
   const input = $('#f-name', root);
   input.addEventListener('input', () => {
-    // Debounced rather than saved per keystroke: every PATCH is a D1 write plus an
-    // app_meta bump, and typing "Mochi" would otherwise cost ten of them.
-    if (saveTimer !== null) clearTimeout(saveTimer);
-    $('#save-state', root).textContent = '';
-    saveTimer = setTimeout(() => saveName(cat.id, input.value), 900);
+    edit.name = input.value.trim() === '' ? null : input.value.trim();
+    schedule(cat);
   });
+
+  /* Tags save on the same debounce as the name rather than behind a Save button. There
+   * is no button on this page and adding one for half the fields would be worse than
+   * either extreme — and the debounce already collapses a flurry of taps into ONE D1
+   * write, which is what the button existed to protect. */
+  wireChips(root, edit, () => schedule(cat));
 
   $('#same-as', root).addEventListener('click', () => showMergePicker(cat));
   for (const btn of root.querySelectorAll('[data-split]')) {
@@ -104,21 +126,45 @@ function wire(cat) {
   }
 }
 
-async function saveName(id, raw) {
-  saveTimer = null;
-  const name = raw.trim() === '' ? null : raw.trim();
+/** Debounced rather than saved per keystroke or per tap: every PATCH is a D1 write plus
+ *  an app_meta bump, and typing "Mochi" would otherwise cost ten of them. */
+function schedule(cat) {
+  if (saveTimer !== null) clearTimeout(saveTimer);
+  pendingFor = cat;
   const note = $('#save-state', root);
-  if (note === null) return;             // the page was closed mid-debounce
-  note.textContent = 'saving…';
+  if (note !== null) note.textContent = '';
+  saveTimer = setTimeout(() => saveEdits(cat), 900);
+}
+
+/** `note` is null once the page has closed; the PATCH still has to go. */
+function state(text) {
+  if (root === null) return;
+  const note = $('#save-state', root);
+  if (note !== null) note.textContent = text;
+}
+
+async function saveEdits(cat) {
+  saveTimer = null;
+  pendingFor = null;
+
+  // Send only what changed: an unchanged field in the body is still a column written.
+  const patch = {};
+  if (edit.name !== (cat.name ?? null)) patch.name = edit.name;
+  if (edit.coat.join(',') !== cat.coat.join(',')) patch.coat = edit.coat;
+  if (edit.size !== cat.size) patch.size = edit.size;
+  if (edit.petted !== cat.petted) patch.petted = edit.petted;
+  if (Object.keys(patch).length === 0) { state(''); return; }
+
+  state('saving…');
   try {
     await turnstile.ensurePass();
-    await patchCat(id, { name });
+    await patchCat(cat.id, patch);
     await store.refresh();
-    const after = $('#save-state', root);
-    if (after !== null) after.textContent = 'saved';
+    state('saved');
   } catch (err) {
-    const after = $('#save-state', root);
-    if (after !== null) after.textContent = `not saved — ${err.message}`;
+    // The page may already be gone, so this has to be visible in the console too.
+    console.error('[cat] save failed:', err);
+    state(`not saved — ${err.message}`);
   }
 }
 
@@ -177,22 +223,54 @@ function showMergePicker(cat) {
  * some photos moved and says so, rather than rolling back and risking undoing a link
  * that did land.
  */
+/** Newest sighting, or -Infinity for a cat with none. */
+function newestAt(cat) {
+  return cat.sightings.reduce((a, s) => Math.max(a, s.seenAt), -Infinity);
+}
+
+/**
+ * Two cats become one, and their descriptions have to become one too.
+ *
+ * COAT UNIONS; size and petted take the more recently seen cat's answer. A union loses
+ * nothing — a cat tagged "orange" here and "tabby" there is an orange tabby, and
+ * discarding half would quietly delete something she typed. Size and petted cannot union
+ * (a cat is not both a kitten and a chonk), so the newer observation wins as the more
+ * likely to still be true; the older one is kept only where the newer has no answer.
+ */
+function mergeTags(survivor, absorbed) {
+  const [newer, older] = newestAt(survivor) >= newestAt(absorbed)
+    ? [survivor, absorbed] : [absorbed, survivor];
+  return {
+    coat: [...new Set([...survivor.coat, ...absorbed.coat])].sort(),
+    size: newer.size ?? older.size,
+    petted: newer.petted ?? older.petted,
+    // Whichever way round she taps, the cat she met first keeps its name.
+    name: survivor.name ?? absorbed.name,
+  };
+}
+
 async function merge(cat, otherId) {
-  const survivor = Math.min(cat.id, otherId);
+  const survivorId = Math.min(cat.id, otherId);
   const absorbed = Math.max(cat.id, otherId);
   const btn = $('#same-as', root);
   btn.disabled = true;
   btn.textContent = 'Joining…';
   try {
     await turnstile.ensurePass();
-    const doomed = store.catsWithSightings().find((c) => c.id === absorbed);
+    const all = store.catsWithSightings();
+    const doomed = all.find((c) => c.id === absorbed);
+    const keeper = all.find((c) => c.id === survivorId);
+    if (doomed === undefined || keeper === undefined) {
+      throw new Error('one of those cats is no longer here');
+    }
+    await patchCat(survivorId, mergeTags(keeper, doomed));
     for (const s of doomed.sightings) {
       // eslint-disable-next-line no-await-in-loop -- serial; see above
-      await patchSighting(s.id, { catId: survivor });
+      await patchSighting(s.id, { catId: survivorId });
     }
     await deleteCat(absorbed);
     await store.refresh();
-    navigate(`#/cat/${survivor}`);
+    navigate(`#/cat/${survivorId}`);
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'I\u2019ve seen this cat before';
@@ -207,7 +285,10 @@ async function split(sightingId, cat) {
   if (btn !== null) { btn.disabled = true; btn.textContent = 'moving…'; }
   try {
     await turnstile.ensurePass();
-    const { cat: fresh } = await createCat(null, null);
+    /* The new cat inherits the description it is leaving. She grouped these in the first
+     * place because they looked alike, so an orange tabby splitting off is still an
+     * orange tabby — starting it blank would make her re-type what she already knows. */
+    const { cat: fresh } = await createCat({ coat: cat.coat, size: cat.size, petted: cat.petted });
     await patchSighting(sightingId, { catId: fresh.id });
     // The cat this left may now be empty; tidy it up rather than leaving a shell.
     if (cat.sightings.length === 1) await deleteCat(cat.id);
@@ -260,7 +341,14 @@ export function mount(container, arg) {
 
 export function unmount() {
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
-  if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; }
+  /* FLUSH, never drop. Swiping the sheet away within the debounce window used to bin the
+   * edit silently — she taps "chonk", leaves, and it was never saved. The PATCH is fired
+   * without awaiting it: unmount cannot be async, and the request outlives this page. */
+  if (saveTimer !== null) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    if (pendingFor !== null) saveEdits(pendingFor);
+  }
   if (miniMap !== null) { miniMap.remove(); miniMap = null; }
   root = null;
   catId = null;

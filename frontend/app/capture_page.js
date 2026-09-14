@@ -2,13 +2,13 @@ import {
   ACCEPT_TYPES, DEFAULT_ZOOM, FALLBACK_CENTRE, MAX_NAME_LEN, MAX_NOTE_LEN,
   TILE_SOURCES, DEFAULT_TILE_ID, LS,
 } from '../config.js';
-import { $, dateText, esc } from './dom.js';
+import { $, dateText, distanceText, esc } from './dom.js';
 import { catColour, displayName } from './catcolor.js';
 import { patchSighting, photoUrl } from './api.js';
 import { getPref } from './device.js';
 import { startLocating } from './geolocate.js';
 import { LOCATION_SOURCE, processPhoto, resolveLocation, resolveSeenAt } from './pipeline.js';
-import { reasonText, suggestCats } from './suggest.js';
+import { distanceM, reasonText, suggestCats } from './suggest.js';
 import { chipRows, wireChips } from './components/chips.js';
 import * as flush from './flush.js';
 import * as pwa from './pwa.js';
@@ -67,6 +67,39 @@ function locationLine() {
   return `Accurate to about ${Math.round(draft.accuracyM)} m`;
 }
 
+/* Two mutually exclusive answers to "who is this", and she can switch between them
+ * freely before saving. Grouping first means she never has to re-describe a cat the app
+ * already knows, and never ends up with two half-tagged copies of one animal. */
+function newCatFields() {
+  return `
+      <button type="button" class="btn-ghost wide" id="seen-before">I&rsquo;ve seen this cat before</button>
+      <div id="pick"></div>
+
+      <label class="field">
+        <span>Name <em>(optional)</em></span>
+        <input type="text" id="f-name" maxlength="${MAX_NAME_LEN}"
+               placeholder="leave blank if you don't know" value="${esc(draft.name ?? '')}">
+      </label>
+
+      <hr class="rule">
+      ${chipRows(draft)}`;
+}
+
+/** Already answered: show WHICH cat, and nothing she could contradict it with. The tags
+ *  are the cat's own, so they are shown rather than offered — editing them here would
+ *  rewrite that cat's history from a screen that never showed her the old values. */
+function groupedPanel() {
+  const cat = store.catsWithSightings().find((c) => c.id === draft.catId);
+  if (cat === undefined) throw new Error(`grouped onto a cat that is not in the store: ${draft.catId}`);
+  const tags = [...cat.coat, cat.size].filter((t) => t !== null && t !== undefined);
+  return `
+      <div class="grouped" style="--ring:${esc(catColour(cat.id))}">
+        <span class="nm">${esc(displayName(cat))}</span>
+        ${tags.length === 0 ? '' : `<span class="why">${esc(tags.join(' · '))}</span>`}
+      </div>
+      <button type="button" class="btn-ghost wide" id="ungroup">No, this is a different cat</button>`;
+}
+
 function draftView() {
   const notice = draft.notice === null ? '' : `<p class="hand notice">${esc(draft.notice)}</p>`;
   return `
@@ -77,14 +110,7 @@ function draftView() {
       </figure>
       ${notice}
 
-      <label class="field">
-        <span>Name <em>(optional)</em></span>
-        <input type="text" id="f-name" maxlength="${MAX_NAME_LEN}"
-               placeholder="leave blank if you don't know" value="${esc(draft.name ?? '')}">
-      </label>
-
-      <hr class="rule">
-      ${chipRows(draft)}
+      ${draft.catId === null ? newCatFields() : groupedPanel()}
 
       <hr class="rule">
       <label class="field">
@@ -261,6 +287,9 @@ async function ingest(file, fromCamera) {
       locationSource: place.source,
       notice: place.notice,
       seenAt: resolveSeenAt(processed.meta, now),
+      // Set only when she answers "I've seen this cat before" BEFORE saving. Non-null
+      // means the tags below belong to that cat and are not hers to set here.
+      catId: null,
       name: null,
       coat: [],
       size: null,
@@ -283,17 +312,76 @@ async function ingest(file, fromCamera) {
 }
 
 function wireDraft() {
-  wireChips(root, draft, () => {});
-
-  $('#f-name', root).addEventListener('input', (e) => {
-    draft.name = e.target.value.trim() === '' ? null : e.target.value.trim();
-  });
   $('#f-note', root).addEventListener('input', (e) => {
     draft.note = e.target.value.trim() === '' ? null : e.target.value.trim();
   });
-
   $('#discard', root).addEventListener('click', showIdle);
   $('#save', root).addEventListener('click', save);
+
+  if (draft.catId === null) {
+    wireChips(root, draft, () => {});
+    $('#f-name', root).addEventListener('input', (e) => {
+      draft.name = e.target.value.trim() === '' ? null : e.target.value.trim();
+    });
+    $('#seen-before', root).addEventListener('click', showPicker);
+  } else {
+    $('#ungroup', root).addEventListener('click', () => regroup(null));
+  }
+}
+
+/**
+ * Every cat she already has, nearest first, as faces.
+ *
+ * ONE TAP, on a face. Nearest first because the cat she means is almost always one she
+ * photographed near here, and there is no search box, no multi-select and no
+ * confirmation — the same rule as the cat page, and the exact inverse of the button
+ * that undoes it.
+ */
+function showPicker() {
+  const cats = store.catsWithSightings().filter((c) => c.sightings.length > 0);
+  const pick = $('#pick', root);
+
+  if (cats.length === 0) {
+    pick.innerHTML = '<p class="hand">No other cats yet — this one is the first.</p>';
+    return;
+  }
+
+  // Sorted, never cut: a cat two streets away is still one she might mean, and hiding it
+  // would leave her with no way to say so.
+  const near = cats.map((cat) => ({
+    cat,
+    metres: draft.lat === null ? Infinity : Math.min(
+      ...cat.sightings.map((x) => distanceM(draft.lat, draft.lon, x.lat, x.lon)),
+    ),
+  })).sort((a, b) => a.metres - b.metres || a.cat.id - b.cat.id);
+
+  pick.innerHTML = `
+    <div class="suggest-row">
+      ${near.map(({ cat, metres }) => {
+        const face = cat.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
+        return `
+        <button type="button" class="suggest" data-pick="${cat.id}"
+                style="--ring:${esc(catColour(cat.id))}">
+          <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
+          <span class="nm">${esc(displayName(cat))}</span>
+          <span class="why">${esc(Number.isFinite(metres) ? distanceText(metres) : '')}</span>
+        </button>`;
+      }).join('')}
+    </div>`;
+
+  for (const btn of pick.querySelectorAll('[data-pick]')) {
+    btn.addEventListener('click', () => regroup(Number(btn.dataset.pick)));
+  }
+}
+
+/** Switch between "a new cat" and "that cat" and back. Nothing is saved yet, so this is
+ *  pure local state and costs no request either way. */
+function regroup(catId) {
+  draft.catId = catId;
+  destroyMiniMap();
+  root.innerHTML = draftView();
+  mountMiniMap();
+  wireDraft();
 }
 
 async function save() {
@@ -314,11 +402,24 @@ async function save() {
   await turnstile.ensurePass().catch((err) => console.warn('[capture] pass:', err.message));
   await flush.enqueue(saved);
 
+  releasePhoto();
+  draft = null;
+
+  /* She already said which cat this is, so do not ask again. Offering the same question
+   * twice in a row is how a simple screen starts to feel like it has a right answer she
+   * might have missed. */
+  if (saved.catId !== null) {
+    root.innerHTML = `<div class="pad">
+      <p class="saved-note hand">Saved! It is on the map.</p>
+      <button type="button" class="btn-stick" id="again">Another cat</button>
+    </div>`;
+    $('#again', root).addEventListener('click', showIdle);
+    return;
+  }
+
   const cats = store.catsWithSightings();
   const candidates = suggestCats(saved, cats, Date.now());
   root.innerHTML = suggestionView(candidates, cats);
-  releasePhoto();
-  draft = null;
   wireSuggestion(saved);
 }
 

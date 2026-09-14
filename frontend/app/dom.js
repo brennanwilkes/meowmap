@@ -30,9 +30,13 @@ export function whenText(ms, now = Date.now()) {
   return years === 1 ? 'a year ago' : `${years} years ago`;
 }
 
-/** Absolute date for the detail view: "14 August, 6:42pm", in the viewer's own zone.
+/** Absolute date for the detail view: "September 4th 1:26pm", in the viewer's own zone.
  *  en-CA formats the day period as "p.m."; the app's voice is "pm", so the dots are
- *  stripped rather than the locale being fought. */
+ *  stripped rather than the locale being fought.
+ *
+ *  Where this is shown, the relative "9 days ago" is NOT also shown — saying both is
+ *  saying the same thing twice, and the absolute date is the one that answers a question
+ *  she cannot work out for herself. */
 export function dateText(ms) {
   if (typeof ms !== 'number' || !Number.isFinite(ms)) return '';
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -40,7 +44,16 @@ export function dateText(ms) {
   }).formatToParts(new Date(ms));
   const get = (t) => parts.find((p) => p.type === t)?.value ?? '';
   const period = get('dayPeriod').toLowerCase().replace(/[^a-z]/g, '');
-  return `${get('day')} ${get('month')}, ${get('hour')}:${get('minute')}${period}`;
+  return `${get('month')} ${get('day')}${ordinal(Number(get('day')))} ${get('hour')}:${get('minute')}${period}`;
+}
+
+/** "st/nd/rd/th". 11-13 are the exception that every naive version gets wrong. */
+function ordinal(n) {
+  if (n % 100 >= 11 && n % 100 <= 13) return 'th';
+  if (n % 10 === 1) return 'st';
+  if (n % 10 === 2) return 'nd';
+  if (n % 10 === 3) return 'rd';
+  return 'th';
 }
 
 /** Distance in the units a person walking would use. */

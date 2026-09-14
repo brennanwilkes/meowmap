@@ -35,6 +35,20 @@ export function dbUuid() {
   return cachedUuid;
 }
 
+/**
+ * Run a whole .sql file. Wrangler parses it, which is what makes this preferable to
+ * splitting on `;` ourselves — see migrate.mjs.
+ *
+ * NO --json, and nothing parsed. With --file wrangler prints its own progress lines
+ * ("Checking if file needs uploading") BEFORE any JSON, so JSON.parse chokes on the
+ * first character — after the statements have already run, which is the worst possible
+ * place to throw. A non-zero exit already throws from execFileSync, so success is the
+ * only thing that gets here and there is nothing in the output worth reading.
+ */
+export function d1File(path) {
+  return wrangler(['d1', 'execute', dbUuid(), '--remote', '--file', path]);
+}
+
 export function d1(sql) {
   const raw = wrangler(['d1', 'execute', dbUuid(), '--remote', '--json', '--command', sql]);
   const parsed = JSON.parse(raw);

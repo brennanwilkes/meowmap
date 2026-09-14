@@ -336,3 +336,58 @@
 .loose-card .btn-ghost.sm { width: 100%; margin-top: 4px; font-size: var(--t-xs); padding: 4px 6px; }
 
 #cat-err:empty { display: none; }
+
+/* ── the nameplate ─────────────────────────────────────────────────────────
+   A cat's name is the one piece of text on the page that is about WHO this is, so it
+   gets an object of its own rather than a form field. The dashed outline this replaced
+   is the app's vocabulary for "unselected chip", and borrowing it for a text box said
+   the name was an option not yet taken.
+
+   It is still an <input> — tapping the name and typing is the whole edit, with no mode
+   to enter and nothing to press afterwards. */
+.plate-wrap { display: flex; justify-content: center; margin: 16px 0 4px; }
+.nameplate {
+  width: 100%; max-width: 280px;
+  font-family: var(--font-stick); font-size: var(--t-input); font-weight: 800;
+  text-align: center;
+  /* Five of the twelve cat colours are dark enough to swallow ink, so the text colour
+     travels with the fill rather than being assumed. */
+  color: var(--ring-ink, var(--ink));
+  padding: 10px 14px; min-height: 44px;
+  background: var(--ring, var(--marigold));
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  /* Die-cut margin + hard offset shadow + hand-stuck tilt: a sticker, by the same three
+     rules as every other one. */
+  box-shadow: var(--cut), var(--lift);
+  transform: rotate(-1.6deg);
+  transition: transform var(--up), box-shadow var(--up), background var(--up);
+}
+/* Unnamed LIES FLAT on the page, exactly as an unselected chip does: no fill, no tilt,
+   no shadow. Same physics, so "not named yet" reads as a state rather than as a blank. */
+.nameplate:placeholder-shown {
+  background: transparent; color: var(--ink-faint);
+  border: 2px dashed var(--ink-faint);
+  box-shadow: none;
+  transform: none;
+}
+.nameplate:focus {
+  outline: none;
+  border-color: var(--ink); border-style: solid;
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+  transition: transform var(--down), box-shadow var(--down);
+}
+
+/* "This is that cat" — the answer, shown as an object rather than as a filled-in form.
+   Its tags are the CAT's, so they are displayed and not offered: editing them from a
+   screen that never showed her the old values would rewrite that cat's history. */
+.grouped {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin: 14px 0 10px; padding: 10px 14px;
+  background: var(--ring, var(--marigold));
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  box-shadow: var(--cut), var(--lift);
+  transform: rotate(-1deg);
+}
+.grouped .nm { font-family: var(--font-stick); font-size: var(--t-lg); font-weight: 800; }
+.grouped .why { font-family: var(--font-hand); font-size: var(--t-sm); }

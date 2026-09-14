@@ -97,6 +97,15 @@ header states the two rules that erode silently. In short:
 - Unselected chips lie flat on the page; selected ones are stuck on.
 - Page turns are sheets sliding across a desk; detail views slide *up*, so hierarchy and
   lateral movement never look the same.
+- **An icon drawn as lines radiating from a centre circle is a SUN, not a gear.** The cog
+  went through four versions (emoji, square sticker, round stamp, spokes) before landing:
+  a gear reads only when the tooth stubs sit on the outside of a closed rim and the hub is
+  a hole. The teeth are generated geometry, not hand-guessed points.
+- **The cog is `align-self: center` while the topbar aligns on the baseline.** It is a
+  replaced element with no text, so its flex baseline is its bottom margin edge and
+  baseline-aligning hangs it below the wordmark. The topbar padding is symmetric so that
+  centring lands level with it.
+- **The wordmark is "MeowMap"**, capital M twice, everywhere user-visible.
 - **iPhone only means no haptics exist** — the entire tactile impression is motion, which
   makes the timing tokens load-bearing rather than cosmetic.
 - Bottom nav is still unresolved; four forms tried. A continuous full-width bar reads as
@@ -108,10 +117,14 @@ header states the two rules that erode silently. In short:
   point count.
 - **No `L.popup` / `L.tooltip`** anywhere — a custom bottom sheet, sibling to the map div.
 - Tint `.leaflet-tile-pane`, never the marker pane.
-- **Attribution is behind an (i) button, not always-on.** Leaflet's own prefix is
-  optional and is gone. The OSM/Esri credit is a LICENCE CONDITION (ODbL), not a
-  courtesy — one tap away is the usual compromise, deleting it is not an option. If a
-  future basemap's terms require it always visible, it goes back.
+- **There is no attribution on the map at all**, and `.leaflet-control-attribution` is
+  `display: none` so a map that forgets `attributionControl: false` cannot put it back.
+  It was first moved behind an (i) button; Brennan judged that still clutter and asked
+  for it gone, which is his call to make for a private two-person app. Recorded as a
+  DELIBERATE DECISION rather than an oversight: OSM's ODbL does ask for credit, so if
+  MeowMap is ever made public, the credits go back.
+- **No recentre button.** The blue "you are here" dot stays and is dropped once on mount
+  without moving the view; `locateMe()` takes no argument and has one caller.
 - **Tile providers betray you silently.** CARTO's free basemaps now stamp "API KEY REQUIRED"
   onto the imagery while still returning HTTP 200 with distinct per-tile bytes, so a status
   check does not catch it. Hence `TILE_SOURCES` (several keyless providers) plus a switcher
@@ -255,6 +268,68 @@ rule for this app — the user is not a power user and must never be able to mes
 one tap, on a face, answering a question. No sequences, no confirmations for reversible
 things, no "right way".
 
+## Coat, size and petted belong to the CAT
+
+Migration 003 moved all three off `sightings` and onto `cats`, and DROPPED the sighting
+columns — two places to write one fact is the bug factory this codebase refuses
+everywhere else.
+
+The old shape let one cat be an orange tabby in June and a grey chonk in July, with
+nothing in the UI to reconcile them. `petted` moved too: it is arguably per-encounter, and
+that was raised and decided — it reads as "have I ever managed to pet this one".
+
+- **Snap still asks**, and the tags seed the cat the Worker mints. Send a `catId` instead
+  and they are IGNORED: that cat already has answers, and letting a capture form
+  overwrite them rewrites history from a screen that never showed her the old values.
+- **Merging unions the coat**; size and petted take the more recently seen cat's answer,
+  falling back to the older only where the newer has none. A union loses nothing; size
+  cannot union because a cat is not both a kitten and a chonk.
+- **Splitting inherits the description it leaves.** She grouped them because they looked
+  alike, so an orange tabby splitting off is still an orange tabby.
+- **Filtering is now a question about CATS**, so a cat is in or out whole. That deleted
+  the old bug where a turf blob was drawn around points that were themselves filtered out.
+  `tagsFor()` reads the cat, EXCEPT for a pending upload, which has no cat until the
+  Worker mints one and so carries the tags she typed.
+- The cat page saves name and tags on ONE debounce, and `unmount()` FLUSHES it rather
+  than clearing it — swiping the sheet away within 900 ms used to bin the edit silently.
+
+## The name field
+
+**The capture form's name box names the CAT, and rides along with the sighting insert as
+`catName`.** It was collected into the draft and then never sent — she typed "Baby", the
+Worker minted the usual unnamed cat, and the app showed "Unnamed". The name reaches the
+Worker on `POST /sightings` and is passed to the `insertCat` that was already happening
+for every upload, so it costs NO extra row. It is ignored when `catId` is set, or linking
+a photo to an existing cat from the capture form would silently rename that cat.
+
+`outbox.newRow` spreads the whole draft, so the name survives an offline queue for free —
+only the request body needed the field.
+
+## Migrations
+
+**`migrate.mjs` hands the FILE to wrangler (`--file`); it does not split on `;`.** You
+cannot split SQL with a regex, and this schema proves it: 001 contains "null when
+unnamed; see the unique index below" and "read with a bare SELECT; an index would be…" in
+TRAILING comments, each of which splits mid-sentence and sends English to D1 as a
+statement. Stripping whole-line comments first is not enough — that was the first fix and
+it left every inline `-- …` still able to do it. CI has always used `--file`; both paths
+now parse identically, which is the point of them sharing `schema_migrations`.
+
+**`d1File` passes no `--json` and parses nothing.** With `--file` wrangler prints progress
+lines before any JSON, so `JSON.parse` throws on the first character — AFTER the
+statements have run, which is the worst possible place to throw. It left 003 applied but
+unrecorded. A non-zero exit already throws from `execFileSync`.
+
+**A migration that backfills must account for rows with `cat_id IS NULL`.** 002 made the
+Worker mint a cat per upload but never went back for existing rows, so 003 had to mint
+them itself — otherwise their tags were dropped on the floor, since the backfill can only
+reach a cat through `cat_id`. Linking row-to-new-row in plain SQL needs a marker
+(`notes = 'migrate:<id>'`), written, read back and cleared inside the migration.
+
+**Dry-run a destructive migration against a local SQLite copy first** (`executescript` on
+the real files, seeded with the real data shape). That is what caught the orphan case.
+And take a `npm run backup` before applying.
+
 ## Editing
 
 - **The sheet is a glance; `#/sighting/<id>` is the only editor.** Two editors that must
@@ -285,6 +360,20 @@ things, no "right way".
   produces a sideways scroll that looks like a bug and is the design working.
 - **Action bars use `justify-content: space-between`, never `margin-left: auto`.** An
   auto margin on an overflowing flex line pushes the first item off the left edge.
+- **The sheet swipe is rAF-batched, and its velocity is measured over the last ~100 ms.**
+  Writing the transform straight from `touchmove` stutters, because iOS fires it faster
+  than it paints. Averaging velocity from `touchstart` meant a quick flick followed by
+  holding still still read as fast, so the sheet flew away after she had decided not to
+  dismiss it — stopping must be a real cancel. The commit threshold is SUBTRACTED from the
+  offset or the sheet jumps under the finger, and tracking is 1:1, as every iOS sheet is.
+- **A cat's name is a slanted NAMEPLATE, not a form field.** The dashed outline it
+  replaced is this app's vocabulary for "unselected chip", so borrowing it for a text box
+  said the name was an option not yet taken. Unnamed lies flat via `:placeholder-shown` —
+  same physics as a chip. It is still an `<input>`: tap it and type, no mode, no button.
+- **Where a date is shown, the relative time is NOT also shown.** "9 days ago · September
+  4th" says the same thing twice; the absolute date is the one she cannot work out
+  herself. Format is `September 4th 1:26pm`, and the ordinal has the 11-13 exception every
+  naive version gets wrong.
 - **Destructive actions arm on the first tap and fire on the second.** No `confirm()`:
   a native dialog in a standalone app looks like the browser breaking through.
 - **Multi-step mutations are not atomic and must fail visibly**, not roll back. Grouping
