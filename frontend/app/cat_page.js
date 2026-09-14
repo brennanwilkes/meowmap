@@ -2,9 +2,9 @@ import { DEFAULT_TILE_ID, LS, MAX_NAME_LEN, TILE_SOURCES } from '../config.js';
 import { deleteCat, patchCat, patchSighting, photoUrl } from './api.js';
 import { catColour, displayName, inkFor } from './catcolor.js';
 import { chipRows, staticChips, wireChips } from './components/chips.js';
-import { filmstrip, wireFilmstrip } from './components/filmstrip.js';
+import { filmstrip, frame, wireFilmstrip } from './components/filmstrip.js';
 import { getPref } from './device.js';
-import { $, distanceText, esc, whenText } from './dom.js';
+import { $, distanceText, esc } from './dom.js';
 import { distanceM } from './suggest.js';
 import { navigate } from './nav.js';
 import { turfRing, shouldDrawTurf } from './turf.js';
@@ -41,6 +41,10 @@ let unstrip = null;
  * Landing straight in an editor made every visit look like a task; most of them are just
  * "who is this again". */
 let editing = false;
+/* Which photo is on screen. EDIT MODE EDITS THAT ONE, exactly as the map sheet's Edit
+ * button opens the frame she swiped to — so paging to a photo and tapping Edit does what
+ * it looks like it does. Survives a re-render; reset per mount. */
+let showIndex = 0;
 let saveTimer = null;
 /* The working copy of everything that describes the animal. Chips mutate it in place and
  * one debounced PATCH sends whatever actually differs. `pendingFor` is the cat that
@@ -69,23 +73,33 @@ function render(state = store.get()) {
   const colour = catColour(cat.id);
   const sightings = [...cat.sightings].sort((a, b) => b.seenAt - a.seenAt);
 
+  if (showIndex >= sightings.length) showIndex = 0;
+  const shown = sightings[showIndex];
+  const photo = {
+    name: displayName(cat), petted: cat.petted, src: (x) => photoUrl(x.photoFull),
+  };
+
+  /* THE NAME IS RENDERED EXACTLY ONCE, as the tag hanging off the photo on screen.
+   *
+   * Edit mode used to keep the whole strip — every frame carrying the cat's name as a
+   * static tag — and then add the editable one below it, so the name appeared twice and
+   * the page rearranged itself under her the moment she tapped Edit. Editing one photo's
+   * worth of screen is also what the map sheet does, so the two now behave alike. */
+  const nameTag = `
+    <span class="tag">
+      <input type="text" class="nameplate" id="f-name" maxlength="${MAX_NAME_LEN}"
+             aria-label="This cat's name"
+             placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">
+    </span>`;
+
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(colour.hex)};--ring-ink:${esc(inkFor(cat.id))}">
-      ${filmstrip(sightings, {
-        name: displayName(cat), petted: cat.petted,
-        src: (x) => photoUrl(x.photoFull),
-      })}
+      ${editing
+        ? frame(shown, { ...photo, tag: nameTag })
+        : filmstrip(sightings, photo)}
 
       ${editing ? `
-        <div class="plate-wrap">
-          <span class="tag">
-            <input type="text" class="nameplate" id="f-name" maxlength="${MAX_NAME_LEN}"
-                   aria-label="This cat's name"
-                   placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">
-          </span>
-        </div>
         <p class="hand" id="save-state">&nbsp;</p>
-
         <hr class="rule">
         ${chipRows(cat)}
       ` : staticChips(cat)}
@@ -105,31 +119,26 @@ function render(state = store.get()) {
         <div id="merge-pick"></div>
 
         ${sightings.length < 2 ? '' : `
-          <hr class="rule">
-          <h2 class="sec">Not all the same cat?</h2>
-          <div class="loose-grid">
-            ${sightings.map((x) => `
-              <div class="loose-card">
-                <button type="button" class="face" data-sighting="${x.id}">
-                  <img src="${esc(photoUrl(x.photoThumb))}" alt="" crossorigin="anonymous">
-                </button>
-                <span class="why">${esc(whenText(x.seenAt))}</span>
-                <button type="button" class="btn-ghost sm" data-split="${x.id}">different cat</button>
-              </div>`).join('')}
-          </div>`}
+          <button type="button" class="btn-ghost wide" data-split="${shown.id}">
+            This photo is a different cat</button>`}
+        <button type="button" class="btn-ghost wide" id="photo-facts">
+          When &amp; where this photo was taken</button>
       `}
       <div class="map-note" id="cat-err" style="position:static"></div>
     </div>`;
 
   if (unstrip !== null) { unstrip(); unstrip = null; }
-  unstrip = wireFilmstrip($('.filmstrip', root), 0, () => {});
+  // Only the glance has a strip to track; edit mode is one frame and cannot be paged.
+  if (!editing) {
+    unstrip = wireFilmstrip($('.filmstrip', root), showIndex, (i) => { showIndex = i; });
+  }
 
   edit = { name: cat.name ?? null, coat: [...cat.coat], size: cat.size, petted: cat.petted };
-  wire(cat);
+  wire(cat, shown);
   if (sightings.length >= 2) drawTerritory(sightings, colour);
 }
 
-function wire(cat) {
+function wire(cat, shown) {
   $('#mode', root).addEventListener('click', () => {
     /* Blur first: render() refuses to rebuild while a field has focus, and without this
      * the button would silently do nothing when tapped straight from the name box. */
@@ -145,9 +154,10 @@ function wire(cat) {
 
   if (!editing) return;
 
-  for (const btn of root.querySelectorAll('[data-sighting]')) {
-    btn.addEventListener('click', () => navigate(`#/sighting/${btn.dataset.sighting}`));
-  }
+  /* Date and location are the PHOTO's facts, not the animal's, so they are edited where
+   * every other photo fact is edited rather than duplicated onto this page. Losing the
+   * old grid of every photo lost the only route to that editor from here. */
+  $('#photo-facts', root).addEventListener('click', () => navigate(`#/sighting/${shown.id}`));
 
   const input = $('#f-name', root);
   input.addEventListener('input', () => {
@@ -326,13 +336,14 @@ async function merge(cat, otherId) {
  *  of a merge, which is what makes every join safely reversible. */
 async function split(sightingId, cat) {
   const btn = root.querySelector(`[data-split="${sightingId}"]`);
+  const label = btn === null ? '' : btn.textContent;
   if (btn !== null) { btn.disabled = true; btn.textContent = 'moving…'; }
   try {
     await turnstile.ensurePass();
     const fresh = await splitToNewCat(sightingId, cat);
     navigate(`#/cat/${fresh.id}`);
   } catch (err) {
-    if (btn !== null) { btn.disabled = false; btn.textContent = 'different cat'; }
+    if (btn !== null) { btn.disabled = false; btn.textContent = label; }
     fail(err, 'split');
   }
 }
@@ -373,6 +384,7 @@ function drawTerritory(sightings, colour) {
 export function mount(container, arg) {
   root = container;
   catId = Number(arg);
+  showIndex = 0;
   unsubscribe = store.subscribe(render);
 }
 

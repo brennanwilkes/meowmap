@@ -236,6 +236,21 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* THE COUNT IS A STAMP, NOT A SENTENCE. "seen 3 times · 3 months ago" could not be made
+   to fit a 104px card at any font size — it was ellipsised down to nothing useful, which
+   is the point at which the text is the wrong element. A round ink stamp holding just
+   the number says the same thing in 27px and leaves the whole line for the date, which
+   is the part that actually differs between cards. */
+.cat-card .caption {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 5px 4px 9px; min-width: 0;
+}
+.cat-card .caption .stamp { flex: 0 0 auto; background: var(--paper-hi); }
+.cat-card .caption .seen {
+  font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft);
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* Pinned or taped to the page. Alternating so a grid does not look stamped out, and
    pointer-events:none so neither ever eats the tap that opens the cat. */
 .cat-card::before, .loose-card::before {
@@ -357,7 +372,11 @@
    like it belonged to whatever happened to be above it. Full width ties it to the
    section it ends. */
 .btn-stick.wide, .btn-ghost.wide {
-  display: block; width: 100%; text-align: center; margin-top: 4px;
+  display: block; width: 100%; text-align: center;
+  /* 4px was not enough for two of these in a row. Each wears a 3.5px die-cut paper ring
+     and sits 3px off the page, so a nominal 4px gap is about zero of actual daylight and
+     "different cat" and "delete this photo" appeared to overlap. */
+  margin-top: 14px;
 }
 
 /* A sighting inside a cat: the photo is the button, with its own actions underneath. */
@@ -368,65 +387,68 @@
 
 #cat-err:empty { display: none; }
 
-/* ── the nameplate ─────────────────────────────────────────────────────────
-   A cat's name is the one piece of text on the page that is about WHO this is, so it
-   gets an object of its own rather than a form field. The dashed outline this replaced
-   is the app's vocabulary for "unselected chip", and borrowing it for a text box said
-   the name was an option not yet taken.
+/* ── the collar tag ────────────────────────────────────────────────────────
+   A cat's name is the one piece of text in the app that is about WHO this is, so it gets
+   an object of its own rather than a form field.
+
+   THIRD ATTEMPT, and the first two are why this one is what it is. A dashed outline said
+   "unselected chip" — this app's own vocabulary for an option not yet taken. A flat
+   coloured plate with paper ears was closer but still read as a label someone printed.
+   What a named cat actually wears is an ENGRAVED BRASS TAG hanging off its collar, so
+   that is what this is: brushed metal, a bevelled edge, the name cut into it, and a
+   split ring in the cat's own colour hanging off the left where the collar would be.
+
+   Metal is the whole trick. It is the only material in a paper scrapbook that is not
+   paper, which makes the one object that identifies an animal the one object that is not
+   part of the page.
 
    It is still an <input> — tapping the name and typing is the whole edit, with no mode
    to enter and nothing to press afterwards. */
-.plate-wrap { display: flex; justify-content: center; margin: -22px 0 4px; position: relative; z-index: 2; }
+.plate-wrap { display: flex; justify-content: center; margin: -20px 0 4px; position: relative; z-index: 2; }
 
-/* ── the name tag ──────────────────────────────────────────────────────────
-   A CAT'S NAME TAG, with ears. The plain slanted plate was right about the physics and
-   wrong about the subject: this is the one label in the app that is about an animal, so
-   it looks like one.
-
-   The ears are two ink-outlined diamonds whose top corners poke above the tag; the tag
-   body is `position: relative` so it paints over their lower halves and only the points
-   show. Diamonds rather than clip-path triangles because clip-path cuts the border off
-   with the shape, and the ink outline is the whole look.
-
-   They live on a WRAPPER, not on the tag itself: an <input> does not render ::before or
-   ::after, so an eared input is not something CSS can do to one element. */
+/* The wrapper carries the split ring and the tilt, because an <input> renders neither
+   ::before nor ::after — an eared or ringed input is not something CSS can do to one
+   element. */
 .tag { position: relative; display: inline-block; max-width: 100%; }
-.tag::before, .tag::after {
-  content: ''; position: absolute; top: -8px;
-  width: 17px; height: 17px;
-  background: var(--ring, var(--marigold));
-  border: 2.5px solid var(--ink);
-  border-radius: var(--r-cut) 0 0 0;
-  /* The inner ear. An inset shadow from one corner of a 45deg-rotated square lands as a
-     smaller triangle inside the ear, which is the whole trick — no extra element, and an
-     input has no pseudo-elements to spare anyway. */
-  box-shadow: inset -4px -4px 0 0 var(--blossom);
-  transform: rotate(45deg);
-}
-.tag::before { left: 15px; }
-.tag::after { right: 15px; }
 
+/* The split ring: a true circle, which is the only radius this design allows besides
+   2px. It takes the CAT'S COLOUR, so the identity colour that the plate used to carry as
+   a fill is not lost to the metal — it just moves to the hardware. */
+.tag::before {
+  content: ''; position: absolute; left: -13px; top: 50%;
+  width: 19px; height: 19px; margin-top: -10px;
+  border-radius: 50%;
+  border: 4px solid var(--ring, var(--marigold));
+  box-shadow: 0 0 0 1.5px var(--ink), inset 0 0 0 1.5px var(--ink),
+              inset -2px -2px 0 rgba(46, 42, 36, .22);
+}
+
+/* Brushed brass: alternating light and dark bands across the plate at a shallow angle,
+   which is what a turned metal surface does under a single light. Warm rather than
+   silver — cool grey next to scrapbook paper looks like a mistake. */
 .nameplate, .plate {
-  position: relative;      /* paints over the ears' lower halves */
-  /* Handwritten, because a name on a tag is written by hand. 17px clears the 16px iOS
+  position: relative;      /* paints over the ring's right-hand side */
+  /* Handwritten, because engraving on a pet tag is a script. 17px clears the 16px iOS
      no-zoom floor, which a form control must. */
   font-family: var(--font-hand); font-size: var(--t-lg); font-weight: 700;
   text-align: center;
-  /* Five of the twelve cat colours are dark enough to swallow ink, so the text colour
-     travels with the fill rather than being assumed. */
-  color: var(--ring-ink, var(--ink));
+  color: #4a3c1c;
+  /* ENGRAVED, not printed: a light edge below the stroke and a dark one above reads as
+     cut into the surface. Reversing the two would emboss it instead. */
+  text-shadow: 0 1px 0 rgba(255, 252, 235, .85), 0 -1px 0 rgba(74, 60, 28, .32);
   padding: 9px 18px; min-height: 44px;
-  background: var(--ring, var(--marigold));
+  background: linear-gradient(104deg,
+    #fffbe9 0%, #f3e3ae 15%, #d8bd72 32%, #fff8e0 48%,
+    #e3cb8b 64%, #fdf4d6 80%, #cfae63 100%);
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  /* Die-cut margin + hard offset shadow + hand-stuck tilt: a sticker, by the same three
-     rules as every other one. */
-  /* Die-cut margin, hard offset shadow, and a stitched inner line — the tag is sewn, the
-     way a collar tag is. */
-  box-shadow: var(--cut), var(--lift), inset 0 0 0 1.5px rgba(244, 240, 230, .55);
-  transform: rotate(-1.6deg);
-  transition: transform var(--up), box-shadow var(--up), background var(--up);
+  /* Die-cut margin and hard offset shadow, same three rules as every other sticker, plus
+     a bevel: a bright top edge and a dark bottom one give the plate thickness. */
+  box-shadow: var(--cut), var(--lift),
+              inset 0 2px 0 rgba(255, 253, 240, .8),
+              inset 0 -2px 0 rgba(74, 60, 28, .3);
+  transition: transform var(--up), box-shadow var(--up);
 }
-/* The tilt has to sit on the WRAPPER so the ears come with it. */
+/* The tilt sits on the WRAPPER so the ring comes with it. */
 .tag { transform: rotate(-1.6deg); }
 .nameplate, .plate { transform: none; }
 
@@ -435,26 +457,24 @@
 .plate:active {
   transform: translate(var(--lift-x), var(--lift-y));
   box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0),
-              inset 0 0 0 1.5px rgba(244, 240, 230, .55);
+              inset 0 2px 0 rgba(255, 253, 240, .8),
+              inset 0 -2px 0 rgba(74, 60, 28, .3);
   transition: transform var(--down), box-shadow var(--down);
 }
-/* Unnamed lies FLAT on the page, exactly as an unselected chip does: no fill, no shadow.
-   Same physics, so "not named yet" reads as a state rather than as a blank. The ears
-   stay — it is still a cat. */
+
+/* Unnamed lies FLAT on the page, exactly as an unselected chip does: no metal, no
+   shadow. Same physics, so "not named yet" reads as a state rather than as a blank. The
+   ring goes with it — an empty tag is not hanging off anything yet. */
 .nameplate:placeholder-shown {
-  background: transparent; color: var(--ink-faint);
+  background: none; color: var(--ink-faint); text-shadow: none;
   border: 2px dashed var(--ink-faint);
   box-shadow: none;
 }
-.tag:has(.nameplate:placeholder-shown)::before,
-.tag:has(.nameplate:placeholder-shown)::after {
-  background: var(--paper); border-color: var(--ink-faint); border-style: dashed;
+.tag:has(.nameplate:placeholder-shown)::before {
+  border-color: var(--ink-faint);
+  box-shadow: none;
 }
 .tag:has(.nameplate:placeholder-shown) { transform: none; }
-
-/* The hero print sits above the tag, which overlaps its lower edge like a label stuck on
-   the photo. */
-.print.hero { margin-bottom: 0; }
 
 .nameplate:focus {
   outline: none;
@@ -463,6 +483,10 @@
   box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
   transition: transform var(--down), box-shadow var(--down);
 }
+
+/* The hero print sits above the tag, which overlaps its lower edge like a label stuck on
+   the photo. */
+.print.hero { margin-bottom: 0; }
 
 /* "This is that cat" — the answer, shown as an object rather than as a filled-in form.
    Its tags are the CAT's, so they are displayed and not offered: editing them from a

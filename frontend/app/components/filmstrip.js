@@ -1,14 +1,14 @@
 import { dateText, esc } from '../dom.js';
 
-/* A cat's photos, swipeable sideways.
+/* A cat's photos as a stack of polaroids, swipeable sideways.
  *
  * WHY IT EXISTS: pins bunch up. Several sightings of one cat on the same block collapse
  * into one pin, and even when they do not, two prints a few metres apart are impossible
  * to hit individually on a phone. Paging through them is the only way to see the second
  * one without fighting the map.
  *
- * ONLY THE PHOTO AREA MOVES. The name tag, the petted sticker and the date ride along in
- * each slide and are simply repeated — the first two are the CAT's and identical on every
+ * ONLY THE PHOTO AREA MOVES. The name tag, the date and the petted stamp ride along in
+ * each slide and are simply repeated — the name is the CAT's and identical on every
  * frame, the date is the photo's own and is the thing that actually changes. Everything
  * below (the tags, the buttons) stays put, so the page does not appear to slide away
  * under a sideways swipe.
@@ -18,35 +18,58 @@ import { dateText, esc } from '../dom.js';
  * drag-to-dismiss.
  */
 
-function pettedSticker(petted) {
+/* PETTED IS A STAMP IN THE WRITING AREA, not a sticker on the corner. It used to be
+ * slapped over the print's top-right, overhanging it — which the filmstrip's own
+ * `overflow-x` then clipped in half. Moving it into the chin removes the overflow
+ * entirely rather than fighting it, and a rubber stamp on the white margin is where a
+ * note like this actually goes on a photograph. */
+function pettedStamp(petted) {
   if (petted === null || petted === undefined) return '';
   if (petted !== 'yes' && petted !== 'no') throw new Error(`unknown petted value: ${petted}`);
-  const text = petted === 'yes' ? 'petted' : 'not petted';
-  return `<div class="petted" data-state="${esc(petted)}">${esc(text)}</div>`;
+  return petted === 'yes'
+    ? '<span class="stamp">petted</span>'
+    : '<span class="stamp pale">not petted</span>';
 }
 
 /**
- * @param sightings  newest first; one slide each
- * @param opts.name  the cat's display name, repeated on every slide
- * @param opts.petted  the cat's petted state, repeated on every slide
- * @param opts.src   (sighting) => image URL; the sheet resolves pending rows locally
+ * One polaroid: the photo, the date and the petted stamp on the paper, the cat's name
+ * tag hanging off the bottom edge.
+ *
+ * Shared with the cat page's edit mode, which shows exactly one of these.
+ *
+ * @param opts.name   the cat's display name
+ * @param opts.petted the cat's petted state
+ * @param opts.src    (sighting) => image URL; the sheet resolves pending rows locally
+ * @param opts.tag    the name tag markup; defaults to a plain one
  */
-export function filmstrip(sightings, { name, petted, src }) {
-  const slides = sightings.map((s) => `
+export function frame(s, { name, petted, src, tag = null }) {
+  /* The WINDOW takes the photo's own aspect ratio and the chin takes whatever is left,
+   * which is what makes a landscape shot yield more white space instead of letterboxing.
+   * A row with no stored dimensions falls back to square rather than to nothing — the
+   * frame still has to have a height. */
+  const ar = s.photoW > 0 && s.photoH > 0 ? `${s.photoW}/${s.photoH}` : '1';
+  return `
     <div class="frame">
-      <figure class="print hero">
+      <figure class="polaroid" style="--ar:${esc(ar)}">
         <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
-        ${pettedSticker(petted)}
-        <img src="${esc(src(s))}" alt="${esc(name)}" crossorigin="anonymous"
-             width="${esc(String(s.photoW ?? ''))}" height="${esc(String(s.photoH ?? ''))}">
-        ${s.note === null || s.note === undefined || s.note === ''
-          ? '' : `<figcaption>${esc(s.note)}</figcaption>`}
+        <span class="window">
+          <img src="${esc(src(s))}" alt="${esc(name)}" crossorigin="anonymous"
+               width="${esc(String(s.photoW ?? ''))}" height="${esc(String(s.photoH ?? ''))}">
+        </span>
+        <figcaption class="scrawl">
+          <span class="when">${esc(dateText(s.seenAt))}</span>
+          ${pettedStamp(petted)}
+        </figcaption>
       </figure>
       <div class="plate-wrap">
-        <span class="tag"><span class="plate">${esc(name)}</span></span>
+        ${tag === null ? `<span class="tag"><span class="plate">${esc(name)}</span></span>` : tag}
       </div>
-      <div class="when">${esc(dateText(s.seenAt))}</div>
-    </div>`).join('');
+    </div>`;
+}
+
+/** @param sightings  newest first; one slide each */
+export function filmstrip(sightings, opts) {
+  const slides = sightings.map((s) => frame(s, opts)).join('');
 
   /* Dots only when there is somewhere to go. Without them a single visible print gives no
    * hint that swiping does anything — the affordance has to be on screen. */
@@ -67,7 +90,7 @@ export function filmstrip(sightings, { name, petted, src }) {
  */
 export function wireFilmstrip(el, startIndex, onChange) {
   const dots = el.parentNode.querySelector('.strip-dots');
-  let frame = 0;
+  let frame_ = 0;
   let current = startIndex;
 
   /* Index from the frames' REAL positions, never `scrollLeft / clientWidth`. The frames
@@ -77,8 +100,8 @@ export function wireFilmstrip(el, startIndex, onChange) {
   const nearest = () => {
     let best = 0;
     let bestGap = Infinity;
-    for (const [i, frame_] of [...el.children].entries()) {
-      const gap = Math.abs(frame_.offsetLeft - el.scrollLeft);
+    for (const [i, node] of [...el.children].entries()) {
+      const gap = Math.abs(node.offsetLeft - el.scrollLeft);
       if (gap < bestGap) { bestGap = gap; best = i; }
     }
     return best;
@@ -90,7 +113,7 @@ export function wireFilmstrip(el, startIndex, onChange) {
   };
 
   const settle = () => {
-    frame = 0;
+    frame_ = 0;
     const i = nearest();
     if (i === current) return;
     current = i;
@@ -98,7 +121,7 @@ export function wireFilmstrip(el, startIndex, onChange) {
     onChange(i);
   };
   const onScroll = () => {
-    if (frame === 0) frame = requestAnimationFrame(settle);
+    if (frame_ === 0) frame_ = requestAnimationFrame(settle);
   };
   el.addEventListener('scroll', onScroll, { passive: true });
 
@@ -116,6 +139,6 @@ export function wireFilmstrip(el, startIndex, onChange) {
 
   return () => {
     el.removeEventListener('scroll', onScroll);
-    if (frame !== 0) cancelAnimationFrame(frame);
+    if (frame_ !== 0) cancelAnimationFrame(frame_);
   };
 }

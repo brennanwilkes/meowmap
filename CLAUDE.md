@@ -277,6 +277,12 @@ app cannot — `getUserMedia` gives ~1080p frames against a 12 MP still.
   screen keeps showing the previous one.
 - The install hint moved to the map, bottom edge — the outbox banner owns the top and is
   the more urgent of the two.
+- **ONE click handler for the whole nav.** It was two — one for `[data-pick]`, one for
+  every `button` — and the glyphs have no `data-screen`, so tapping the camera fired the
+  picker AND `go(undefined)`: that unmounted the map and threw on `PAGES[undefined]`. The
+  app was already broken before the camera had opened; the empty screen only appeared on
+  the way back from it, which is why it read as "taking a photo crashes it". The second
+  branch now matches `[data-screen]`, not `button`.
 - Nav tilts are by CLASS, not `nth-child`: the glyphs sit between the markers now, and a
   positional rule tilted them. A rotated circle looks identical; the camera inside it does
   not.
@@ -400,13 +406,76 @@ few metres apart cannot be hit individually on a phone.
 - **`.filmstrip` is excluded from both sheets' dismiss gestures**, like `.leaflet-container`:
   it is its own scroller, and paging sideways with any downward drift dismissed the sheet.
 
+## Stamps, polaroids and the collar tag
+
+**A rubber stamp has no fill.** `.stamp` is a double rule in one colour with uppercase
+sticker lettering, a few degrees off square and slightly transparent so the paper shows
+through the ink; the double rule is one `box-shadow` pair (an opaque paper ring painted
+OVER a thicker ink ring), not two elements. `.stamp.round` is a true circle — the only
+other radius this design allows. It carries three things that were all failing as filled
+badges: **petted** on a print, the **count on a stacked pin**, and the **number of
+sightings on a cat card**.
+
+- **Petted moved from the print's corner into the polaroid's writing area.** It was a
+  sticker at `right:-10px; top:-12px`, overhanging the print on purpose — and the
+  filmstrip's own `overflow-x` clipped it in half. Moving it onto the paper removes the
+  overflow rather than fighting it, and a stamp on the white margin is where a note like
+  that actually goes on a photograph.
+- **A cat card's caption is a stamp plus a date, not a sentence.** "seen 3 times · 3
+  months ago" cannot be made to fit a 104px card at any font size; it ellipsised down to
+  nothing. The round stamp says the count in 27px and leaves the line for the date, which
+  is the part that differs between cards. The date is short (`Sep 4`), with the year only
+  when it is not this one.
+- **A stacked pin looks stacked before the number is read**: `<s>` is the corner of the
+  print underneath, painted before `<i>` in document order so the top print covers it.
+- **The co-location radius is 40 m, not 15.** A pin is 52px wide and at zoom 17 a metre is
+  about a pixel, so two prints 15–30 m apart overlapped on screen while still counting as
+  two pins — she could see there were two and could tap neither. The radius has to exceed
+  the pin's own footprint, not merely "the same fence".
+
+**A polaroid is ALWAYS PORTRAIT.** The frame's aspect ratio is fixed (`.8`); the window
+takes the PHOTO's aspect ratio, passed in as `--ar` from `photoW/photoH` and capped at
+74%; the chin is whatever is left. So a landscape shot does not letterbox onto grey — it
+gets more white space to write on, which is what a real polaroid does and why every frame
+in a strip is the same height. Nothing in `.polaroid` may use `overflow: hidden`.
+
+**A lone photo must not scroll at all.** `.filmstrip.solo` is `overflow-x: hidden`; with
+it left auto a single frame still rubber-banded a few pixels under a sideways drag, which
+promises another photo that does not exist.
+
+**The cat's name is an ENGRAVED BRASS COLLAR TAG.** Third attempt, and the first two are
+why: a dashed outline is this app's vocabulary for "unselected chip", and a flat coloured
+plate with paper ears still read as a label someone printed. Metal is the trick — it is
+the only material in a paper scrapbook that is not paper, so the one object identifying an
+animal is the one object not part of the page. Brushed brass bands at a shallow angle, a
+bevel (bright top inset, dark bottom inset), the name cut in with a light-below/dark-above
+`text-shadow`, and a **split ring in the cat's colour** hanging off the left — which is
+where the identity colour went when the plate stopped being a coloured fill. Warm brass,
+never silver: cool grey next to scrapbook paper looks like a mistake. Unnamed still lies
+flat, dashed, with no metal and no ring, exactly as an unselected chip does. It is still
+an `<input>`, and the ring lives on the `.tag` WRAPPER because an `<input>` renders no
+`::before`.
+
+**`.btn-*.wide` stack with 14px, not 4px.** Each wears a 3.5px die-cut paper ring and sits
+3px off the page, so a nominal 4px gap is about zero actual daylight — "This is a
+different cat" and "Delete this photo" appeared to overlap.
+
 ## The cat page opens as a glance
 
 **Tapping a cat lands read-only, with an Edit button** — the same shape as the map sheet.
 It used to open straight into a form, which made every visit look like a task when most
 are just "who is this again". Edit reveals the name tag input, the chip rows, the grouping
 question and the per-photo "different cat"; Done leaves the mode and FLUSHES the debounce
-rather than waiting out a timer she has walked away from. The mode button blurs first,
+rather than waiting out a timer she has walked away from. **Edit mode shows ONE photo — the one she swiped to — and the name exactly once.** It used
+to keep the whole filmstrip, every frame carrying the cat's name as a static tag, and then
+add the editable nameplate below it: the name appeared twice and the page rearranged itself
+under her the moment she tapped Edit. Now the editable tag hangs off the single frame
+(`frame()` from `components/filmstrip.js`, shared with the strip), which is the same shape
+as the map sheet's Edit opening the frame on screen. `showIndex` survives a re-render and
+resets per mount. The grid of every photo went with it, so the split question became "This
+photo is a different cat" about the one on screen, and a "When & where this photo was
+taken" button keeps the only route from here to `#/sighting/<id>`. The mode button blurs
+first,
 because `render()` refuses to rebuild while a field has focus and would otherwise do
 nothing when tapped straight from the name box.
 
@@ -486,6 +555,13 @@ nothing when tapped straight from the name box.
   is enough when the sheet is already open and not enough while it is animating, which is
   why the territory map loaded "sometimes". Leaflet measures its container once and never
   notices it changing; the observer fires whenever the box actually changes.
+- **Cancel the pending rAF on EVERY exit from the sheet drag, the dismissing one
+  included.** `paint()` is queued from the last `touchmove` and only the settle path
+  cancelled it, so on a dismiss it fired AFTER `closeDetail()` had cleared the inline
+  transform and wrote the finger's last offset straight back over `.down`. The sheet stuck
+  halfway down the screen with its veil already gone and nothing able to shift it — the
+  "flicks 50% of the way and gets stuck" bug. A rAF that outlives the gesture that
+  scheduled it is a bug in every gesture in this app.
 - **Action bars are a GRID, not flex.** An overflowing flex line can push its first item
   outside the container: "Undo" ended up off the left edge with its border clipped through
   two attempted fixes (`margin-left:auto`, then `justify-content`). Grid tracks clamp

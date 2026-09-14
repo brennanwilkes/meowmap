@@ -37,30 +37,11 @@
 .sheet .when { font-size: var(--t-sm); color: var(--ink-soft); margin-top: 4px; }
 .sheet .label { border-top: 2px solid var(--ink); padding-top: 9px; }
 
-/* Petted is a sticker you earned, with a peeled corner — legible at full opacity, not a
-   faded stamp. It is slapped on the TOP-RIGHT CORNER of the print, overhanging it, at a
-   steeper angle than anything else on the page: it is the one thing here that was stuck
-   on afterwards rather than laid out.
-
-   Positioned against the print, not the sheet. It used to be `top: 150px`, a magic number
-   tied to the old fixed 190px photo height — once photos kept their own aspect ratio that
-   number pointed at nothing in particular. */
-.print .petted {
-  position: absolute; right: -10px; top: -12px; z-index: 9;
-  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
-  background: var(--jade); color: var(--ink);
-  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  padding: 6px 14px; transform: rotate(9deg);
-  box-shadow: var(--cut), var(--lift-lg);
-}
-.petted[data-state="no"]   { background: var(--paper-hi); }
-.petted[data-state="fled"] { background: var(--peri); color: #fff; }
-.petted::after {
-  content: ''; position: absolute; right: -1px; bottom: -1px;
-  border: 8px solid transparent;
-  border-right-color: var(--paper-hi); border-bottom-color: var(--paper-hi);
-  filter: drop-shadow(-1.5px -1.5px 0 var(--ink));
-}
+/* Petted is no longer a sticker on the print's corner. It is a rubber stamp in the
+   polaroid's writing area — see .stamp in sticker.css and pettedStamp() in
+   components/filmstrip.js. The corner sticker overhung the print by design and the
+   filmstrip's own overflow clipped it in half; moving it onto the paper removes the
+   overflow rather than fighting it. */
 
 /* "Is this Mochi?" — shown right after a save. */
 .ask {

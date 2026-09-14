@@ -47,13 +47,23 @@
   content: ''; position: absolute; left: 50%; bottom: -8px;
   width: 3px; height: 9px; background: var(--ink); transform: translateX(-50%);
 }
-.pin b {
-  position: absolute; right: -11px; top: -8px;
-  font-family: var(--font-stick); font-size: var(--t-xs); font-weight: 800;
-  background: var(--ring); color: var(--ink);
-  border: 2px solid var(--ink); border-radius: var(--r-cut); padding: 0 5px;
-  box-shadow: 0 0 0 2.5px var(--paper-hi); transform: rotate(6deg);
+/* The print UNDERNEATH. Painted before <i> in document order, so the top print covers
+   it and only a corner shows — which says "there is more than one of these" before the
+   count is read at all. */
+.pin s {
+  position: absolute; left: 0; top: 0; width: 52px; height: 60px;
+  border-radius: var(--r-cut); border: 1.5px solid var(--rule);
+  background: var(--paper-hi); box-shadow: 0 0 0 2.5px var(--ring);
+  transform: rotate(5deg) translate(4px, 3px);
 }
+/* The count is a rubber stamp (see .stamp in sticker.css), on top of the stack and
+   overhanging it. The old filled chip read as a notification badge. */
+.pin b {
+  position: absolute; right: -13px; top: -11px;
+  background: var(--paper-hi);
+  transform: rotate(9deg);
+}
+.pin.pending b { --stamp-ink: #a06a12; }
 /* Unidentified is a permanent, first-class state — dashed and desaturated says "not
    named yet", not "broken". */
 .pin.loose i {
@@ -63,7 +73,6 @@
 .pin.loose i u { filter: grayscale(.6); }
 /* Pending upload. She must never wonder whether a photo was saved. */
 .pin.pending i { box-shadow: 0 0 0 2.5px var(--marigold), var(--lift); }
-.pin.pending b { background: var(--marigold); }
 
 /* Hand-lettered territory label. Lives in its own pane above the pins and is tappable. */
 .turf-label { background: none; border: 0; cursor: pointer; }

@@ -170,17 +170,20 @@ function route() {
   go(SCREENS.includes(head) ? head : 'map');
 }
 
-/* The camera and library glyphs. `openPicker` clicks the hidden input SYNCHRONOUSLY
- * inside this handler — nothing may be awaited between the tap and that call, or iOS
- * silently drops the picker. */
+/* ONE handler for the whole nav, because the two kinds of control are not the same
+ * kind of thing and the second listener must not see the first's buttons.
+ *
+ * It was two listeners, and the glyphs have no `data-screen`: tapping the camera fired
+ * the picker AND `go(undefined)`, which unmounted the map and then threw on
+ * `PAGES[undefined]`. The app was already broken before the camera had even opened —
+ * the empty screen only became visible on the way back from it.
+ *
+ * `openPicker` clicks the hidden input SYNCHRONOUSLY inside this handler; nothing may be
+ * awaited between the tap and that call, or iOS silently drops the picker. */
 $('#tabs').addEventListener('click', (e) => {
   const act = e.target.closest('[data-pick]');
-  if (act === null) return;
-  capturePage.openPicker(act.dataset.pick);
-});
-
-$('#tabs').addEventListener('click', (e) => {
-  const btn = e.target.closest('button');
+  if (act !== null) { capturePage.openPicker(act.dataset.pick); return; }
+  const btn = e.target.closest('[data-screen]');
   if (btn === null) return;
   go(btn.dataset.screen);
 });
@@ -306,6 +309,12 @@ const VELOCITY_WINDOW_MS = 100;
   const end = (e) => {
     if (!dragging) return;
     dragging = false;
+    /* CANCEL THE PENDING PAINT FIRST, on every exit including the dismissing one.
+     * `paint()` was queued from the last touchmove and only `settle()` cancelled it — so
+     * on a dismiss it fired AFTER closeDetail() had cleared the inline transform and
+     * wrote the finger's last offset straight back over `.down`. The sheet stuck halfway
+     * down the screen with its veil already gone and nothing able to shift it. */
+    if (frame !== 0) { cancelAnimationFrame(frame); frame = 0; }
     if (!decided) { settle(); return; }
 
     const last = samples[samples.length - 1];

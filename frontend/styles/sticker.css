@@ -124,6 +124,77 @@
   .chip { padding: 7px 13px; }
 }
 
+/* ── rubber stamps ─────────────────────────────────────────────────────────
+   INK PRESSED INTO PAPER, not a filled badge. A stamp has no fill — that is precisely
+   what stops it reading as UI — so it is a double rule in one colour, uppercase sticker
+   lettering, a few degrees off square, and slightly transparent so the paper shows
+   through the ink. Used for the "petted" mark on a print, the count on a stacked pin and
+   the number of sightings on a cat card.
+
+   The double rule is one box-shadow pair rather than two elements: an opaque paper ring
+   painted OVER a thicker ink ring leaves a gap between the border and the inner line. */
+.stamp {
+  font-family: var(--font-stick); font-size: var(--t-xs); font-weight: 800;
+  text-transform: uppercase; letter-spacing: .07em; line-height: 1;
+  color: var(--stamp-ink, #b4324a);
+  background: none;
+  border: 2px solid currentColor; border-radius: var(--r-cut);
+  box-shadow: inset 0 0 0 1.5px var(--paper-hi), inset 0 0 0 3px currentColor;
+  padding: 5px 9px;
+  opacity: .86;
+  transform: rotate(-7deg);
+  white-space: nowrap;
+}
+/* A true circle is the only other radius this design allows, and a date stamp is round
+   anyway. Fixed size so a two-digit count cannot make it an oval. */
+.stamp.round {
+  width: 27px; height: 27px; padding: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--t-sm); letter-spacing: 0;
+}
+/* "not petted" is the absence of the thing, so it is stamped in faded ink rather than
+   in a second colour that would read as its own status. */
+.stamp.pale { --stamp-ink: var(--ink-faint); opacity: .7; }
+
+/* ── a polaroid ────────────────────────────────────────────────────────────
+   ALWAYS PORTRAIT, whatever shape the photo is. The frame's own aspect ratio is fixed,
+   the window takes the PHOTO's aspect ratio (passed in as --ar) up to a cap, and the
+   chin is simply whatever is left over — so a landscape shot does not letterbox onto
+   grey, it just gets more white space to write on. That is how a real polaroid behaves
+   and it is why every frame in a strip is the same height.
+
+   Nothing here may use `overflow: hidden`: the petted stamp overhangs the edge on
+   purpose, and clipping it was the bug this replaced. */
+.polaroid {
+  position: relative; display: flex; flex-direction: column;
+  aspect-ratio: .8; max-height: 58vh;
+  background: var(--paper-hi); padding: 9px 9px 0;
+  border: 1px solid var(--rule); box-shadow: 2px 3px 0 rgba(46, 42, 36, .18);
+  transform: rotate(-1.3deg); margin: 10px 0 0;
+}
+.polaroid .window {
+  display: block; flex: 0 0 auto;
+  width: 100%; aspect-ratio: var(--ar, 1); max-height: 74%;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px rgba(46, 42, 36, .22);
+}
+.polaroid .window img {
+  display: block; width: 100%; height: 100%; object-fit: contain;
+  filter: sepia(.1) saturate(.97);
+}
+/* The writing. Content sits at the TOP of the chin and the bottom padding is left clear,
+   because the name tag below overlaps exactly that much. */
+.polaroid .scrawl {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 10px 3px 24px;
+}
+.polaroid .scrawl .when {
+  font-family: var(--font-hand); font-size: var(--t-md); color: var(--ink-soft);
+  line-height: 1.2; min-width: 0;
+}
+.polaroid .scrawl .stamp { flex: 0 0 auto; margin-top: -1px; }
+
 /* ── the filmstrip ─────────────────────────────────────────────────────────
    A cat's photos, paged sideways. Native scroll-snap, not a JS carousel: momentum,
    rubber-banding at the ends and VoiceOver all come free, and there is no gesture of
@@ -149,7 +220,10 @@
   scroll-snap-stop: always;
   min-width: 0;
 }
-/* Nothing to page through: no peek, no wasted width. */
+/* Nothing to page through: no peek, no wasted width, and NO SCROLLING AT ALL. With the
+   overflow left auto, a single frame still rubber-banded a few pixels under a sideways
+   drag — a jiggle that promises another photo that does not exist. */
+.filmstrip.solo { overflow-x: hidden; }
 .filmstrip.solo .frame { flex: 0 0 100%; }
 
 .strip-dots {

@@ -22,7 +22,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { API_BASE, d1Many, deviceName, journalForDelete, sweepJournal } from './cf.mjs';
+import { API_BASE, d1, d1Many, deviceName, journalForDelete, sweepJournal } from './cf.mjs';
 import { drawImage, PREVIEW_HELP, previewMode } from './preview.mjs';
 import { box, c, CSI, onKey, paint, screen, truncate } from './tui.mjs';
 

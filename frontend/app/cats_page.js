@@ -29,16 +29,33 @@ function releaseUrls() {
   objectUrls.clear();
 }
 
+/* The last time she saw them, short enough for a 104px card. The year only appears when
+ * it is not this one, which is the only time it tells her anything. */
+function lastSeen(ms) {
+  const now = new Date();
+  const then = new Date(ms);
+  return new Intl.DateTimeFormat('en-CA', {
+    month: 'short',
+    day: 'numeric',
+    year: then.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  }).format(then);
+}
+
 function catCard(cat) {
   const colour = catColour(cat.id);
   // Callers filter out empty cats, so there is always a face.
   const face = cat.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
-  const n = cat.sightings.length;
+  /* A stamped count and a date, not a sentence: see .cat-card .caption. The count has no
+   * unit because the stamp is on a photograph of the cat — there is nothing else it
+   * could be counting. */
   return `
     <button type="button" class="cat-card" data-cat="${cat.id}" style="--ring:${esc(colour.hex)}">
       <img class="cat-face" src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
       <span class="nm">${esc(displayName(cat))}</span>
-      <span class="why">${n === 1 ? 'seen once' : `seen ${n} times`} &middot; ${esc(whenText(face.seenAt))}</span>
+      <span class="caption">
+        <span class="stamp round" aria-label="seen ${cat.sightings.length} times">${cat.sightings.length}</span>
+        <span class="seen">${esc(lastSeen(face.seenAt))}</span>
+      </span>
     </button>`;
 }
 

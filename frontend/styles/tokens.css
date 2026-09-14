@@ -36,7 +36,9 @@
   --marigold:    #ffc145;
   --jade:        #3dbe8b;
   --peri:        #7c8cff;
-  --blossom:     #ffa8b6;  /* inner ears on a name tag; the one purely decorative colour */
+  --blossom:     #ffa8b6;  /* the one purely decorative colour. Unused since the name tag
+                              became an engraved brass collar tag; kept because it is the
+                              only soft pink in the palette and the next sticker wants it. */
   /* white text is needed on these two; the other two take --ink */
   --on-coral:    #ffffff;
   --on-peri:     #ffffff;

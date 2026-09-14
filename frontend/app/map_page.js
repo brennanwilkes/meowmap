@@ -98,27 +98,40 @@ function pinIcon(s, ring, count) {
   else if (s.catId === null || s.catId === undefined) cls.push('loose');
   if (s.id % 2 === 1) cls.push('alt');
 
-  const badge = count > 1 ? `<b>&times;${count}</b>` : (s.pending === true ? '<b>!</b>' : '');
+  if (count > 1) cls.push('stack');
+
+  /* A stack of prints, not one print wearing a number: the count is the stamp on top and
+   * <s> is the corner of the print underneath showing past it. Several photos collapsed
+   * into one pin should LOOK like several photos before the number is read. */
+  const under = count > 1 ? '<s></s>' : '';
+  const badge = count > 1
+    ? `<b class="stamp round">&times;${count}</b>`
+    : (s.pending === true ? '<b class="stamp round">!</b>' : '');
   return L.divIcon({
     className: cls.join(' '),
     // The photo is its own element inside the print, so the mount and the chin below it
     // stay paper rather than being covered by the image.
-    html: `<i style="--ring:${esc(ring)}"><u style="background-image:url(${esc(thumbSrc(s))})"></u></i>${badge}`,
+    html: `${under}<i style="--ring:${esc(ring)}"><u style="background-image:url(${esc(thumbSrc(s))})"></u></i>${badge}`,
     iconSize: [52, 60],
     iconAnchor: [26, 69],
   });
 }
 
 /**
- * Collapse sightings of the SAME cat within ~15 m into one pin with a count.
+ * Collapse sightings of the SAME cat within ~40 m into one pin with a count.
  *
  * Deliberately not generic marker clustering: a cat photographed on the same fence
  * eight times should be one pin, but two different cats on one doorstep must stay two
  * pins. Clustering by screen proximity gets that backwards, and it would need a plugin.
+ *
+ * 40 m, not the 15 m it started at. A pin is 52 px wide and at zoom 17 a metre is about
+ * a pixel, so two prints 15-30 m apart overlap on screen while still counting as two
+ * pins — she could see there were two and could not tap either of them. The radius has
+ * to exceed the pin's own footprint, not merely "the same fence".
  */
 function collapse(sightings) {
   const groups = [];
-  const MERGE_DEG = 15 / 111_320;   // ~15 m
+  const MERGE_DEG = 40 / 111_320;   // ~40 m
   for (const s of sightings) {
     const key = s.catId === null || s.catId === undefined ? `loose:${s.id ?? s.clientId}` : `cat:${s.catId}`;
     const hit = groups.find((g) =>
