@@ -19,6 +19,8 @@
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "//photos": "INTERACTIVE photo browser. j/k move, o open in browser, d delete, q quit. Add -- --all to include deleted rows.",
     "photos": "node scripts/photos.mjs",
+    "//d1-usage": "Which database is eating the ACCOUNT-WIDE D1 daily caps. Control-plane only, so it still works when the cap is blown.",
+    "d1-usage": "node scripts/d1-usage.mjs",
     "//backup": "Dump every table to backups/meowmap-<ts>.json. Add -- --photos to also download the images.",
     "backup": "node scripts/backup.mjs",
     "//restore": "REPLACE the tables from a backup file, keeping ids. Dry run unless you add -- --apply.",

@@ -249,13 +249,30 @@ internal error, and the stack says so at every layer:
   loudest this strip gets). The data-is-old variant is `.offline`. Reusing the name would
   have silently swapped the two urgencies.
 
-**Nobody has yet explained how a two-person app with a handful of cats read 5M rows in a
-day.** Worth finding out rather than assuming: at ~20 rows per bulk fetch that is 250,000
-requests, which would have breached the Workers 100k/day request cap first — so something
-is reading MANY rows per query, not making many queries. `audit_log` has zero indexes by
-design and grows by a row per mutation; the admin scripts (`backup`, `reconcile`, `gc`)
-scan whole tables. Check `audit_log` size and the Workers analytics before touching
-anything.
+**IT WAS NOT MEOWMAP.** Measured 2026-09-14, the day the cap tripped:
+
+| database | size | rows read / 24h | share |
+|---|---|---|---|
+| vessel-tracker | 90.9 MB | 6,828,659 | 100.0% |
+| **meowmap** | **73.7 kB** | **1,274** | **0.0%** |
+
+Meowmap reads about **2 rows per query**; vessel-tracker reads **783**, which is what a
+table scan on a 91 MB database looks like. Meowmap cannot breach this cap on its own and
+almost certainly never will — it is a bystander to a sibling project on the same account,
+and the fix belongs in `~/vessel-tracker`, not here.
+
+**`npm run d1-usage` answers this in one command** (`worker/scripts/d1-usage.mjs`). It is
+CONTROL-PLANE ONLY — it reads no rows, so it still works while the cap is blown, which is
+exactly when it is needed. Two traps it already handles: address each database by UUID,
+never by name (`wrangler d1 info <name>` resolves the name against `wrangler.toml`, whose
+`database_id` is the literal `__D1_ID__` that CI patches at deploy — the same trap
+`cf.mjs` exists for), and parse `d1 info` by CELL ORDER rather than by label, because
+wrangler collapses the table to a single unlabelled column when the id is the header.
+
+**Reach for it before debugging anything else** when queries start failing. The first two
+guesses on the day were a Cloudflare outage and our own migration, and both were wrong —
+and a misleading first error (`no such column` from a mistyped probe) plus a `SELECT 1`
+that succeeded made it look like D1 was healthy.
 
 ## Caching — the two layers that fought each other
 
@@ -574,16 +591,40 @@ of arrangements that were each checked reads as someone having written on the ph
 Nothing is aligned to anything else, which is the point. All of it is deterministic: a
 re-render must not make the page twitch, and a photo has to look the same every time.
 
+**The six arrangements are the six PERMUTATIONS of three marks over three bands** — top,
+middle (`top: 40%`), bottom — with the side alternating within each. That structure earns
+its keep twice. It SPREADS the marks down the chin: the first pass put every mark in a
+corner, which left a dead stripe through the middle and read as "tons of empty blank
+space". And because no two marks ever share a band, they CANNOT overlap however long a
+name gets — a guarantee independent jitter could not make, and the reason the name could
+then be given room to grow (`--t-xl` handwritten, 64% max width, the stamp a size up).
+**Nothing gets closer than ~6% to an edge**: a mark flush to the edge reads as clipped
+rather than as written, and the card's outer corners are rounded, so a corner is the last
+place anything should sit.
+
 **Edit mode squares everything up** (`.polaroid.editing`) and lets the chin grow. Rotated
-absolutely-positioned marks are lovely to look at and a poor thing to type into — the name
-field would be a 56%-wide target at an angle, sitting on a photograph. The glance is a
-scrapbook; the editor is an editor.
+absolutely-positioned marks are lovely to look at and a poor thing to type into. The
+glance is a scrapbook; the editor is an editor.
+
+**In edit mode the name LEAVES the photograph** and becomes an ordinary `.field` — the
+same labelled control the note and the date use on the sighting page. It was first an
+underlined handwritten box on the film white (`.nm-input`, now deleted), which looked
+right and typed badly: no label, its placeholder doing the label's job, and a target only
+as wide as the name happened to be. `frame()` therefore takes no `nameHtml` override any
+more — `editing: true` simply drops the name mark, because an editor always names the cat
+in the field below.
 
 **THE CAT'S NAME LIVES ON THE PHOTOGRAPH**, in one of three hand-applied treatments —
 handwritten (`.nm.hand`), rubber-stamped (`.nm.inked`) or a stuck-on sticker
 (`.nm.stuck`, which is where the cat's colour went). The treatment is chosen from the
-CAT's id, never the photo's, so one cat's name does not change medium between two frames
-of its own strip.
+**SIGHTING's id**, so it changes from print to print: written on one, stamped on the next,
+a stuck-on label on the third. It was keyed to the CAT first, on the reasoning that a
+cat's name should not change medium between two frames of its own strip — which turned out
+to be exactly backwards. Keying it to the cat made every frame of a strip identical, and a
+scrapbook is never identical twice; a person with a pen, a stamp and a sheet of labels
+does not use the same one every time. `nameStyle(seed)` takes the sighting id everywhere,
+the sighting page's `.name-line` included, so one photo's label matches its own polaroid
+elsewhere in the app.
 
 Four objects were tried before this and all four were wrong in the same way: a dashed
 outline (this app's vocabulary for "unselected chip"), a flat coloured plate with paper
@@ -652,6 +693,10 @@ nothing when tapped straight from the name box.
 - **Standalone action buttons are full width.** A lone button at its text width, inset
   from the page edge, reads as floating debris — and a destructive one looked like it
   belonged to whatever happened to sit above it.
+- **`.pad`'s safe-area padding was mirrored** — `padding-right` took `--safe-l` and
+  `padding-left` took `--safe-r`, in both `.pad` and the map's filter bar. Invisible in
+  portrait (both insets are 0 and the `max(17px, …)` floor wins) and wrong in landscape on
+  a notched phone, which is the only orientation where the two ever differ.
 - **`.pad` sets `overflow-x: hidden`.** Every card carries a hand-stuck rotation, and a
   rotated box sticks out past its layout width, so a grid reaching the container edge
   produces a sideways scroll that looks like a bug and is the design working.
@@ -708,7 +753,12 @@ nothing when tapped straight from the name box.
   the left edge of a container that clips (`.pad` is `overflow-x: hidden`, because every
   card is tilted) the first chip in a row lost its left border. `.chiprow` is given side
   padding and pulled back out by the same margin, so the layout is unchanged and there is
-  somewhere for the ink to go.
+  somewhere for the ink to go. The slack is **10px**, not the 3.5px the ring alone needs:
+  it was 6px and "did not pet them" was still reported shaved, so the margin now simply
+  exceeds anything the rotation, the ring and the lift shadow can add up to. **Bump
+  `BUILD` in `sw.js` when checking a CSS fix on the phone** — the shell cache is keyed on
+  it, and an unbumped build serves the old stylesheet, which is indistinguishable from the
+  fix not working.
 - **Cancel the pending rAF on EVERY exit from the sheet drag, the dismissing one
   included.** `paint()` is queued from the last `touchmove` and only the settle path
   cancelled it, so on a dismiss it fired AFTER `closeDetail()` had cleared the inline
@@ -783,6 +833,7 @@ All under `worker/scripts`, all remote, all dry-run by default where they destro
 | `npm run wipe` | `purge --all --apply --yes-really` |
 | `npm run reconcile` / `gc` | Recompute R2 counters; `gc` also deletes unreferenced objects |
 | `scripts/db-sql 'SELECT …'` | Read-only escape hatch. Refuses to write |
+| `npm run d1-usage` | Which database is eating the ACCOUNT-WIDE D1 daily caps. Reads no rows, so it works when the cap is blown |
 
 The TUI is hand-rolled in `tui.mjs` + `preview.mjs` — **no dependency, deliberately**.
 This repo has zero runtime deps in the Worker and zero in the frontend; pulling in ink

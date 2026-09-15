@@ -28,14 +28,16 @@ import { dateText, esc } from '../dom.js';
  */
 const LAYOUTS = 6;
 
-/* The name is the CAT's, so its treatment is chosen from the CAT's id — otherwise one
- * cat's name would be handwritten on one frame and stamped on the next, which reads as a
- * bug rather than as a scrapbook. */
+/* The name is applied to EACH PRINT SEPARATELY — written on one, stamped on the next,
+ * a stuck-on label on the third — because that is what a person with a pen, a stamp and
+ * a sheet of labels actually produces. Keying it to the cat instead made every frame of
+ * a strip identical, which is the one thing a scrapbook never is. */
 const NAME_STYLES = ['hand', 'inked', 'stuck'];
 
-/** Exported so the sighting page labels a cat exactly as that cat's polaroids do. */
-export function nameStyle(catId) {
-  return NAME_STYLES[Math.abs(catId ?? 0) % NAME_STYLES.length];
+/** @param seed  the SIGHTING's id: the treatment belongs to the print, not to the cat.
+ *  Exported so the sighting page labels its photo the way that photo's polaroid does. */
+export function nameStyle(seed) {
+  return NAME_STYLES[Math.abs(seed ?? 0) % NAME_STYLES.length];
 }
 
 function pettedStamp(petted) {
@@ -50,12 +52,11 @@ function pettedStamp(petted) {
  * One polaroid.
  *
  * @param opts.name   the cat's display name
- * @param opts.catId  which cat, so the name treatment is stable across its photos
  * @param opts.src    (sighting) => image URL; the sheet resolves pending rows locally
- * @param opts.nameHtml  replaces the name mark entirely (the cat page's edit field)
- * @param opts.editing   lay the caption out as a form instead of as handwriting
+ * @param opts.editing  lay the caption out as a form instead of as handwriting, and drop
+ *                      the name mark: an editor names the cat in a labelled field below.
  */
-export function frame(s, { name, catId, src, nameHtml = null, editing = false }) {
+export function frame(s, { name, src, editing = false }) {
   /* Square is the polaroid format, but a little off-square sneaks in more of a tall or
    * wide photo without the card stopping looking like a polaroid. Outside this band the
    * chin either swells into dead space or is squeezed down to nothing, and the window is
@@ -64,7 +65,7 @@ export function frame(s, { name, catId, src, nameHtml = null, editing = false })
   const ar = Math.min(1.12, Math.max(0.93, raw)).toFixed(3);
   const n = Math.abs(s.id ?? s.seenAt);
   const lay = editing ? '' : ` lay-${n % LAYOUTS}`;
-  const style = nameStyle(catId);
+  const style = nameStyle(n);
 
   return `
     <div class="frame">
@@ -75,7 +76,7 @@ export function frame(s, { name, catId, src, nameHtml = null, editing = false })
                width="${esc(String(s.photoW ?? ''))}" height="${esc(String(s.photoH ?? ''))}">
         </span>
         <figcaption class="scrawl${lay}">
-          ${nameHtml === null ? `<span class="nm ${style}">${esc(name)}</span>` : nameHtml}
+          ${editing ? '' : `<span class="nm ${style}">${esc(name)}</span>`}
           <span class="when">${esc(dateText(s.seenAt))}</span>
           ${pettedStamp(s.petted)}
         </figcaption>

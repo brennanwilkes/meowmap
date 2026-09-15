@@ -110,7 +110,7 @@
    looks like a layout bug and is actually the design working. */
 .pad {
   height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;
-  padding: 15px max(17px, var(--safe-l)) 24px max(17px, var(--safe-r));
+  padding: 15px max(17px, var(--safe-r)) 24px max(17px, var(--safe-l));
   /* Faint ruling, so the ground reads as a page rather than as a panel.
      `background-attachment: local` IS LOAD-BEARING: it makes the ruling scroll WITH the
      content. A fixed ruling under scrolling text is what made Settings genuinely hard to

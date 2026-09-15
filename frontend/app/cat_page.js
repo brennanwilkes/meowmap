@@ -79,27 +79,35 @@ function render(state = store.get()) {
   if (showIndex >= sightings.length) showIndex = 0;
   const shown = sightings[showIndex];
   const photo = {
-    name: displayName(cat), catId: cat.id, src: (x) => photoUrl(x.photoFull),
+    name: displayName(cat), src: (x) => photoUrl(x.photoFull),
   };
 
-  /* THE NAME IS RENDERED EXACTLY ONCE, as the tag hanging off the photo on screen.
+  /* THE NAME IS RENDERED EXACTLY ONCE. In the glance it is the mark on the print; in edit
+   * mode it comes OFF the photograph and becomes an ordinary labelled field, the same one
+   * the date and the note use on the sighting page.
    *
-   * Edit mode used to keep the whole strip — every frame carrying the cat's name as a
-   * static tag — and then add the editable one below it, so the name appeared twice and
-   * the page rearranged itself under her the moment she tapped Edit. Editing one photo's
-   * worth of screen is also what the map sheet does, so the two now behave alike. */
-  const nameTag = `
-    <input type="text" class="nm nm-input" id="f-name" maxlength="${MAX_NAME_LEN}"
-           aria-label="This cat's name"
-           placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">`;
+   * It was previously an underlined hand-written box sitting on the polaroid's white —
+   * which looks right and types badly: no label, a placeholder doing the label's job, and
+   * a target the size of whatever the name happened to be. A form field is a form field.
+   *
+   * Edit mode used to keep the whole strip as well — every frame carrying the cat's name
+   * as a static tag — and then add the editable one below it, so the name appeared twice
+   * and the page rearranged itself under her the moment she tapped Edit. */
+  const nameField = `
+    <label class="field">
+      <span>Name <em>(optional)</em></span>
+      <input type="text" id="f-name" maxlength="${MAX_NAME_LEN}"
+             placeholder="leave blank if you don&rsquo;t know" value="${esc(cat.name ?? '')}">
+    </label>`;
 
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(colour.hex)};--ring-ink:${esc(inkFor(cat.id))}">
       ${editing
-        ? frame(shown, { ...photo, nameHtml: nameTag, editing: true })
+        ? frame(shown, { ...photo, editing: true })
         : filmstrip(sightings, photo)}
 
       ${editing ? `
+        ${nameField}
         <p class="hand" id="save-state">&nbsp;</p>
         <hr class="rule">
         ${chipRows(cat)}

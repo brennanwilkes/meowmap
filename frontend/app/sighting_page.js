@@ -93,7 +93,7 @@ function render(state) {
              width="${esc(String(s.photoW))}" height="${esc(String(s.photoH))}">
       </figure>
       ${cat === null ? '' : `<div class="name-line">
-        <button type="button" class="nm ${esc(nameStyle(cat.id))}" id="to-cat">${esc(displayName(cat))}</button>
+        <button type="button" class="nm ${esc(nameStyle(s.id))}" id="to-cat">${esc(displayName(cat))}</button>
       </div>`}
 
       <hr class="rule">

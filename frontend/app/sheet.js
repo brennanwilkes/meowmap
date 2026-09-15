@@ -64,7 +64,7 @@ export function openSightingSheet(sighting, cat) {
   sheet.innerHTML = `
     <div class="grabber"></div>
     ${pendingNote}
-    ${filmstrip(shots, { name, catId: sighting.catId, src: photoFor })}
+    ${filmstrip(shots, { name, src: photoFor })}
     <div class="glance-foot">
       ${staticChips(tagged)}
       ${sighting.pending === true ? '' : `

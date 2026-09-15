@@ -112,7 +112,7 @@
   position: absolute; left: 0; right: 0; z-index: 620;
   bottom: 3px;
   display: flex; gap: 8px;
-  padding: 6px max(12px, var(--safe-l)) 8px max(12px, var(--safe-r));
+  padding: 6px max(12px, var(--safe-r)) 8px max(12px, var(--safe-l));
   overflow-x: auto; scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }

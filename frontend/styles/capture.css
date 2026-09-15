@@ -12,7 +12,7 @@
    a row lost its left border — "did not pet them" with one side shaved off. The row is
    given slack and pulled back out by the same amount, so the layout is unchanged and
    there is somewhere for the ink to go. */
-.chiprow { padding: 3px 6px; margin-left: -6px; margin-right: -6px; }
+.chiprow { padding: 4px 10px; margin-left: -10px; margin-right: -10px; }
 .rule {
   border: 0;
   height: 1px;
@@ -426,18 +426,6 @@
 .name-line .nm.inked {
   box-shadow: inset 0 0 0 1.5px var(--paper-hi), inset 0 0 0 3px currentColor;
 }
-
-/* In edit mode the name is a plain field on the polaroid's white, because a rotated
-   56%-wide target sitting on a photograph is lovely and unusable. 16px clears the iOS
-   no-zoom floor, which a form control must. */
-.nm-input {
-  width: 100%; font-family: var(--font-hand); font-size: var(--t-lg); font-weight: 700;
-  color: var(--ink); background: none;
-  border: 0; border-bottom: 2px dashed var(--ink-faint); border-radius: 0;
-  padding: 2px 2px 5px; min-height: 40px;
-}
-.nm-input:focus { outline: none; border-bottom-color: var(--ink); border-bottom-style: solid; }
-.nm-input::placeholder { color: var(--ink-faint); }
 
 /* ── the glance footer ─────────────────────────────────────────────────────
    The tags and the way in, on ONE line and at the same weight.
