@@ -74,6 +74,11 @@
 /* NOT .ruled. The ruled paper is fixed to the screen while the content scrolls over it,
    so the lines cut across every line of text at a different offset each frame and make
    Settings genuinely hard to read. Ruling belongs on a page that does not scroll. */
+/* The cat page shows a polaroid, the tags, the way in AND a territory map, so its
+   photo has to be a little shorter than the sheet's to keep the first three on screen
+   together. */
+.screen.detail { --polaroid-h: 44vh; }
+
 .detail-body { flex: 1 1 auto; min-height: 0; background: var(--paper); }
 
 /* Sits over the strip of page left showing above the sheet. Transparent — the point is

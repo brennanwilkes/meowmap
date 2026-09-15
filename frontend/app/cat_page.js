@@ -16,10 +16,13 @@ import * as turnstile from './turnstile.js';
 /* One cat: everything true of the ANIMAL, plus where it lives and two questions in
  * plain language.
  *
- * Name, coat, size and petted all live here since migration 003. They describe the cat,
- * not any one photograph, so a grouped cat has ONE answer to "what colour is it" instead
- * of one per sighting that could disagree with each other. Date and location belong to
- * the individual photo and are edited by tapping it.
+ * Name, coat and size live here since migration 003. They describe the cat, not any one
+ * photograph, so a grouped cat has ONE answer to "what colour is it" instead of one per
+ * sighting that could disagree with each other.
+ *
+ * PETTED DOES NOT LIVE HERE. It went back onto the sighting in 004 — it is stamped on the
+ * polaroid, and one answer shared across every photo would be a lie on all but one of
+ * them. Date, location and petted are the photo's own facts and are edited there.
  *
  *   "I've seen this cat before"  → pick another cat's face → the two become one.
  *   "this is a different cat"    → that photo leaves and becomes its own cat.
@@ -76,7 +79,7 @@ function render(state = store.get()) {
   if (showIndex >= sightings.length) showIndex = 0;
   const shown = sightings[showIndex];
   const photo = {
-    name: displayName(cat), petted: cat.petted, src: (x) => photoUrl(x.photoFull),
+    name: displayName(cat), catId: cat.id, src: (x) => photoUrl(x.photoFull),
   };
 
   /* THE NAME IS RENDERED EXACTLY ONCE, as the tag hanging off the photo on screen.
@@ -86,27 +89,28 @@ function render(state = store.get()) {
    * the page rearranged itself under her the moment she tapped Edit. Editing one photo's
    * worth of screen is also what the map sheet does, so the two now behave alike. */
   const nameTag = `
-    <span class="tag">
-      <input type="text" class="nameplate" id="f-name" maxlength="${MAX_NAME_LEN}"
-             aria-label="This cat's name"
-             placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">
-    </span>`;
+    <input type="text" class="nm nm-input" id="f-name" maxlength="${MAX_NAME_LEN}"
+           aria-label="This cat's name"
+           placeholder="${esc(displayName(cat))}" value="${esc(cat.name ?? '')}">`;
 
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(colour.hex)};--ring-ink:${esc(inkFor(cat.id))}">
       ${editing
-        ? frame(shown, { ...photo, tag: nameTag })
+        ? frame(shown, { ...photo, nameHtml: nameTag, editing: true })
         : filmstrip(sightings, photo)}
 
       ${editing ? `
         <p class="hand" id="save-state">&nbsp;</p>
         <hr class="rule">
         ${chipRows(cat)}
-      ` : staticChips(cat)}
-
-      <div class="sheet-acts">
-        <button type="button" class="btn-stick" id="mode">${editing ? 'Done' : 'Edit'}</button>
-      </div>
+        <div class="sheet-acts">
+          <button type="button" class="btn-stick" id="mode">Done</button>
+        </div>
+      ` : `
+        <div class="glance-foot">
+          ${staticChips(cat)}
+          <button type="button" class="btn-stick sm" id="mode">Edit</button>
+        </div>`}
 
       ${sightings.length < 2 ? '' : `
         <hr class="rule">
@@ -133,7 +137,9 @@ function render(state = store.get()) {
     unstrip = wireFilmstrip($('.filmstrip', root), showIndex, (i) => { showIndex = i; });
   }
 
-  edit = { name: cat.name ?? null, coat: [...cat.coat], size: cat.size, petted: cat.petted };
+  // Petted is NOT here: it belongs to the photograph now (004) and is edited on the
+  // sighting page, which is also where the date and the pin live.
+  edit = { name: cat.name ?? null, coat: [...cat.coat], size: cat.size };
   wire(cat, shown);
   if (sightings.length >= 2) drawTerritory(sightings, colour);
 }
@@ -202,7 +208,6 @@ async function saveEdits(cat) {
   if (edit.name !== (cat.name ?? null)) patch.name = edit.name;
   if (edit.coat.join(',') !== cat.coat.join(',')) patch.coat = edit.coat;
   if (edit.size !== cat.size) patch.size = edit.size;
-  if (edit.petted !== cat.petted) patch.petted = edit.petted;
   if (Object.keys(patch).length === 0) { state(''); return; }
 
   state('saving…');
@@ -285,11 +290,15 @@ function newestAt(cat) {
 /**
  * Two cats become one, and their descriptions have to become one too.
  *
- * COAT UNIONS; size and petted take the more recently seen cat's answer. A union loses
- * nothing — a cat tagged "orange" here and "tabby" there is an orange tabby, and
- * discarding half would quietly delete something she typed. Size and petted cannot union
- * (a cat is not both a kitten and a chonk), so the newer observation wins as the more
- * likely to still be true; the older one is kept only where the newer has no answer.
+ * COAT UNIONS; size takes the more recently seen cat's answer. A union loses nothing — a
+ * cat tagged "orange" here and "tabby" there is an orange tabby, and discarding half
+ * would quietly delete something she typed. Size cannot union (a cat is not both a kitten
+ * and a chonk), so the newer observation wins as the more likely to still be true; the
+ * older one is kept only where the newer has no answer.
+ *
+ * Petted needs no rule at all any more: it lives on each sighting, so merging two cats
+ * simply carries every photo's own answer across with it. That is the clearest argument
+ * that 004 put it in the right place.
  */
 function mergeTags(survivor, absorbed) {
   const [newer, older] = newestAt(survivor) >= newestAt(absorbed)
@@ -297,7 +306,6 @@ function mergeTags(survivor, absorbed) {
   return {
     coat: [...new Set([...survivor.coat, ...absorbed.coat])].sort(),
     size: newer.size ?? older.size,
-    petted: newer.petted ?? older.petted,
     // Whichever way round she taps, the cat she met first keeps its name.
     name: survivor.name ?? absorbed.name,
   };

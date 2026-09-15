@@ -4,9 +4,12 @@ import { esc } from '../dom.js';
 /* The coat / size / petted chip rows, shared by the capture page and the cat editor —
  * the same three rows in the same order, so they are one implementation.
  *
- * These describe the ANIMAL, so they belong to a cat, not to a sighting (migration 003).
- * On the capture page they seed the cat the Worker mints for a new photo; on the cat page
- * they edit it.
+ * COAT AND SIZE DESCRIBE THE ANIMAL and belong to the cat (migration 003). PETTED
+ * DESCRIBES THE ENCOUNTER and belongs to the sighting (migration 004) — it is stamped on
+ * the polaroid, so a single answer shared across every photo of a cat would be a lie on
+ * all but one of them. They are therefore two separate rows with two separate homes:
+ * `chipRows` on the capture form and the cat page, `pettedRow` on the capture form and
+ * the sighting page.
  *
  * Unselected chips LIE FLAT on the page: dashed outline, no fill, no tilt, no shadow.
  * Selected ones are stuck on. Both states come from the same physics, which is what
@@ -26,7 +29,7 @@ function chip(label, value, selected, group, i) {
     style="--fill:${fill};--tilt:${tilt}">${esc(label)}</button>`;
 }
 
-/** @param draft  anything carrying {coat: string[], size, petted} — a capture draft or a cat. */
+/** What the CAT is. @param draft  anything carrying {coat: string[], size}. */
 export function chipRows(draft) {
   return `
     <div class="chiprow" data-chips="coat">
@@ -35,8 +38,12 @@ export function chipRows(draft) {
     <hr class="rule thin">
     <div class="chiprow" data-chips="size">
       ${SIZE_TAGS.map((t, i) => chip(t, t, draft.size === t, 'size', i + 1)).join('')}
-    </div>
-    <hr class="rule thin">
+    </div>`;
+}
+
+/** What happened on THIS encounter. @param draft  anything carrying {petted}. */
+export function pettedRow(draft) {
+  return `
     <div class="chiprow" data-chips="petted">
       ${PETTED_VALUES.map((v, i) => chip(PETTED_LABEL[v], v, draft.petted === v, 'petted', i + 2)).join('')}
     </div>`;

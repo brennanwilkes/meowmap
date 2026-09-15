@@ -17,7 +17,14 @@
   padding: 0 17px calc(20px + var(--safe-b));
   transform: translateY(102%);
   transition: transform var(--turn);
-  max-height: 78%; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  /* TALL ENOUGH NOT TO SCROLL. A glance that scrolls is not a glance — she taps a pin
+     to look at a cat, and finding the tags below the fold turns a look into a task. The
+     sheet is sized for its whole content and the polaroid is sized from the viewport
+     height to match (--polaroid-h), so on any phone the photo, the tags and the way in
+     all land on screen together. `overflow-y: auto` stays as the safety net for a long
+     pending-upload notice, not as the normal case. */
+  max-height: 92%; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  --polaroid-h: 56vh;
 }
 .sheet.open { transform: translateY(0); }
 

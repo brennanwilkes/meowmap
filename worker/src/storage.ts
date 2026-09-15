@@ -105,12 +105,13 @@ export async function getDataVersion(env: Env): Promise<number> {
 export async function getBulk(env: Env): Promise<{ cats: CatDto[]; sightings: SightingDto[] }> {
   const [catsRes, sightRes] = await env.MEOWMAP_DB.batch<CatRow | SightingRow>([
     env.MEOWMAP_DB.prepare(
-      `SELECT id, name, notes, coat, size, petted, created_at, updated_at
+      `SELECT id, name, notes, coat, size, created_at, updated_at
          FROM cats WHERE deleted_at IS NULL`,
     ),
     env.MEOWMAP_DB.prepare(
       `SELECT id, client_id, cat_id, lat, lon, location_source, accuracy_m, seen_at,
-              note, photo_full, photo_thumb, photo_w, photo_h, created_at, updated_at
+              note, photo_full, photo_thumb, photo_w, photo_h, petted,
+              created_at, updated_at
          FROM sightings WHERE deleted_at IS NULL`,
     ),
   ]);
@@ -141,7 +142,6 @@ export function toCatDto(r: CatRow): CatDto {
     id: r.id, name: r.name, notes: r.notes,
     coat: r.coat === null || r.coat === '' ? [] : r.coat.split(','),
     size: r.size as CatDto['size'],
-    petted: r.petted as CatDto['petted'],
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -162,6 +162,7 @@ export function toSightingDto(r: SightingRow): SightingDto {
     photoThumb: r.photo_thumb,
     photoW: r.photo_w,
     photoH: r.photo_h,
+    petted: r.petted as SightingDto['petted'],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -214,6 +215,9 @@ export interface NewSighting {
   photoThumb: string;
   photoW: number;
   photoH: number;
+  /* Per-encounter since 004, and the only tag that is: it is stamped on the polaroid, so
+   * it has to be about THAT photo. Coat and size stay on the cat. */
+  petted: string | null;
   deviceId: string;
 }
 
@@ -225,14 +229,14 @@ export function insertSighting(env: Env, s: NewSighting, now: number): D1Prepare
     .prepare(
       `INSERT INTO sightings
          (client_id, cat_id, lat, lon, location_source, accuracy_m, seen_at,
-          note, photo_full, photo_thumb, photo_w, photo_h,
+          note, photo_full, photo_thumb, photo_w, photo_h, petted,
           device_id, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?15)
        ON CONFLICT(client_id) DO NOTHING`,
     )
     .bind(
       s.clientId, s.catId, s.lat, s.lon, s.locationSource, s.accuracyM, s.seenAt,
-      s.note, s.photoFull, s.photoThumb, s.photoW, s.photoH,
+      s.note, s.photoFull, s.photoThumb, s.photoW, s.photoH, s.petted,
       s.deviceId, now,
     );
 }
@@ -252,7 +256,8 @@ export function patchSighting(
          accuracy_m      = CASE WHEN ?7 = 1 THEN ?8 ELSE accuracy_m END,
          seen_at         = COALESCE(?9, seen_at),
          note            = COALESCE(?10, note),
-         updated_at      = ?11
+         petted          = CASE WHEN ?11 = 1 THEN ?12 ELSE petted END,
+         updated_at      = ?13
        WHERE id = ?1 AND deleted_at IS NULL`,
     )
     .bind(
@@ -264,6 +269,8 @@ export function patchSighting(
       p.lat ?? null, p.lon ?? null, p.locationSource ?? null,
       p.accuracyM === undefined ? 0 : 1, p.accuracyM ?? null,
       p.seenAt ?? null, p.note ?? null,
+      // Un-answering "did you pet them" is a real edit, so it needs the flag too.
+      p.petted === undefined ? 0 : 1, p.petted ?? null,
       now,
     );
 }
@@ -285,7 +292,6 @@ export interface CatFields {
   notes?: string | null;
   coat?: string[];
   size?: string | null;
-  petted?: string | null;
 }
 
 /** Sorted and comma-joined, so the stored string is canonical and two cats tagged the
@@ -299,12 +305,12 @@ export function insertCat(env: Env, c: CatFields, now: number): D1PreparedStatem
   const name = c.name ?? null;
   return env.MEOWMAP_DB
     .prepare(
-      `INSERT INTO cats (name, slug, notes, coat, size, petted, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?7)`,
+      `INSERT INTO cats (name, slug, notes, coat, size, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?6)`,
     )
     .bind(
       name, name === null ? null : slugify(name), c.notes ?? null,
-      coatColumn(c.coat), c.size ?? null, c.petted ?? null, now,
+      coatColumn(c.coat), c.size ?? null, now,
     );
 }
 
@@ -318,8 +324,7 @@ export function patchCat(env: Env, id: number, c: CatFields, now: number): D1Pre
          notes      = COALESCE(?5, notes),
          coat       = CASE WHEN ?6 = 1 THEN ?7 ELSE coat END,
          size       = CASE WHEN ?8 = 1 THEN ?9 ELSE size END,
-         petted     = CASE WHEN ?10 = 1 THEN ?11 ELSE petted END,
-         updated_at = ?12
+         updated_at = ?10
        WHERE id = ?1 AND deleted_at IS NULL`,
     )
     .bind(
@@ -331,7 +336,6 @@ export function patchCat(env: Env, id: number, c: CatFields, now: number): D1Pre
        * un-tagging a cat impossible. */
       c.coat === undefined ? 0 : 1, coatColumn(c.coat),
       c.size === undefined ? 0 : 1, c.size ?? null,
-      c.petted === undefined ? 0 : 1, c.petted ?? null,
       now,
     );
 }

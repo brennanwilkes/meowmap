@@ -46,6 +46,9 @@ export interface SightingDto {
   photoThumb: string;
   photoW: number;
   photoH: number;
+  /* Per-encounter since 004: it is stamped on the polaroid, so it is about THIS photo.
+   * Coat and size remain on the cat. */
+  petted: Petted | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -54,11 +57,12 @@ export interface CatDto {
   id: number;
   name: string | null;
   notes: string | null;
-  /* Coat, size and petted describe the ANIMAL, so they live here rather than on each
-   * sighting — see migration 003. */
+  /* Coat and size describe the ANIMAL, so they live here rather than on each sighting
+   * (migration 003). `petted` came here with them and went back in 004: it is drawn on
+   * the photograph, and a fact shared across every photo of a cat is a lie on all but
+   * one of them. */
   coat: string[];
   size: SizeTag | null;
-  petted: Petted | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -77,6 +81,7 @@ export interface SightingRow {
   photo_thumb: string;
   photo_w: number;
   photo_h: number;
+  petted: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -87,7 +92,6 @@ export interface CatRow {
   notes: string | null;
   coat: string | null;
   size: string | null;
-  petted: string | null;
   created_at: number;
   updated_at: number;
 }

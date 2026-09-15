@@ -47,6 +47,20 @@
 
   /* ── geometry ──────────────────────────────────────────────────────────── */
   --r-cut:       2px;      /* the only radius. see rule 1 above. */
+  /* THE ONE DOCUMENTED EXCEPTION to rule 1, and it is a physical fact rather than a
+     style choice: Polaroid 600 film has a ~3mm rounded outer corner on an 88mm card.
+     A polaroid with square outer corners does not read as a photograph, it reads as a
+     div — which is exactly what happened, twice. It is legal ONLY on .polaroid's outer
+     edge; the photo window inside it stays square, because the image area of real film
+     is cut square. Do not reach for this anywhere else. */
+  --r-film:      9px;
+
+  /* ── real polaroid film ────────────────────────────────────────────────── */
+  /* The frame is NOT scrapbook paper and must not use --paper-hi. Film border is a
+     bright, faintly COOL white; cream reads as card stock. It also carries a gloss,
+     which is the other half of why it looks like film rather than like paper. */
+  --film:        #fbfaf7;
+  --film-low:    #efece4;  /* the chin picks up a little warmth toward the bottom */
 
   /* ── type ──────────────────────────────────────────────────────────────── */
   /* Three families, one job each. Zilla Slab = structure and body,

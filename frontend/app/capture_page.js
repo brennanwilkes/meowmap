@@ -9,7 +9,7 @@ import { getPref } from './device.js';
 import { startLocating } from './geolocate.js';
 import { LOCATION_SOURCE, processPhoto, resolveLocation, resolveSeenAt } from './pipeline.js';
 import { distanceM, reasonText, suggestCats } from './suggest.js';
-import { chipRows, wireChips } from './components/chips.js';
+import { chipRows, pettedRow, wireChips } from './components/chips.js';
 import * as flush from './flush.js';
 import { keepSized } from './minimap.js';
 import { navigate } from './nav.js';
@@ -103,6 +103,12 @@ function draftView() {
       ${notice}
 
       ${draft.catId === null ? newCatFields() : groupedPanel()}
+
+      <!-- ASKED EITHER WAY. Coat and size belong to the cat and are hers to set only
+           when this photo is minting one; petted belongs to THIS photo (004), so it is
+           asked whether or not she has already said which cat this is. -->
+      <hr class="rule">
+      ${pettedRow(draft)}
 
       <hr class="rule">
       <label class="field">
@@ -332,8 +338,10 @@ function wireDraft() {
   $('#discard', root).addEventListener('click', leave);
   $('#save', root).addEventListener('click', save);
 
+  // Covers the petted row in both branches, and coat/size in the ungrouped one.
+  wireChips(root, draft, () => {});
+
   if (draft.catId === null) {
-    wireChips(root, draft, () => {});
     $('#f-name', root).addEventListener('input', (e) => {
       draft.name = e.target.value.trim() === '' ? null : e.target.value.trim();
     });

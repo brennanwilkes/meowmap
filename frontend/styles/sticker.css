@@ -155,64 +155,166 @@
 /* "not petted" is the absence of the thing, so it is stamped in faded ink rather than
    in a second colour that would read as its own status. */
 .stamp.pale { --stamp-ink: var(--ink-faint); opacity: .7; }
+/* On film the gap inside the double rule has to be film white, not paper cream. */
+.polaroid .stamp { box-shadow: inset 0 0 0 1.5px var(--film), inset 0 0 0 3px currentColor; }
 
 /* ── a polaroid ────────────────────────────────────────────────────────────
-   ALWAYS PORTRAIT, whatever shape the photo is. The frame's own aspect ratio is fixed,
-   the WINDOW (the space reserved for the photo) takes the photo's aspect ratio, passed
-   in as --ar, capped so a tall shot cannot eat the chin — and the chin is whatever is
-   left. A landscape shot therefore does not letterbox, it just leaves more paper to
-   write on, which is what a real polaroid does and why every frame in a strip is the
-   same height.
+   WHAT MAKES IT READ AS FILM rather than as a div, in the order the mistakes were made:
 
-   THE PHOTO SIZES ITSELF INSIDE THE WINDOW; THE WINDOW HAS NO FILL. It used to be the
-   window that carried the image, the background and the keyline, with `object-fit:
-   contain` letterboxing onto --paper — so a portrait shot sat between two beige bars
-   that looked like a rendering fault. Now the <img> takes max-width/max-height and
-   nothing else, so a portrait photo is simply NARROWER and what shows beside it is the
-   polaroid's own white mount. The keyline and shadow ride on the image, so they hug the
-   photograph rather than the space it was offered.
+   1. THE FRAME IS NOT PAPER. It is a bright, faintly cool white (--film) with a slight
+      warm fall-off toward the chin. Using --paper-hi made it card stock.
+   2. THERE IS NO OUTLINE. A 1px keyline round the card is the single biggest tell. What
+      separates a photograph from the page is a SOFT SHADOW, not a border — so this is
+      also the one object in the app that does not wear the hard offset sticker shadow.
+      It is a photograph lying on a desk, not a sticker stuck to one.
+   3. THE OUTER CORNERS ARE ROUNDED AND THE PHOTO'S ARE NOT. Real film is die-cut with a
+      ~3mm radius on the card and a square image area. Having it the other way round —
+      sharp card, softened photo — is precisely backwards. See --r-film in tokens.css,
+      which is the one documented exception to the no-half-rounded rule.
+   4. IT IS GLOSSY. A broad diagonal highlight across the whole card, and a second,
+      stronger one over the image. Without it the card is matte and looks printed.
 
-   Nothing here may use `overflow: hidden`: the petted stamp overhangs on purpose, and
-   clipping it was the bug this replaced. */
+   PROPORTIONS. Frame 0.72 wide-to-tall with even margins on three sides and the rest as
+   chin, which is the 88x107mm card with its 79mm image area. The window takes the
+   photo's own ratio CLAMPED to a narrow band around square: square is the polaroid
+   format, but a little off-square sneaks in more of a tall or wide photo without the
+   card stopping looking like a polaroid. `cover`, so there is never a letterbox. */
 .polaroid {
   position: relative; display: flex; flex-direction: column;
-  aspect-ratio: .8; max-height: 58vh;
-  background: var(--paper-hi); padding: 9px 9px 0;
-  border: 1px solid var(--rule); box-shadow: 2px 3px 0 rgba(46, 42, 36, .18);
-  transform: rotate(-1.3deg); margin: 10px 0 0;
+  aspect-ratio: .72;
+  /* Percentage padding resolves against WIDTH, so all three margins stay optically
+     equal however wide the frame is. */
+  padding: 5.5% 5.5% 0;
+  border-radius: var(--r-film);
+  background: linear-gradient(177deg, var(--film) 0%, var(--film) 62%, var(--film-low) 100%);
+  box-shadow:
+    0 1px 1px rgba(32, 28, 22, .16),
+    0 7px 16px -5px rgba(32, 28, 22, .38);
+  transform: rotate(-1.3deg);
+  /* SIZED FROM HEIGHT, so the sheet and the cat page can both fit without scrolling.
+     `min()` against 100% means it is width-bound on a tall screen and height-bound on a
+     short one, and the aspect ratio holds either way — which `max-height` alone cannot
+     do, because it clamps the height and leaves the width at 100%. */
+  width: min(100%, calc(var(--polaroid-h, 50vh) * .72));
+  margin: 10px auto 0;
 }
-.polaroid .window {
-  flex: 0 0 auto; width: 100%;
-  aspect-ratio: var(--ar, 1); max-height: 66%;
-  display: flex; align-items: center; justify-content: center;
-}
-.polaroid .window img {
-  display: block; max-width: 100%; max-height: 100%; width: auto; height: auto;
-  /* A hairline plus a soft drop shadow, not a hard inset rule. A photograph lying on
-     paper has a little depth and its edge is where light falls off — a 1px ink line
-     butted straight against the mount reads as a cropped div. 2px corners are the only
-     radius this design allows and they take the point off without rounding anything. */
-  border-radius: var(--r-cut);
-  box-shadow: 0 0 0 1px rgba(46, 42, 36, .14), 0 2px 6px rgba(46, 42, 36, .26);
-  filter: sepia(.1) saturate(.97);
+/* The gloss on the card. Overlay so it lifts the white without washing it out. */
+.polaroid::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(116deg,
+    rgba(255, 255, 255, 0) 26%, rgba(255, 255, 255, .55) 41%,
+    rgba(255, 255, 255, .08) 53%, rgba(255, 255, 255, 0) 70%);
+  mix-blend-mode: overlay;
 }
 
-/* The writing. The chin is generous and its two marks are NOT aligned to each other:
-   the date is written by hand at a slight angle and the stamp was pressed on afterwards,
-   lower and further over. Both get a small per-photo jitter from the caller (see
-   frame() in components/filmstrip.js) — deterministic from the sighting id, so a
-   re-render never makes the page twitch. */
+.polaroid .window {
+  position: relative; flex: 0 0 auto; width: 100%;
+  aspect-ratio: var(--ar, 1);
+  background: #14120f;
+  /* Square, deliberately: the image area of real film is cut square even though the card
+     it sits in is not. */
+  border-radius: 0;
+}
+.polaroid .window img {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+  /* Instant film is warm, a touch contrasty, and never quite neutral. */
+  filter: sepia(.07) saturate(1.04) contrast(1.05);
+}
+/* The sheen ON the photo, stronger than the card's — this is the emulsion, which is the
+   glossiest part of a polaroid. Plus a hairline of shadow where the image meets the
+   white, because the image area sits very slightly below the border. */
+.polaroid .window::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(118deg,
+      rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, .17) 44%,
+      rgba(255, 255, 255, .02) 58%, rgba(255, 255, 255, 0) 72%),
+    linear-gradient(180deg, rgba(0, 0, 0, .16), rgba(0, 0, 0, 0) 6%),
+    linear-gradient(0deg, rgba(0, 0, 0, .13), rgba(0, 0, 0, 0) 5%);
+}
+
+/* ── what is written on the white ──────────────────────────────────────────
+   Three marks: the cat's NAME, the DATE, and the PETTED STAMP. They are placed by
+   LAYOUT, not by independent jitter — six arrangements, chosen from the sighting's id.
+   Independent jitter on three absolutely-positioned things reads as noise and eventually
+   overlaps; a set of arrangements that were each checked reads as someone having written
+   on the photo. Nothing here is aligned to anything else, which is the point.
+
+   All of it is deterministic: a re-render must not make the page twitch, and a photo has
+   to look the same every time she opens it.
+
+   THE NAME'S TREATMENT COMES FROM THE CAT, not the photo — handwritten, stamped or a
+   stuck-on sticker — so one cat's name does not change medium between two frames of its
+   own strip, which would read as a bug rather than as a scrapbook. */
 .polaroid .scrawl {
   position: relative; flex: 1 1 auto; min-height: 0;
-  padding: 14px 10px 28px;
+  /* Marks are placed against this box, so it must be the chin and nothing else. */
+  padding: 0;
 }
+.polaroid .scrawl > * { position: absolute; transform: rotate(var(--rot, 0deg)); }
+.polaroid .scrawl .nm { max-width: 56%; }
 .polaroid .scrawl .when {
-  display: block; max-width: 64%;
-  font-family: var(--font-hand); font-size: var(--t-lg); color: var(--ink-soft);
-  line-height: 1.15;
-  transform-origin: left center;
+  font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft);
+  white-space: nowrap;
 }
-.polaroid .scrawl .stamp { position: absolute; }
+
+/* Handwritten: she wrote the name on with a pen. */
+.nm.hand {
+  font-family: var(--font-hand); font-size: var(--t-lg); font-weight: 700;
+  color: var(--ink); line-height: 1.05;
+}
+/* Stamped: the same rubber-stamp vocabulary as "petted", one size up. */
+.nm.inked {
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
+  text-transform: uppercase; letter-spacing: .06em; line-height: 1;
+  color: #3f5f8a;
+  border: 2px solid currentColor; border-radius: var(--r-cut);
+  box-shadow: inset 0 0 0 1.5px var(--film), inset 0 0 0 3px currentColor;
+  padding: 5px 10px; opacity: .84;
+}
+/* Stuck on: a sticker, by the same three rules as every other one — die-cut paper
+   margin, hard offset shadow, hand-stuck tilt. This is where the cat's colour went when
+   the brass plate was dropped. */
+.nm.stuck {
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
+  color: var(--ring-ink, var(--ink));
+  background: var(--ring, var(--marigold));
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 5px 11px;
+  box-shadow: 0 0 0 3.5px var(--film), var(--lift);
+}
+
+.scrawl.lay-0 .nm    { left:6%;top:2%;--rot:-2.6deg }
+.scrawl.lay-0 .when  { left:10%;bottom:6%;--rot:-1deg }
+.scrawl.lay-0 .stamp { right:4%;top:24%;--rot:9deg }
+.scrawl.lay-1 .nm    { left:7%;bottom:4%;--rot:1.9deg }
+.scrawl.lay-1 .when  { left:6%;top:5%;--rot:-2.2deg }
+.scrawl.lay-1 .stamp { right:6%;top:13%;--rot:-7deg }
+.scrawl.lay-2 .nm    { right:6%;top:4%;--rot:2.2deg }
+.scrawl.lay-2 .when  { left:6%;bottom:8%;--rot:1.4deg }
+.scrawl.lay-2 .stamp { left:7%;top:6%;--rot:-12deg }
+.scrawl.lay-3 .nm    { right:8%;bottom:6%;--rot:-1.6deg }
+.scrawl.lay-3 .when  { right:9%;top:6%;--rot:2.6deg }
+.scrawl.lay-3 .stamp { left:5%;bottom:10%;--rot:11deg }
+.scrawl.lay-4 .nm    { left:15%;top:3%;--rot:-3.1deg }
+.scrawl.lay-4 .when  { left:8%;bottom:4%;--rot:1.1deg }
+.scrawl.lay-4 .stamp { right:5%;bottom:6%;--rot:-9deg }
+.scrawl.lay-5 .nm    { right:9%;top:20%;--rot:1.5deg }
+.scrawl.lay-5 .when  { left:7%;top:5%;--rot:-1.7deg }
+.scrawl.lay-5 .stamp { left:9%;bottom:6%;--rot:13deg }
+
+/* EDIT MODE IS A FORM, NOT HANDWRITING. Absolutely-positioned marks at jaunty angles are
+   lovely to look at and a poor thing to type into — the name field would be a rotated
+   56%-wide target sitting on a photograph. So editing squares everything up and lets the
+   chin grow to fit. The glance is a scrapbook; the editor is an editor. */
+.polaroid.editing { aspect-ratio: auto; padding-bottom: 5.5%; }
+.polaroid.editing .window { aspect-ratio: 1; }
+.polaroid.editing .scrawl {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 2px 2px;
+}
+.polaroid.editing .scrawl > * { position: static; transform: none; }
+.polaroid.editing .scrawl .nm { max-width: 100%; }
 
 /* ── the filmstrip ─────────────────────────────────────────────────────────
    A cat's photos, paged sideways. Native scroll-snap, not a JS carousel: momentum,

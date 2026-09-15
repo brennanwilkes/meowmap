@@ -304,6 +304,7 @@ async function createSighting(
     photoThumb: db.assertHash(String(b.photoThumb ?? '')),
     photoW: photoDim(b.photoW, 'photoW'),
     photoH: photoDim(b.photoH, 'photoH'),
+    petted: validators.petted(b.petted) ?? null,
     deviceId,
   };
 
@@ -319,15 +320,17 @@ async function createSighting(
    * along. Cost is one extra row written per upload (4 -> 5 against the 100k/day cap),
    * which buys every sighting an identity from the moment it lands. */
   if (s.catId === null) {
-    /* The tags ride the create into the NEW cat. When she instead answered "already seen
-     * this cat" and sent a catId, they are ignored: that cat already has its own coat and
-     * size, and letting a capture form overwrite them would rewrite history from a
-     * screen that never showed her the old values. */
+    /* Coat and size ride the create into the NEW cat. When she instead answered "already
+     * seen this cat" and sent a catId, they are ignored: that cat already has its own
+     * coat and size, and letting a capture form overwrite them would rewrite history from
+     * a screen that never showed her the old values.
+     *
+     * `petted` is NOT here — it went onto the sighting itself in 004 and is therefore
+     * always recorded, grouped or not. */
     const cat = await db.insertCat(env, {
       name: catName,
       coat: coatTags(b.coat, 'coat'),
       size: validators.size(b.size) ?? null,
-      petted: validators.petted(b.petted) ?? null,
     }, now).run();
     const newId = Number(cat.meta?.last_row_id ?? -1);
     if (newId < 0) throw new Error('auto cat insert returned no id');
@@ -378,6 +381,7 @@ async function updateSighting(
   }
   if (b.seenAt !== undefined) patch.seenAt = seenAt(b.seenAt, now);
   if (b.note !== undefined) patch.note = validators.note(b.note);
+  if (b.petted !== undefined) patch.petted = validators.petted(b.petted) ?? null;
 
   await env.MEOWMAP_DB.batch([db.patchSighting(env, id, patch, now), db.bumpMeta(env, now)]);
   const updated = await db.getSightingById(env, id);
@@ -408,7 +412,6 @@ async function createCat(
     notes: optStr(b.notes, 'notes', 500),
     coat: coatTags(b.coat, 'coat'),
     size: validators.size(b.size) ?? null,
-    petted: validators.petted(b.petted) ?? null,
   };
   const [ins] = await env.MEOWMAP_DB.batch([db.insertCat(env, fields, now), db.bumpMeta(env, now)]);
   const id = Number(ins.meta?.last_row_id ?? -1);
@@ -417,7 +420,7 @@ async function createCat(
   return json(req, env, 201, {
     cat: {
       id, name: fields.name ?? null, notes: fields.notes ?? null,
-      coat: fields.coat ?? [], size: fields.size ?? null, petted: fields.petted ?? null,
+      coat: fields.coat ?? [], size: fields.size ?? null,
       createdAt: now, updatedAt: now,
     },
   }, extra);
@@ -434,7 +437,6 @@ async function updateCat(
   if (b.notes !== undefined) fields.notes = optStr(b.notes, 'notes', 500);
   if (b.coat !== undefined) fields.coat = coatTags(b.coat, 'coat');
   if (b.size !== undefined) fields.size = validators.size(b.size) ?? null;
-  if (b.petted !== undefined) fields.petted = validators.petted(b.petted) ?? null;
   await env.MEOWMAP_DB.batch([db.patchCat(env, id, fields, now), db.bumpMeta(env, now)]);
   audits.push({ method: 'PATCH', path: '/cats/:id', status: 200, outcome: 'ok', targetId: id });
   return json(req, env, 200, { ok: true }, extra);

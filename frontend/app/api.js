@@ -159,7 +159,8 @@ export async function deleteSighting(id) {
   await request(`/sightings/${id}`, { method: 'DELETE', auth: true });
 }
 
-/** @param fields {{name?, notes?, coat?, size?, petted?}} — all optional. */
+/** @param fields {{name?, notes?, coat?, size?}} — all optional. Petted is the
+ *  sighting's since 004, so it is not a cat field. */
 export async function createCat(fields) {
   const res = await request('/cats', {
     method: 'POST',

@@ -3,10 +3,12 @@ import {
 } from '../config.js';
 import { deleteSighting, patchSighting, photoUrl } from './api.js';
 import { catColour, displayName, inkFor } from './catcolor.js';
+import { pettedRow, wireChips } from './components/chips.js';
 import { getPref } from './device.js';
 import { $, esc } from './dom.js';
 import { back, navigate } from './nav.js';
 import { LOCATION_SOURCE } from './pipeline.js';
+import { nameStyle } from './components/filmstrip.js';
 import { splitToNewCat } from './identity.js';
 import { keepSized } from './minimap.js';
 import * as store from './store.js';
@@ -14,10 +16,13 @@ import * as turnstile from './turnstile.js';
 
 /* One sighting: its note, when it was taken, and where.
  *
- * WHAT IS *NOT* HERE: coat, size and petted. Those describe the animal, not the
+ * WHAT IS *NOT* HERE: coat and size. Those describe the animal rather than the
  * encounter, so since migration 003 they live on the cat and are edited on the cat page.
- * This page is the photo's own facts — the two questions only a particular photo can
- * answer.
+ *
+ * PETTED *IS* HERE, since 004. It is the one tag that is genuinely about the encounter
+ * — it is stamped on this polaroid, and the day she finally managed to pet him does not
+ * retroactively make the photo from March a petting. So this page is the photo's own
+ * facts: when, where, what she wrote on it, and whether she got to touch them.
  *
  * EDITS ARE EXPLICIT, NOT LIVE. Every PATCH is a D1 write plus an app_meta bump against
  * a hard 100k/day cap, and a chip row is very easy to fiddle with — autosaving each tap
@@ -43,6 +48,7 @@ function dirty() {
   if (draft === null || original === null) return false;
   return draft.note !== original.note
     || draft.seenAt !== original.seenAt
+    || draft.petted !== original.petted
     || draft.lat !== original.lat
     || draft.lon !== original.lon;
 }
@@ -86,8 +92,8 @@ function render(state) {
         <img src="${esc(photoUrl(s.photoFull))}" alt="" crossorigin="anonymous"
              width="${esc(String(s.photoW))}" height="${esc(String(s.photoH))}">
       </figure>
-      ${cat === null ? '' : `<div class="plate-wrap">
-        <span class="tag"><button type="button" class="plate" id="to-cat">${esc(displayName(cat))}</button></span>
+      ${cat === null ? '' : `<div class="name-line">
+        <button type="button" class="nm ${esc(nameStyle(cat.id))}" id="to-cat">${esc(displayName(cat))}</button>
       </div>`}
 
       <hr class="rule">
@@ -100,6 +106,9 @@ function render(state) {
         <span>When</span>
         <input type="datetime-local" id="f-when" value="${esc(localInputValue(s.seenAt))}">
       </label>
+
+      <hr class="rule thin">
+      ${pettedRow(draft)}
 
       <hr class="rule">
       <div class="loc-line">
@@ -129,6 +138,7 @@ function render(state) {
 function snapshot(s) {
   return {
     note: s.note ?? null,
+    petted: s.petted ?? null,
     seenAt: s.seenAt,
     lat: s.lat,
     lon: s.lon,
@@ -188,6 +198,10 @@ function wire(s, cat) {
     draft.seenAt = t;
     markDirty();
   });
+
+  // Petted saves on the Save button with everything else, not per tap: every PATCH is a
+  // D1 write plus an app_meta bump against a hard 100k/day cap.
+  wireChips(root, draft, markDirty);
 
   $('#revert', root).addEventListener('click', () => {
     draft = null;
@@ -255,6 +269,7 @@ async function save(id) {
     // Send only what changed: an unchanged field in the body is still a column written.
     const patch = {};
     if (draft.note !== original.note) patch.note = draft.note;
+    if (draft.petted !== original.petted) patch.petted = draft.petted;
     if (draft.seenAt !== original.seenAt) patch.seenAt = draft.seenAt;
     if (draft.lat !== original.lat || draft.lon !== original.lon) {
       patch.lat = draft.lat;

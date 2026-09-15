@@ -37,6 +37,12 @@ const objectUrls = new Set();
 const active = emptyFilter();
 /** True until the map has been built once in this page load; see mount(). */
 let firstMount = true;
+let mapSizer = null;
+/* Double-tap detection: the second tap has to be soon enough and close enough to be the
+ * same gesture rather than two deliberate taps in a row. */
+const DOUBLE_TAP_MS = 320;
+const DOUBLE_TAP_PX = 34;
+let lastTap = null;
 /** The "you are here" dot and its accuracy ring. */
 let meMarker = null;
 let meCircle = null;
@@ -281,19 +287,21 @@ export function mount(el) {
     zoomControl: false,
     attributionControl: false,
     preferCanvas: true,
+    /* Handled below instead. Leaflet's own double-click zoom rides on the container's
+     * `dblclick`, which iOS does not reliably deliver inside an element that has claimed
+     * touch-action — so on the phone, double-tapping the map did nothing at all. */
+    doubleClickZoom: false,
   });
 
-  if (view === null) {
-    // Frame the walkable core of Victoria, James Bay to Mount Tolmie. Fitting bounds
-    // rather than a fixed zoom means the same area is framed on a phone and on a laptop,
-    // instead of being right on whichever screen it was tuned against.
-    map.fitBounds([
-      [DEFAULT_BOUNDS.sw.lat, DEFAULT_BOUNDS.sw.lon],
-      [DEFAULT_BOUNDS.ne.lat, DEFAULT_BOUNDS.ne.lon],
-    ]);
-  } else {
-    map.setView([view.lat, view.lon], view.zoom);
-  }
+  // Frame the walkable core of Victoria, James Bay to Mount Tolmie. Fitting bounds rather
+  // than a fixed zoom means the same area is framed on a phone and on a laptop, instead
+  // of being right on whichever screen it was tuned against.
+  const frameDefault = () => map.fitBounds([
+    [DEFAULT_BOUNDS.sw.lat, DEFAULT_BOUNDS.sw.lon],
+    [DEFAULT_BOUNDS.ne.lat, DEFAULT_BOUNDS.ne.lon],
+  ]);
+  if (view === null) frameDefault();
+  else map.setView([view.lat, view.lon], view.zoom);
 
   map.createPane('turf');
   map.getPane('turf').style.zIndex = '650';
@@ -301,8 +309,42 @@ export function mount(el) {
   applyTileSource();
   window.addEventListener(TILE_CHANGED, applyTileSource);
 
-  // The container was written by innerHTML a moment ago and may not have laid out yet.
-  requestAnimationFrame(() => { if (map !== null) map.invalidateSize(); });
+  /* THE CONTAINER HAS NOT LAID OUT YET, and a single rAF is a guess about when it will.
+   *
+   * fitBounds computes a zoom for the viewport Leaflet last measured. Measured against a
+   * box that is still zero-height, that zoom is wildly wrong — which is the "sometimes
+   * the map opens zoomed right out" bug, and it is intermittent precisely because
+   * whether the layout has settled is a race. invalidateSize alone does not fix it: it
+   * corrects the SIZE and leaves the wrong zoom in place.
+   *
+   * So re-frame once, the first time the box is real. Later resizes (rotation, the
+   * keyboard) still get invalidateSize but must NOT re-frame — by then she has panned
+   * somewhere and yanking the map back would be its own bug. */
+  let needsFraming = view === null;
+  mapSizer = new ResizeObserver(() => {
+    const el = document.getElementById('map');
+    if (el === null || el.clientWidth === 0 || el.clientHeight === 0) return;
+    map.invalidateSize();
+    if (needsFraming) { needsFraming = false; frameDefault(); }
+  });
+  mapSizer.observe($('#map', root));
+
+  /* Double-tap to zoom, by hand. Two taps close together in time and place, which is what
+   * the gesture actually is — rather than trusting a synthesised dblclick that iOS does
+   * not send here. `setZoomAround` keeps the tapped point under the finger, so it zooms
+   * into what she pointed at instead of into the middle of the screen. */
+  map.on('click', (e) => {
+    const now = e.originalEvent.timeStamp;
+    const p = e.containerPoint;
+    if (lastTap !== null
+        && now - lastTap.t < DOUBLE_TAP_MS
+        && p.distanceTo(lastTap.p) < DOUBLE_TAP_PX) {
+      lastTap = null;
+      map.setZoomAround(e.latlng, map.getZoom() + 1);
+      return;
+    }
+    lastTap = { t: now, p };
+  });
 
   map.on('zoomend', updateTurfLabels);
   map.on('moveend', () => {
@@ -379,6 +421,8 @@ export function onShown() {
 
 export function unmount() {
   window.removeEventListener(TILE_CHANGED, applyTileSource);
+  if (mapSizer !== null) { mapSizer.disconnect(); mapSizer = null; }
+  lastTap = null;
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
   if (locating !== null) { locating.cancel(); locating = null; }
   meMarker = null;

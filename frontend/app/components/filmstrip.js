@@ -7,10 +7,8 @@ import { dateText, esc } from '../dom.js';
  * to hit individually on a phone. Paging through them is the only way to see the second
  * one without fighting the map.
  *
- * ONLY THE PHOTO AREA MOVES. The name tag, the date and the petted stamp ride along in
- * each slide and are simply repeated — the name is the CAT's and identical on every
- * frame, the date is the photo's own and is the thing that actually changes. Everything
- * below (the tags, the buttons) stays put, so the page does not appear to slide away
+ * ONLY THE PHOTO AREA MOVES. The whole polaroid — photo, name, date, stamp — rides in
+ * each slide; everything below it stays put, so the page does not appear to slide away
  * under a sideways swipe.
  *
  * Native scroll-snap rather than a JS carousel: it gets momentum, rubber-banding at the
@@ -18,72 +16,70 @@ import { dateText, esc } from '../dom.js';
  * drag-to-dismiss.
  */
 
-/* PETTED IS A STAMP IN THE WRITING AREA, not a sticker on the corner. It used to be
- * slapped over the print's top-right, overhanging it — which the filmstrip's own
- * `overflow-x` then clipped in half. Moving it into the chin removes the overflow
- * entirely rather than fighting it, and a rubber stamp on the white margin is where a
- * note like this actually goes on a photograph. */
-function pettedStamp(petted, jitter) {
-  if (petted === null || petted === undefined) return '';
-  if (petted !== 'yes' && petted !== 'no') throw new Error(`unknown petted value: ${petted}`);
-  const cls = petted === 'yes' ? 'stamp' : 'stamp pale';
-  const text = petted === 'yes' ? 'petted' : 'not petted';
-  return `<span class="${cls}" style="${jitter}">${text}</span>`;
+/* ── what goes on the white ────────────────────────────────────────────────
+ *
+ * A polaroid's caption area is written on BY HAND, at whatever angle the pen happened to
+ * be, wherever there was room. Three marks live there — the cat's name, the date, and the
+ * petted stamp — and the arrangement is picked per photo from a set of LAYOUTS rather
+ * than jittered independently, because independent jitter reads as noise and can overlap.
+ *
+ * Everything here is DETERMINISTIC from the row's id. A re-render must not make the page
+ * twitch, and a photo has to look the same every time she opens it.
+ */
+const LAYOUTS = 6;
+
+/* The name is the CAT's, so its treatment is chosen from the CAT's id — otherwise one
+ * cat's name would be handwritten on one frame and stamped on the next, which reads as a
+ * bug rather than as a scrapbook. */
+const NAME_STYLES = ['hand', 'inked', 'stuck'];
+
+/** Exported so the sighting page labels a cat exactly as that cat's polaroids do. */
+export function nameStyle(catId) {
+  return NAME_STYLES[Math.abs(catId ?? 0) % NAME_STYLES.length];
 }
 
-/* A hand does not write twice in the same place, and a stamp is never pressed square.
- * The wobble is DETERMINISTIC from the sighting id rather than random: a re-render must
- * not make the whole page twitch, and the same photo should look the same every time she
- * opens it. Prime-ish moduli so the date's angle and the stamp's position do not fall
- * into step with each other down a strip. */
-const WRITE_TILT = [-1.8, .9, -.6, 2.1, -1.2];
-const WRITE_INDENT = [0, 7, 3, 11, 5];
-const STAMP_TILT = [-8, 5, -13, 9, -4, 12];
-const STAMP_RIGHT = [4, 12, 0, 18, 8, 14];
-const STAMP_BOTTOM = [22, 34, 16, 28, 38, 20];
-
-function pick(list, n) { return list[Math.abs(n) % list.length]; }
+function pettedStamp(petted) {
+  if (petted === null || petted === undefined) return '';
+  if (petted !== 'yes' && petted !== 'no') throw new Error(`unknown petted value: ${petted}`);
+  return petted === 'yes'
+    ? '<span class="stamp">petted</span>'
+    : '<span class="stamp pale">not petted</span>';
+}
 
 /**
- * One polaroid: the photo, the date and the petted stamp on the paper, the cat's name
- * tag hanging off the bottom edge.
- *
- * Shared with the cat page's edit mode, which shows exactly one of these.
+ * One polaroid.
  *
  * @param opts.name   the cat's display name
- * @param opts.petted the cat's petted state
+ * @param opts.catId  which cat, so the name treatment is stable across its photos
  * @param opts.src    (sighting) => image URL; the sheet resolves pending rows locally
- * @param opts.tag    the name tag markup; defaults to a plain one
+ * @param opts.nameHtml  replaces the name mark entirely (the cat page's edit field)
+ * @param opts.editing   lay the caption out as a form instead of as handwriting
  */
-export function frame(s, { name, petted, src, tag = null }) {
-  /* The WINDOW takes the photo's own aspect ratio and the chin takes whatever is left,
-   * which is what makes a landscape shot yield more white space instead of letterboxing.
-   * A row with no stored dimensions falls back to square rather than to nothing — the
-   * frame still has to have a height. */
-  const ar = s.photoW > 0 && s.photoH > 0 ? `${s.photoW}/${s.photoH}` : '1';
-  /* A pending row has no server id yet, so the wobble keys off seenAt instead — it only
-   * has to be stable for this photo, not unique across the app. */
-  const n = s.id ?? s.seenAt;
-  const wrote = `transform:rotate(${pick(WRITE_TILT, n)}deg);margin-left:${pick(WRITE_INDENT, n)}px`;
-  const stamped = `right:${pick(STAMP_RIGHT, n)}px;bottom:${pick(STAMP_BOTTOM, n)}px;`
-    + `transform:rotate(${pick(STAMP_TILT, n)}deg)`;
+export function frame(s, { name, catId, src, nameHtml = null, editing = false }) {
+  /* Square is the polaroid format, but a little off-square sneaks in more of a tall or
+   * wide photo without the card stopping looking like a polaroid. Outside this band the
+   * chin either swells into dead space or is squeezed down to nothing, and the window is
+   * `cover` so the clamp crops rather than letterboxing. */
+  const raw = s.photoW > 0 && s.photoH > 0 ? s.photoW / s.photoH : 1;
+  const ar = Math.min(1.12, Math.max(0.93, raw)).toFixed(3);
+  const n = Math.abs(s.id ?? s.seenAt);
+  const lay = editing ? '' : ` lay-${n % LAYOUTS}`;
+  const style = nameStyle(catId);
 
   return `
     <div class="frame">
-      <figure class="polaroid" style="--ar:${esc(ar)}">
-        <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
+      <figure class="polaroid${editing ? ' editing' : ''}" style="--ar:${esc(ar)}">
+        <span class="tape" style="top:-9px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
         <span class="window">
           <img src="${esc(src(s))}" alt="${esc(name)}" crossorigin="anonymous"
                width="${esc(String(s.photoW ?? ''))}" height="${esc(String(s.photoH ?? ''))}">
         </span>
-        <figcaption class="scrawl">
-          <span class="when" style="${wrote}">${esc(dateText(s.seenAt))}</span>
-          ${pettedStamp(petted, stamped)}
+        <figcaption class="scrawl${lay}">
+          ${nameHtml === null ? `<span class="nm ${style}">${esc(name)}</span>` : nameHtml}
+          <span class="when">${esc(dateText(s.seenAt))}</span>
+          ${pettedStamp(s.petted)}
         </figcaption>
       </figure>
-      <div class="plate-wrap">
-        ${tag === null ? `<span class="tag"><span class="plate">${esc(name)}</span></span>` : tag}
-      </div>
     </div>`;
 }
 
@@ -110,7 +106,7 @@ export function filmstrip(sightings, opts) {
  */
 export function wireFilmstrip(el, startIndex, onChange) {
   const dots = el.parentNode.querySelector('.strip-dots');
-  let frame_ = 0;
+  let raf = 0;
   let current = startIndex;
 
   /* Index from the frames' REAL positions, never `scrollLeft / clientWidth`. The frames
@@ -133,7 +129,7 @@ export function wireFilmstrip(el, startIndex, onChange) {
   };
 
   const settle = () => {
-    frame_ = 0;
+    raf = 0;
     const i = nearest();
     if (i === current) return;
     current = i;
@@ -141,7 +137,7 @@ export function wireFilmstrip(el, startIndex, onChange) {
     onChange(i);
   };
   const onScroll = () => {
-    if (frame_ === 0) frame_ = requestAnimationFrame(settle);
+    if (raf === 0) raf = requestAnimationFrame(settle);
   };
   el.addEventListener('scroll', onScroll, { passive: true });
 
@@ -159,6 +155,6 @@ export function wireFilmstrip(el, startIndex, onChange) {
 
   return () => {
     el.removeEventListener('scroll', onScroll);
-    if (frame_ !== 0) cancelAnimationFrame(frame_);
+    if (raf !== 0) cancelAnimationFrame(raf);
   };
 }

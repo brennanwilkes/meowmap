@@ -19,7 +19,7 @@ export async function splitToNewCat(sightingId, cat) {
   /* The new cat inherits the description it is leaving. She grouped these because they
    * looked alike, so an orange tabby splitting off is still an orange tabby — starting it
    * blank would make her re-type what she already knows. */
-  const { cat: fresh } = await createCat({ coat: cat.coat, size: cat.size, petted: cat.petted });
+  const { cat: fresh } = await createCat({ coat: cat.coat, size: cat.size });
   await patchSighting(sightingId, { catId: fresh.id });
   // The cat this left may now be empty; tidy it rather than leaving a shell that renders
   // as a grey box captioned "seen 0 times".

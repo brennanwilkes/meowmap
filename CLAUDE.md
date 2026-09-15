@@ -142,6 +142,17 @@ header states the two rules that erode silently. In short:
 - **Territory blobs:** 3+ sightings earns a "<name>'s turf" zone; 2 gets a dashed line.
   Connector lines past 4–5 points turn to spaghetti. The blob is the support function of
   the points at 44 angles, padded ~70 m, with a deterministic sine wobble.
+- **`fitBounds` before the container has laid out is the "map opens zoomed right out"
+  bug.** It computes a zoom for the viewport Leaflet last measured, and against a
+  zero-height box that zoom is wildly wrong; it is intermittent because whether layout has
+  settled is a race. `invalidateSize` alone does NOT fix it — that corrects the size and
+  leaves the wrong zoom. A `ResizeObserver` re-frames once, the first time the box is
+  real; later resizes (rotation, the keyboard) get `invalidateSize` but must not re-frame,
+  or the map yanks back from wherever she panned.
+- **Double-tap zoom is hand-rolled** (`doubleClickZoom: false`). Leaflet's rides on the
+  container's `dblclick`, which iOS does not reliably deliver inside an element that has
+  claimed touch-action, so double-tapping the map did nothing. Two taps within 320ms and
+  34px, then `setZoomAround` so the tapped point stays under the finger.
 - The turf label needs **its own pane** (`createPane('turf')`, zIndex 650). Both labels and
   pins are markers and `markerPane` sorts by latitude, so a `zIndexOffset` fight works by
   accident and breaks when a pin drifts north of the label.
@@ -253,6 +264,13 @@ where the actual saving is.
 
 ## Capture is an action, not a place
 
+**The library glyph cannot open the library directly.** iOS always shows its Photo Library
+/ Take Photo / Choose File action sheet for a file input that is not forced to the camera.
+`capture="environment"` is the only lever the web has and it forces the CAMERA, which is
+why that button is one tap and this one is not. There is no counterpart for "library
+only"; do not go looking for one again.
+
+
 **`ingest()` is async and nothing awaits it**, so anything it throws lands in an unhandled
 rejection and the screen simply stays blank. That is how a missing `busyView` — deleted as
 collateral with `idleView` when the Snap tab became two glyphs — produced "photo upload
@@ -346,11 +364,34 @@ rule for this app — the user is not a power user and must never be able to mes
 one tap, on a face, answering a question. No sequences, no confirmations for reversible
 things, no "right way".
 
-## Coat, size and petted belong to the CAT
+## Coat and size belong to the CAT; petted belongs to the SIGHTING
 
 Migration 003 moved all three off `sightings` and onto `cats`, and DROPPED the sighting
 columns — two places to write one fact is the bug factory this codebase refuses
 everywhere else.
+
+**Migration 004 moved `petted` back, and the reason is worth keeping.** 003's reasoning
+was that it reads as "have I ever managed to pet this one"; that was raised and decided
+then. What changed is that the polaroid itself now carries the mark. Once the fact is
+DRAWN ON THE PHOTOGRAPH, a value shared across every photo of the cat is a lie on all but
+one of them — the day she finally got to pet him does not retroactively make the photo
+from March a petting. Coat and size stay on the cat, because those genuinely cannot differ
+between encounters without one of them being wrong; whether she got to touch the cat
+genuinely can.
+
+Consequences, all of which came out simpler:
+
+- **The capture form asks petted EITHER WAY**, grouped or not. Coat and size are hers to
+  set only when this photo is minting a cat; petted is always about this photo.
+- **`chips.js` is two builders**: `chipRows` (coat + size) and `pettedRow`. They have
+  different homes, so they cannot be one row.
+- **`mergeTags` has no petted rule any more.** Merging two cats simply carries each
+  photo's own answer across, which is the clearest argument that 004 put it in the right
+  place.
+- **`splitToNewCat` does not copy it** — it stays on the sighting that is moving.
+- **Filtering:** coat and size take a whole cat in or out; petted DROPS INDIVIDUAL PHOTOS,
+  and a cat left with none leaves too, or a turf blob gets drawn around points that are
+  not on the map. `matches(sighting, cat, f)` therefore takes both halves.
 
 The old shape let one cat be an orange tabby in June and a grey chonk in July, with
 nothing in the UI to reconcile them. `petted` moved too: it is arguably per-encounter, and
@@ -359,8 +400,8 @@ that was raised and decided — it reads as "have I ever managed to pet this one
 - **Snap still asks**, and the tags seed the cat the Worker mints. Send a `catId` instead
   and they are IGNORED: that cat already has answers, and letting a capture form
   overwrite them rewrites history from a screen that never showed her the old values.
-- **Merging unions the coat**; size and petted take the more recently seen cat's answer,
-  falling back to the older only where the newer has none. A union loses nothing; size
+- **Merging unions the coat**; size takes the more recently seen cat's answer, falling
+  back to the older only where the newer has none. A union loses nothing; size
   cannot union because a cat is not both a kitten and a chonk.
 - **Splitting inherits the description it leaves.** She grouped them because they looked
   alike, so an orange tabby splitting off is still an orange tabby.
@@ -458,60 +499,72 @@ sightings on a cat card**.
   two pins — she could see there were two and could tap neither. The radius has to exceed
   the pin's own footprint, not merely "the same fence".
 
-**A polaroid is ALWAYS PORTRAIT.** The frame's aspect ratio is fixed (`.8`); the window
-takes the PHOTO's aspect ratio, passed in as `--ar` from `photoW/photoH` and capped at
-66%; the chin is whatever is left. So a landscape shot does not letterbox — it gets more
-white space to write on, which is what a real polaroid does and why every frame in a strip
-is the same height. Nothing in `.polaroid` may use `overflow: hidden`.
+**What makes a polaroid look like a polaroid**, in the order the mistakes were made —
+all four of these were wrong before they were right, and each one on its own is enough to
+make the card read as a div:
 
-- **The PHOTO sizes itself inside the window; the window has no fill.** The window used to
-  carry the image, the background and the keyline, with `object-fit: contain` letterboxing
-  onto `--paper` — so a portrait shot sat between two beige bars that read as a rendering
-  fault. The `<img>` now takes `max-width`/`max-height` and nothing else, so a portrait
-  photo is simply NARROWER and what shows beside it is the polaroid's own white mount.
-- **The keyline and shadow ride on the `<img>`, not the window**, so they hug the
-  photograph rather than the space it was offered. A hairline plus a soft drop shadow, not
-  a hard inset rule: a photo lying on paper has depth, and a 1px ink line butted straight
-  against the mount reads as a cropped div. `--r-cut` corners take the point off.
-- **The chin's two marks are NOT aligned to each other.** The date is written at a slight
-  angle with an indent; the stamp is absolutely positioned lower and further over, at its
-  own angle. Both jitter per photo, DETERMINISTICALLY from the sighting id (`seenAt` for a
-  pending row) — a re-render must not make the page twitch, and the same photo must look
-  the same every time she opens it. The moduli are deliberately co-prime-ish so the angle
-  and the position do not fall into step down a strip.
+1. **The frame is NOT paper.** It is a bright, faintly COOL white (`--film`) with a slight
+   warm fall-off toward the chin. `--paper-hi` made it card stock.
+2. **There is NO outline.** A 1px keyline round the card is the single biggest tell. What
+   separates a photograph from the page is a SOFT shadow — so this is the one object in
+   the app that does not wear the hard offset sticker shadow. It is a photograph lying on
+   a desk, not a sticker stuck to one.
+3. **The OUTER corners are rounded and the PHOTO's are not.** Real film is die-cut with a
+   ~3mm radius on an 88mm card, and a square image area. Having it the other way round is
+   precisely backwards, and that is what shipped first. `--r-film` is the ONE documented
+   exception to the no-half-rounded rule; it is legal only on `.polaroid`'s outer edge.
+4. **It is glossy.** A broad diagonal highlight across the card and a second, stronger one
+   over the image — the emulsion is the shiniest part of a polaroid. Without it the card
+   is matte and looks printed.
 
-**A lone photo must not scroll at all.** `.filmstrip.solo` is `overflow-x: hidden`; with
-it left auto a single frame still rubber-banded a few pixels under a sideways drag, which
-promises another photo that does not exist.
+**Proportions:** frame `aspect-ratio: .72`, equal margins on three sides (percentage
+padding, which resolves against WIDTH so the margins stay optically equal), and the rest
+is chin. The window takes the photo's own ratio CLAMPED to `[0.93, 1.12]` and uses
+`cover`: square is the polaroid format, but a little off-square sneaks in more of a tall
+or wide photo without the card stopping looking like one. Outside that band the chin
+either swells into dead space or is squeezed to nothing.
 
-**The cat's name is a CLASSIC ENGRAVED BRASS NAMEPLATE.** Fourth attempt, and the first
-three are why: a dashed outline is this app's vocabulary for "unselected chip"; a flat
-coloured plate with paper ears read as a label someone printed; and a narrow plate with
-shallow diagonal banding read as gold foil. Metal is the trick — it is the only material
-in a paper scrapbook that is not paper, so the one object identifying an animal is the one
-object not part of the page. What makes it metal rather than a yellow rectangle is
-specifically:
+**The polaroid is sized from HEIGHT**, `width: min(100%, calc(var(--polaroid-h) * .72))`.
+`max-height` alone cannot do this — it clamps the height and leaves the width at 100%,
+breaking the ratio. `--polaroid-h` is 56vh on the map sheet and 44vh on the cat page,
+which is what makes both fit without scrolling.
 
-- **A VERTICAL dome gradient**, dark chamfer at the top edge → specular band across the
-  middle → dark chamfer at the bottom. Diagonal banding is foil; a vertical dome is a
-  curved piece of metal. The brushed grain is a faint second layer over it, not the effect
-  itself.
-- **An engraved border line**: a bright inset keyline with a darker groove just inside it,
-  which is how an engraver's cut catches light on a convex surface.
-- **Wide and roomy** (`min-width: 190px`, `--t-xl`). A plaque is mostly metal with a name
-  in the middle of it; sized to its text it is a button.
-- **The name cut in**, light edge below the stroke and dark above. Reversed, it embosses.
-- Warm brass, never silver: cool grey next to scrapbook paper looks like a mistake.
+**The caption is placed by LAYOUT, not by jitter.** Three marks — name, date, petted stamp
+— absolutely positioned, with six arrangements chosen from the sighting's id. Independent
+jitter on three absolutely-positioned things reads as noise and eventually overlaps; a set
+of arrangements that were each checked reads as someone having written on the photo.
+Nothing is aligned to anything else, which is the point. All of it is deterministic: a
+re-render must not make the page twitch, and a photo has to look the same every time.
 
-**The split ring is METAL, NOT the cat's colour.** Filling it with `--ring` put a
-lime-green hoop on a brass tag, which is not a thing that exists. The identity colour is
-already carried by the pin, the turf and the card border. The ring's four border sides
-take different tones so it catches light on one edge and falls into shadow on the other —
-that is what makes a flat circle read as round.
+**Edit mode squares everything up** (`.polaroid.editing`) and lets the chin grow. Rotated
+absolutely-positioned marks are lovely to look at and a poor thing to type into — the name
+field would be a 56%-wide target at an angle, sitting on a photograph. The glance is a
+scrapbook; the editor is an editor.
 
-Unnamed still lies flat, dashed, with no metal and no ring, exactly as an unselected chip
-does. It is still an `<input>`, and the ring lives on the `.tag` WRAPPER because an
-`<input>` renders no `::before`.
+**THE CAT'S NAME LIVES ON THE PHOTOGRAPH**, in one of three hand-applied treatments —
+handwritten (`.nm.hand`), rubber-stamped (`.nm.inked`) or a stuck-on sticker
+(`.nm.stuck`, which is where the cat's colour went). The treatment is chosen from the
+CAT's id, never the photo's, so one cat's name does not change medium between two frames
+of its own strip.
+
+Four objects were tried before this and all four were wrong in the same way: a dashed
+outline (this app's vocabulary for "unselected chip"), a flat coloured plate with paper
+ears, a narrow brass tag that read as gold foil, and a wide domed brass nameplate. Each
+was a nicer OBJECT than the last, and **the object was the problem** — a plaque bolted
+under a photo is not how anyone labels a photo. You write on it, stamp it, or stick a
+label on it. Putting the name on the white also freed the row of height that made a
+no-scroll sheet possible.
+
+The sighting editor is the one place a name is not on a photo (there it is the link to the
+cat), and it uses the same treatment for that cat via the exported `nameStyle(catId)`.
+
+**A glance must not scroll.** She taps a pin to look at a cat; finding the tags below the
+fold turns a look into a task. The sheet is `max-height: 92%`, the polaroid is sized from
+the viewport height, and the tags and the way in share ONE line (`.glance-foot`). The Edit
+button used to be a full-width sticker under a row of small chips, which made the least
+interesting thing on screen the largest and cost a whole row of height. The full-width
+rule it was following is about a LONE button reading as floating debris — paired with the
+chips it is not lone.
 
 **`.btn-*.wide` stack with 14px, not 4px.** Each wears a 3.5px die-cut paper ring and sits
 3px off the page, so a nominal 4px gap is about zero actual daylight — "This is a
@@ -612,6 +665,12 @@ nothing when tapped straight from the name box.
   is enough when the sheet is already open and not enough while it is animating, which is
   why the territory map loaded "sometimes". Leaflet measures its container once and never
   notices it changing; the observer fires whenever the box actually changes.
+- **Chips can bleed past their layout box.** They are rotated AND wear a 3.5px die-cut
+  paper ring, so the painted box is wider than the layout box on both sides. Flush against
+  the left edge of a container that clips (`.pad` is `overflow-x: hidden`, because every
+  card is tilted) the first chip in a row lost its left border. `.chiprow` is given side
+  padding and pulled back out by the same margin, so the layout is unchanged and there is
+  somewhere for the ink to go.
 - **Cancel the pending rAF on EVERY exit from the sheet drag, the dismissing one
   included.** `paint()` is queued from the last `touchmove` and only the settle path
   cancelled it, so on a dismiss it fired AFTER `closeDetail()` had cleared the inline

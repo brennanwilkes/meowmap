@@ -39,9 +39,10 @@ export function openSightingSheet(sighting, cat) {
 
   const name = cat === null || cat === undefined ? 'Not named yet' : displayName(cat);
   const ring = ringFor(sighting.catId);
-  /* Coat, size and petted describe the animal, so they come off the CAT. A sighting
-   * still queued for upload has no cat yet — the Worker mints one when it lands — so
-   * until then it carries the tags she typed on the capture form. */
+  /* Coat and size describe the animal, so they come off the CAT; petted is the
+   * SIGHTING's and rides on the polaroid itself. A sighting still queued for upload has
+   * no cat yet — the Worker mints one when it lands — so until then it carries the coat
+   * and size she typed on the capture form. */
   const tagged = cat === null || cat === undefined ? sighting : cat;
 
   const pendingNote = sighting.pending === true
@@ -63,15 +64,12 @@ export function openSightingSheet(sighting, cat) {
   sheet.innerHTML = `
     <div class="grabber"></div>
     ${pendingNote}
-    ${filmstrip(shots, { name, petted: tagged.petted, src: photoFor })}
-    <div class="label">
+    ${filmstrip(shots, { name, catId: sighting.catId, src: photoFor })}
+    <div class="glance-foot">
       ${staticChips(tagged)}
       ${sighting.pending === true ? '' : `
-        <div class="sheet-acts">
-          <button type="button" class="btn-stick" id="sheet-open">Edit</button>
-        </div>`}
-    </div>
-    <div style="height:14px"></div>`;
+        <button type="button" class="btn-stick sm" id="sheet-open">Edit</button>`}
+    </div>`;
 
   if (unstrip !== null) { unstrip(); unstrip = null; }
   // The Edit button follows the swipe: it must open the photo actually on screen.

@@ -5,6 +5,14 @@
 /* A section break as a torn line of ruled paper, not a grey <hr>. Brennan's note:
    "maybe just some HR like lined paper ish to separate the sections". */
 .rule.thin { margin: 10px 0 8px; opacity: .6; }
+
+/* Chips are ROTATED and wear a 3.5px die-cut paper ring, so their painted box is wider
+   than their layout box on both sides. Flush against the left edge of a container that
+   clips (.pad is overflow-x:hidden, because every card here is tilted) the first chip in
+   a row lost its left border — "did not pet them" with one side shaved off. The row is
+   given slack and pulled back out by the same amount, so the layout is unchanged and
+   there is somewhere for the ink to go. */
+.chiprow { padding: 3px 6px; margin-left: -6px; margin-right: -6px; }
 .rule {
   border: 0;
   height: 1px;
@@ -351,6 +359,8 @@
 .btn-ghost.sm { font-size: var(--t-sm); padding: 5px 10px; }
 .btn-ghost.danger { color: #a8324a; border-color: #a8324a; }
 
+.print.hero { margin-bottom: 0; }
+
 .sheet-acts { margin-top: 16px; }
 .sheet-acts .btn-stick { display: block; width: 100%; text-align: center; }
 
@@ -387,124 +397,70 @@
 
 #cat-err:empty { display: none; }
 
-/* ── the collar tag ────────────────────────────────────────────────────────
-   A cat's name is the one piece of text in the app that is about WHO this is, so it gets
-   an object of its own rather than a form field.
+/* ── naming a cat ──────────────────────────────────────────────────────────
+   THE NAME LIVES ON THE PHOTOGRAPH NOW, in one of three hand-applied treatments picked
+   from the cat's id — see .nm.hand / .nm.inked / .nm.stuck in sticker.css.
 
-   THIRD ATTEMPT, and the first two are why this one is what it is. A dashed outline said
-   "unselected chip" — this app's own vocabulary for an option not yet taken. A flat
-   coloured plate with paper ears was closer but still read as a label someone printed.
-   What a named cat actually wears is an ENGRAVED BRASS TAG hanging off its collar, so
-   that is what this is: brushed metal, a bevelled edge, the name cut into it, and a
-   split ring in the cat's own colour hanging off the left where the collar would be.
+   Four things were tried before that and all four were wrong in the same way: a dashed
+   outline (this app's vocabulary for "unselected chip"), a flat coloured plate with paper
+   ears, a narrow brass tag that read as gold foil, and a wide domed brass nameplate. Each
+   was a nicer OBJECT than the last, and the object was the problem — a plaque bolted
+   under a photo is not how anyone labels a photo. You write on it, or you stamp it, or
+   you stick a label on it. So that is what it does, and it fills the polaroid's white
+   space instead of needing a row of its own.
 
-   Metal is the whole trick. It is the only material in a paper scrapbook that is not
-   paper, which makes the one object that identifies an animal the one object that is not
-   part of the page.
+   This is also what freed the vertical space that made a no-scroll sheet possible. */
 
-   It is still an <input> — tapping the name and typing is the whole edit, with no mode
-   to enter and nothing to press afterwards. */
-.plate-wrap { display: flex; justify-content: center; margin: -20px 0 4px; position: relative; z-index: 2; }
-
-/* The wrapper carries the split ring and the tilt, because an <input> renders neither
-   ::before nor ::after — an eared or ringed input is not something CSS can do to one
-   element. */
-.tag { position: relative; display: inline-block; max-width: 100%; }
-
-/* The split ring: a true circle, which is the only radius this design allows besides
-   2px. IT IS METAL, NOT THE CAT'S COLOUR. Filling it with --ring put a lime-green hoop
-   on a brass tag, which is not a thing that exists — the identity colour is already
-   carried by the pin, the turf and the card border, and hardware is hardware. The
-   four border sides take different tones so the ring catches light on one edge and
-   falls into shadow on the other, which is what makes a flat circle read as round. */
-.tag::before {
-  content: ''; position: absolute; left: -15px; top: 50%;
-  width: 23px; height: 23px; margin-top: -12px;
-  border-radius: 50%; border: 4px solid;
-  border-top-color: #fff4d2; border-left-color: #e2c98a;
-  border-right-color: #cdac60; border-bottom-color: #977830;
-  box-shadow: 0 0 0 1.5px var(--ink), inset 0 0 0 1.5px var(--ink);
-}
-
-/* A CLASSIC ENGRAVED BRASS NAMEPLATE: wide, domed, with a chamfered edge and a cut
-   border line inside it.
-
-   The dome is the vertical gradient — a dark chamfer at the top edge, brightening to a
-   specular band across the middle, falling away to a dark chamfer at the bottom. That
-   single gradient is what makes it read as a curved piece of metal rather than a
-   yellow rectangle; the earlier flat diagonal banding read as gold foil. The brushed
-   grain is a second, very faint layer over it, and the engraved border line is a bright
-   inset keyline with a darker groove just inside it, which is how an engraver's line
-   catches light on a convex surface.
-
-   Wide and roomy on purpose: a nameplate is a plaque, and a name in the middle of a lot
-   of metal is the whole look. */
-.nameplate, .plate {
-  position: relative;      /* paints over the ring's right-hand side */
-  /* Handwritten, because engraving on a pet tag is a script. Comfortably over the 16px
-     iOS no-zoom floor, which a form control must clear. */
-  font-family: var(--font-hand); font-size: var(--t-xl); font-weight: 700;
-  text-align: center;
-  color: #4a3c1c;
-  /* ENGRAVED, not printed: a light edge below the stroke and a dark one above reads as
-     cut into the surface. Reversing the two would emboss it instead. */
-  text-shadow: 0 1px 0 rgba(255, 252, 235, .9), 0 -1px 0 rgba(74, 60, 28, .35);
-  padding: 13px 34px; min-height: 54px; min-width: 190px;
-  background:
-    repeating-linear-gradient(92deg,
-      rgba(255, 255, 255, .10) 0 2px, rgba(120, 95, 35, .07) 2px 4px),
-    linear-gradient(180deg,
-      #8a6a26 0%, #d4b76c 8%, #f2e0ab 22%, #fffaea 44%, #fdf6e0 52%,
-      #efdca4 64%, #cfae63 82%, #8a6a26 100%);
-  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  box-shadow:
-    /* the engraved border line: bright keyline, darker groove inside it */
-    inset 0 0 0 2px rgba(255, 252, 232, .62),
-    inset 0 0 0 3.5px rgba(120, 95, 35, .38),
-    var(--cut), var(--lift);
+/* The one place a name is NOT on a photo: the sighting editor, where it is the link to
+   the cat. Same treatment as that cat's polaroids, so it is recognisably the same mark. */
+.name-line { display: flex; justify-content: center; margin: 14px 0 2px; }
+.name-line .nm {
+  transform: rotate(-1.6deg);
   transition: transform var(--up), box-shadow var(--up);
 }
-/* The tilt sits on the WRAPPER so the ring comes with it. A plaque hung by one ring
-   does not hang level. */
-.tag { transform: rotate(-1.6deg); }
-.nameplate, .plate { transform: none; }
-
-.nameplate { width: 100%; max-width: 300px; }
-.plate { display: inline-block; }
-.plate:active {
-  transform: translate(var(--lift-x), var(--lift-y));
-  box-shadow:
-    inset 0 0 0 2px rgba(255, 252, 232, .62),
-    inset 0 0 0 3.5px rgba(120, 95, 35, .38),
-    var(--cut), 0 0 0 rgba(46, 42, 36, 0);
-  transition: transform var(--down), box-shadow var(--down);
+.name-line .nm:active { transform: rotate(0deg) translate(var(--lift-x), var(--lift-y)); }
+/* Off the film and onto scrapbook paper, so the die-cut margin and the stamp's inner
+   rule have to change colour with the ground they are cut out of. */
+.name-line .nm.stuck { box-shadow: 0 0 0 3.5px var(--paper-hi), var(--lift); }
+.name-line .nm.stuck:active { box-shadow: 0 0 0 3.5px var(--paper-hi); }
+.name-line .nm.inked {
+  box-shadow: inset 0 0 0 1.5px var(--paper-hi), inset 0 0 0 3px currentColor;
 }
 
-/* Unnamed lies FLAT on the page, exactly as an unselected chip does: no metal, no
-   shadow. Same physics, so "not named yet" reads as a state rather than as a blank. The
-   ring goes with it — an empty tag is not hanging off anything yet. */
-.nameplate:placeholder-shown {
-  background: none; color: var(--ink-faint); text-shadow: none;
-  border: 2px dashed var(--ink-faint);
-  box-shadow: none; min-width: 0;
+/* In edit mode the name is a plain field on the polaroid's white, because a rotated
+   56%-wide target sitting on a photograph is lovely and unusable. 16px clears the iOS
+   no-zoom floor, which a form control must. */
+.nm-input {
+  width: 100%; font-family: var(--font-hand); font-size: var(--t-lg); font-weight: 700;
+  color: var(--ink); background: none;
+  border: 0; border-bottom: 2px dashed var(--ink-faint); border-radius: 0;
+  padding: 2px 2px 5px; min-height: 40px;
 }
-.tag:has(.nameplate:placeholder-shown)::before {
-  border-color: var(--ink-faint);
-  box-shadow: none;
-}
-.tag:has(.nameplate:placeholder-shown) { transform: none; }
+.nm-input:focus { outline: none; border-bottom-color: var(--ink); border-bottom-style: solid; }
+.nm-input::placeholder { color: var(--ink-faint); }
 
-.nameplate:focus {
-  outline: none;
-  border-color: var(--ink); border-style: solid;
-  transform: translate(var(--lift-x), var(--lift-y));
-  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
-  transition: transform var(--down), box-shadow var(--down);
-}
+/* ── the glance footer ─────────────────────────────────────────────────────
+   The tags and the way in, on ONE line and at the same weight.
 
-/* The hero print sits above the tag, which overlaps its lower edge like a label stuck on
-   the photo. */
-.print.hero { margin-bottom: 0; }
+   The Edit button used to be a full-width sticker under a row of small chips, which made
+   the least interesting thing on the screen the largest — and cost a whole row of height
+   on a sheet that is trying not to scroll. The full-width rule it was following is about
+   a LONE button reading as floating debris; paired with the chips it is not lone.
+   `space-between` rather than an auto margin, for the same reason the action bars are a
+   grid: an auto margin on an overflowing flex line pushes the first item off the edge. */
+.glance-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px 12px;
+  border-top: 2px solid var(--ink);
+  margin-top: 14px; padding: 12px 5px calc(6px + var(--safe-b));
+}
+.glance-foot .chiprow { margin-top: 0; flex: 1 1 auto; min-width: 0; }
+.glance-foot .btn-stick.sm { flex: 0 0 auto; }
+/* An untagged cat renders no chip row at all, and space-between would then park the
+   only child on the left. Safe here because a single item cannot overflow the line —
+   which is the failure an auto margin causes everywhere else in this file. */
+.glance-foot .btn-stick.sm:only-child { margin-left: auto; }
+.btn-stick.sm { font-size: var(--t-sm); padding: 8px 16px; min-height: 40px; }
 
 /* "This is that cat" — the answer, shown as an object rather than as a filled-in form.
    Its tags are the CAT's, so they are displayed and not offered: editing them from a
