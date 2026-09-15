@@ -219,6 +219,44 @@ picker's Location toggle is sticky (it did not need touching here).
 declaration across a buildless ES module and a TS Worker. `tests/vocab.test.mjs` reads
 both files and asserts they agree, so drift is a red test rather than a 400 at save time.
 
+## When D1 hits its daily cap
+
+**The free tier is 5,000,000 rows READ and 100,000 rows WRITTEN per day, resetting at
+00:00 UTC.** Over it, every query that touches rows fails; a query reading zero rows
+(`SELECT 1`) still succeeds, which is why the failure looks intermittent and can be
+mistaken for a Cloudflare outage. `GET /health` reads ONE row and often still answers
+while `GET /sightings`, which scans two tables, does not — so *health is up but the app is
+broken* is a real state and not a contradiction.
+
+This is the free tier working as designed and nothing is billed. It is therefore not an
+internal error, and the stack says so at every layer:
+
+- **The Worker returns 503 with plain words**, not a generic 500 — matched on the message,
+  because D1 surfaces it as an ordinary SQLITE error with no distinguishing code. A match
+  only ever produces a nicer message for something that already failed.
+- **The service worker falls back to the cached `/sightings` on ANY 5xx**, exactly as it
+  does when offline. It used to fall back only when `fetch` THREW, so a 503 went straight
+  through to a blank app that was holding a full cache of her cats. 4xx is deliberately
+  NOT included: that is a bug in the request, and serving stale data over it hides it.
+- **The pages distinguish "no cats yet" from "could not load".** The same words over a
+  failed load tell her that her cats are gone. Both the map and the Cats tab render the
+  error and a Try again button instead.
+- **The map's banner prefers the outbox.** A photo that has not uploaded is HER data at
+  risk; stale pins are an inconvenience that fixes itself. Never both at once, and the
+  stale notice is suppressed entirely when nothing is on screen — the page itself says so
+  there, and a banner over a blank map is noise.
+- **`.outbox-banner.stale` is RESERVED** for an outbox that has been waiting hours (the
+  loudest this strip gets). The data-is-old variant is `.offline`. Reusing the name would
+  have silently swapped the two urgencies.
+
+**Nobody has yet explained how a two-person app with a handful of cats read 5M rows in a
+day.** Worth finding out rather than assuming: at ~20 rows per bulk fetch that is 250,000
+requests, which would have breached the Workers 100k/day request cap first — so something
+is reading MANY rows per query, not making many queries. `audit_log` has zero indexes by
+design and grows by a row per mutation; the admin scripts (`backup`, `reconcile`, `gc`)
+scan whole tables. Check `audit_log` size and the Workers analytics before touching
+anything.
+
 ## Caching — the two layers that fought each other
 
 A freshly uploaded cat did not appear for up to five minutes, and photos only rendered

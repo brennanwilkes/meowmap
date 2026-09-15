@@ -93,8 +93,13 @@ function render(state) {
   root.innerHTML = `
     <div class="pad" id="cats-pad">
       <div class="pull" id="pull"><span>pull to refresh</span></div>
-      ${cats.length === 0 && loose.length === 0 ? `
-        <p class="empty">No cats yet. Tap <strong>Snap</strong> and go find one.</p>` : ''}
+      ${cats.length !== 0 || loose.length !== 0 ? '' : (state.error === null
+        ? `<p class="empty">No cats yet. Tap the camera below and go find one.</p>`
+        /* NOT "no cats yet" when the load failed — that is a lie, and the lie she would
+         * read is that her cats are gone. Say what happened and offer the retry. */
+        : `<p class="empty">Couldn’t load your cats.</p>
+           <p class="hand" style="text-align:center">${esc(state.error)}</p>
+           <button type="button" class="btn-stick wide" id="retry">Try again</button>`)}
 
       ${cats.length === 0 ? '' : `
         <div class="cat-grid">${cats.map(catCard).join('')}</div>`}
@@ -110,6 +115,9 @@ function render(state) {
 }
 
 function wire() {
+  const retry = $('#retry', root);
+  if (retry !== null) retry.addEventListener('click', () => store.refresh());
+
   for (const btn of root.querySelectorAll('.cat-card')) {
     btn.addEventListener('click', () => navigate(`#/cat/${btn.dataset.cat}`));
   }

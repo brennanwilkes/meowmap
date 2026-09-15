@@ -251,15 +251,51 @@ function drawPins(state) {
   }
 }
 
+/* Two things can want this strip, and the outbox outranks a fetch failure: a photo that
+ * has not uploaded is HER data at risk, while stale pins are an inconvenience that fixes
+ * itself. Never both at once — a second banner would cover the map it is apologising
+ * about. */
 function renderBanner(state) {
   const el = document.getElementById('outboxBanner');
   if (el === null) return;
   const n = state.pending.length;
-  if (n === 0) { el.style.display = 'none'; return; }
+
+  if (n > 0) {
+    el.style.display = '';
+    el.classList.remove('offline');
+    el.textContent = n === 1
+      ? '1 photo still to upload — keep the app open'
+      : `${n} photos still to upload — keep the app open`;
+    return;
+  }
+
+  /* A FAILED REFRESH IS ONLY WORTH SAYING WHEN SOMETHING IS SHOWING. With pins on screen
+   * this explains why a cat she just added is missing; with nothing on screen the page
+   * itself says so (see emptyState), and a banner over a blank map is just noise. */
+  if (state.error !== null && state.loaded) {
+    el.style.display = '';
+    el.classList.add('offline');
+    el.textContent = `Showing what was here last time — ${state.error}`;
+    return;
+  }
+  el.style.display = 'none';
+}
+
+/* Nothing on the map, and it matters WHY. "No cats yet" is an invitation; the same words
+ * over a failed load are a lie that makes her think she lost her cats. */
+function renderEmpty(state) {
+  const el = document.getElementById('map-empty');
+  if (el === null) return;
+  const nothing = state.sightings.length === 0 && state.pending.length === 0;
+  if (!nothing) { el.style.display = 'none'; return; }
   el.style.display = '';
-  el.textContent = n === 1
-    ? '1 photo still to upload — keep the app open'
-    : `${n} photos still to upload — keep the app open`;
+  el.innerHTML = state.error === null
+    ? `<p class="empty">No cats yet.<br>Tap the camera below and go find one.</p>`
+    : `<p class="empty">Couldn’t load your cats.</p>
+       <p class="hand">${esc(state.error)}</p>
+       <button type="button" class="btn-stick" id="retry">Try again</button>`;
+  const retry = document.getElementById('retry');
+  if (retry !== null) retry.addEventListener('click', () => store.refresh());
 }
 
 export function mount(el) {
@@ -267,6 +303,7 @@ export function mount(el) {
     <div id="map"></div>
     <div class="coat-filter" id="coatFilter">${filterChips()}</div>
     <div class="outbox-banner" id="outboxBanner" style="display:none"></div>
+    <div class="map-empty" id="map-empty" style="display:none"></div>
     <div id="install-slot"></div>`;
 
   /* EVERY FRESH PAGE LOAD OPENS ON VICTORIA, whatever was saved and wherever the cats
@@ -321,13 +358,15 @@ export function mount(el) {
    * keyboard) still get invalidateSize but must NOT re-frame — by then she has panned
    * somewhere and yanking the map back would be its own bug. */
   let needsFraming = view === null;
+  const mapEl = document.getElementById('map');
   mapSizer = new ResizeObserver(() => {
-    const el = document.getElementById('map');
-    if (el === null || el.clientWidth === 0 || el.clientHeight === 0) return;
+    // A zero box means the screen is mid-transition; measuring against it would cache
+    // another wrong size, which is the thing this observer exists to stop.
+    if (mapEl.clientWidth === 0 || mapEl.clientHeight === 0) return;
     map.invalidateSize();
     if (needsFraming) { needsFraming = false; frameDefault(); }
   });
-  mapSizer.observe($('#map', root));
+  mapSizer.observe(mapEl);
 
   /* Double-tap to zoom, by hand. Two taps close together in time and place, which is what
    * the gesture actually is — rather than trusting a synthesised dblclick that iOS does
@@ -413,6 +452,7 @@ function redraw(state) {
   drawTurf(state);
   drawPins(state);
   renderBanner(state);
+  renderEmpty(state);
 }
 
 export function onShown() {

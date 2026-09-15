@@ -9,7 +9,7 @@
  * frontend change or the shell cache never rotates.
  */
 
-const BUILD = '2026-09-14p';
+const BUILD = '2026-09-14q';
 
 const SHELL = `shell-${BUILD}`;
 const API = 'api-v1';
@@ -175,16 +175,30 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname === '/sightings') {
     e.respondWith((async () => {
       const cache = await caches.open(API);
+      /* A SERVER ERROR FALLS BACK TO THE CACHE, exactly as being offline does.
+       *
+       * It used to fall back only when fetch THREW, so a 500 or a 503 went straight to
+       * the page — and on the day D1's free daily row cap tripped, that meant a blank
+       * app holding a full cache of her cats. From here the two cases are the same
+       * thing: the server cannot answer right now. Yesterday's pins with a banner beats
+       * nothing, and the store's ETag means the real answer arrives the moment it can.
+       *
+       * 4xx is NOT included: that is a bug in the request, and serving stale data over
+       * it would hide it. A 304 is passed through untouched — it has no body and the
+       * store keeps what it has. */
+      const stale = async (res) => {
+        const hit = await cache.match(req);
+        if (hit !== undefined) return hit;
+        if (res !== null) return res;
+        throw new Error('offline and nothing cached');
+      };
       try {
         const res = await fetch(req);
         if (res.status === 200) cache.put(req, res.clone());
+        if (res.status >= 500) return await stale(res);
         return res;
       } catch {
-        // Offline. A cached copy is much better than a blank map; if there is none,
-        // let the store surface the failure rather than inventing an empty result.
-        const hit = await cache.match(req);
-        if (hit !== undefined) return hit;
-        throw new Error('offline and nothing cached');
+        return await stale(null);
       }
     })());
     return;

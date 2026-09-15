@@ -165,3 +165,28 @@
   padding: 11px 13px;
   box-shadow: var(--cut), var(--lift);
 }
+
+/* The map's own empty state. Centred over the tiles, above the filter strip, and it must
+   say WHICH kind of empty it is: "no cats yet" over a failed load reads as "your cats are
+   gone". */
+.map-empty {
+  position: absolute; left: 50%; top: 50%; z-index: 30;
+  transform: translate(-50%, -50%);
+  width: min(300px, calc(100% - 48px));
+  background: var(--paper-hi);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  box-shadow: var(--lift-lg);
+  padding: 18px 16px; text-align: center;
+}
+.map-empty .empty { padding: 0 0 6px; }
+.map-empty .hand { font-size: var(--t-sm); margin-bottom: 12px; }
+.map-empty .btn-stick { width: 100%; }
+
+/* Quieter than urgent. `.stale` is TAKEN — it is reserved for an outbox that has been
+   waiting hours, which is the loudest this strip ever gets; this is the opposite, and
+   reusing the name would have silently swapped the two. The outbox banner is about HER
+   data being at risk, this is about ours being old. */
+.outbox-banner.offline {
+  background: var(--paper-hi); color: var(--ink-soft);
+  border-color: var(--ink-faint); font-family: var(--font-hand); font-weight: 400;
+}

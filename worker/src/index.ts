@@ -68,6 +68,21 @@ export default {
         writeAudit({ status: err.status, outcome: err.outcome });
         return errorJson(req, env, err.status, err.message);
       }
+      /* D1'S DAILY ROW CAP IS NOT AN INTERNAL ERROR, it is the free tier working as
+       * designed — queries fail until midnight UTC and nothing is billed. Reported as a
+       * generic 500 it looks like a crash, and the client has no way to tell her what is
+       * happening or that it fixes itself. So it gets its own status and its own words.
+       *
+       * Matched on the message because D1 surfaces it as a plain SQLITE error with no
+       * distinguishing code. Narrow on purpose: a match is only ever a nicer message for
+       * something that already failed. */
+      const text = err instanceof Error ? err.message : String(err);
+      if (/exceeded .*(daily|limit)/i.test(text) && /row|read|write/i.test(text)) {
+        writeAudit({ status: 503, outcome: 'quota', detail: text.slice(0, 300) });
+        return errorJson(req, env, 503,
+          'MeowMap has hit its daily free limit. It comes back at midnight UTC.');
+      }
+
       // An unhandled error is the MOST important thing to record, not the least: it is
       // the only failure mode with no status code to explain itself to the client.
       console.error('[fetch] unhandled:', err);
