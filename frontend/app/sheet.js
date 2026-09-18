@@ -3,7 +3,7 @@ import { photoUrl } from './api.js';
 import { displayName, inkFor, ringFor } from './catcolor.js';
 import { navigate } from './nav.js';
 import { filmstrip, wireFilmstrip } from './components/filmstrip.js';
-import { staticChips } from './components/chips.js';
+import { pinnedTags } from './components/chips.js';
 
 /* The detail sheet. A sibling of the map div, not an L.popup — there is no L.popup or
  * L.tooltip anywhere in this codebase.
@@ -64,11 +64,11 @@ export function openSightingSheet(sighting, cat) {
   sheet.innerHTML = `
     <div class="grabber"></div>
     ${pendingNote}
-    ${filmstrip(shots, { name, src: photoFor })}
-    <div class="glance-foot">
-      ${staticChips(tagged)}
+    <div class="glance-stage">
       ${sighting.pending === true ? '' : `
-        <button type="button" class="btn-stick sm" id="sheet-open">Edit</button>`}
+        <button type="button" class="btn-stick sm glance-edit" id="sheet-open">Edit</button>`}
+      ${filmstrip(shots, { name, src: photoFor })}
+      ${pinnedTags(tagged)}
     </div>`;
 
   if (unstrip !== null) { unstrip(); unstrip = null; }

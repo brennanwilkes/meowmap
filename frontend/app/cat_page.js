@@ -1,37 +1,28 @@
-import { DEFAULT_TILE_ID, LS, MAX_NAME_LEN, TILE_SOURCES } from '../config.js';
-import { deleteCat, patchCat, patchSighting, photoUrl } from './api.js';
+import { DEFAULT_TILE_ID, LS, TILE_SOURCES } from '../config.js';
+import { photoUrl } from './api.js';
 import { catColour, displayName, inkFor } from './catcolor.js';
-import { chipRows, staticChips, wireChips } from './components/chips.js';
-import { filmstrip, frame, wireFilmstrip } from './components/filmstrip.js';
+import { pinnedTags } from './components/chips.js';
+import { filmstrip, wireFilmstrip } from './components/filmstrip.js';
 import { getPref } from './device.js';
-import { $, distanceText, esc } from './dom.js';
-import { distanceM } from './suggest.js';
+import { $, esc } from './dom.js';
 import { navigate } from './nav.js';
 import { turfRing, shouldDrawTurf } from './turf.js';
-import { splitToNewCat } from './identity.js';
 import { keepSized } from './minimap.js';
 import * as store from './store.js';
-import * as turnstile from './turnstile.js';
 
-/* One cat: everything true of the ANIMAL, plus where it lives and two questions in
- * plain language.
+/* One cat, AS A GLANCE AND NOTHING ELSE: every photograph of them, what they look like,
+ * and where they live.
  *
- * Name, coat and size live here since migration 003. They describe the cat, not any one
- * photograph, so a grouped cat has ONE answer to "what colour is it" instead of one per
- * sighting that could disagree with each other.
+ * THERE IS NO EDIT MODE HERE ANY MORE. There used to be two editors — this page for the
+ * animal (name, coat, size, grouping) and `#/sighting/<id>` for the photograph (date,
+ * place, note, petted) — which meant two screens to learn, two ways to reach the same
+ * cat, and two layouts that had to be kept in step by hand. Tapping Edit now opens the
+ * ONE editor on the photo she is looking at, where both halves live together. The rule
+ * this page had always been quietly breaking is stated in CLAUDE.md: two editors that
+ * must agree is a bug factory.
  *
- * PETTED DOES NOT LIVE HERE. It went back onto the sighting in 004 — it is stamped on the
- * polaroid, and one answer shared across every photo would be a lie on all but one of
- * them. Date, location and petted are the photo's own facts and are edited there.
- *
- *   "I've seen this cat before"  → pick another cat's face → the two become one.
- *   "this is a different cat"    → that photo leaves and becomes its own cat.
- *
- * BOTH ARE SINGLE TAPS ON A FACE, and each undoes the other, so there is no sequence to
- * learn and no way to get stuck with a wrong answer. That is the whole design rule for
- * this page: no modes, no multi-select, nothing that can be half-done.
- *
- * Deleting a cat never deletes its photographs — they leave as cats of their own.
+ * What is left is the same shape as the map's bottom sheet, deliberately: a print you can
+ * page sideways through, the cat's labels pinned to the page around it, and one way in.
  */
 
 let root = null;
@@ -40,30 +31,11 @@ let unsubscribe = null;
 let miniMap = null;
 let unsize = null;
 let unstrip = null;
-/* A cat page opens as a GLANCE, like the map sheet does, and Edit turns it into a form.
- * Landing straight in an editor made every visit look like a task; most of them are just
- * "who is this again". */
-let editing = false;
-/* Which photo is on screen. EDIT MODE EDITS THAT ONE, exactly as the map sheet's Edit
- * button opens the frame she swiped to — so paging to a photo and tapping Edit does what
- * it looks like it does. Survives a re-render; reset per mount. */
+/* Which photo is on screen. EDIT OPENS THAT ONE, exactly as the map sheet's Edit button
+ * opens the frame she swiped to. Survives a re-render; reset per mount. */
 let showIndex = 0;
-let saveTimer = null;
-/* The working copy of everything that describes the animal. Chips mutate it in place and
- * one debounced PATCH sends whatever actually differs. `pendingFor` is the cat that
- * debounce belongs to, so unmount can flush it without the DOM. */
-let edit = null;
-let pendingFor = null;
 
 function render(state = store.get()) {
-  // The store fires on every refresh, including the one this page triggers after a
-  // rename. Re-rendering mid-edit would steal focus and drop what she is typing, so
-  // the only safe moment to rebuild is when the name field is not being used.
-  const input = $('#f-name', root);
-  if (input !== null && document.activeElement === input) return;
-  // A pending debounce means a tap she has made is not on the server yet; rebuilding
-  // from server state would silently undo it in front of her.
-  if (saveTimer !== null) return;
   if (unsize !== null) { unsize(); unsize = null; }
   if (miniMap !== null) { miniMap.remove(); miniMap = null; }
 
@@ -78,290 +50,28 @@ function render(state = store.get()) {
 
   if (showIndex >= sightings.length) showIndex = 0;
   const shown = sightings[showIndex];
-  const photo = {
-    name: displayName(cat), src: (x) => photoUrl(x.photoFull),
-  };
-
-  /* THE NAME IS RENDERED EXACTLY ONCE. In the glance it is the mark on the print; in edit
-   * mode it comes OFF the photograph and becomes an ordinary labelled field, the same one
-   * the date and the note use on the sighting page.
-   *
-   * It was previously an underlined hand-written box sitting on the polaroid's white —
-   * which looks right and types badly: no label, a placeholder doing the label's job, and
-   * a target the size of whatever the name happened to be. A form field is a form field.
-   *
-   * Edit mode used to keep the whole strip as well — every frame carrying the cat's name
-   * as a static tag — and then add the editable one below it, so the name appeared twice
-   * and the page rearranged itself under her the moment she tapped Edit. */
-  const nameField = `
-    <label class="field">
-      <span>Name <em>(optional)</em></span>
-      <input type="text" id="f-name" maxlength="${MAX_NAME_LEN}"
-             placeholder="leave blank if you don&rsquo;t know" value="${esc(cat.name ?? '')}">
-    </label>`;
 
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(colour.hex)};--ring-ink:${esc(inkFor(cat.id))}">
-      ${editing
-        ? frame(shown, { ...photo, editing: true })
-        : filmstrip(sightings, photo)}
-
-      ${editing ? `
-        ${nameField}
-        <p class="hand" id="save-state">&nbsp;</p>
-        <hr class="rule">
-        ${chipRows(cat)}
-        <div class="sheet-acts">
-          <button type="button" class="btn-stick" id="mode">Done</button>
-        </div>
-      ` : `
-        <div class="glance-foot">
-          ${staticChips(cat)}
-          <button type="button" class="btn-stick sm" id="mode">Edit</button>
-        </div>`}
+      <div class="glance-stage">
+        <button type="button" class="btn-stick sm glance-edit" id="mode">Edit</button>
+        ${filmstrip(sightings, { name: displayName(cat), src: (x) => photoUrl(x.photoFull) })}
+        ${pinnedTags(cat)}
+      </div>
 
       ${sightings.length < 2 ? '' : `
         <hr class="rule">
         <h2 class="sec">Seen ${sightings.length} times</h2>
         <div class="mini-map" id="cat-map"></div>`}
-
-      ${!editing ? '' : `
-        <hr class="rule">
-        <button type="button" class="btn-stick wide" id="same-as">I&rsquo;ve seen this cat before</button>
-        <div id="merge-pick"></div>
-
-        ${sightings.length < 2 ? '' : `
-          <button type="button" class="btn-ghost wide" data-split="${shown.id}">
-            This photo is a different cat</button>`}
-        <button type="button" class="btn-ghost wide" id="photo-facts">
-          When &amp; where this photo was taken</button>
-      `}
-      <div class="map-note" id="cat-err" style="position:static"></div>
     </div>`;
 
   if (unstrip !== null) { unstrip(); unstrip = null; }
-  // Only the glance has a strip to track; edit mode is one frame and cannot be paged.
-  if (!editing) {
-    unstrip = wireFilmstrip($('.filmstrip', root), showIndex, (i) => { showIndex = i; });
-  }
+  unstrip = wireFilmstrip($('.filmstrip', root), showIndex, (i) => { showIndex = i; });
 
-  // Petted is NOT here: it belongs to the photograph now (004) and is edited on the
-  // sighting page, which is also where the date and the pin live.
-  edit = { name: cat.name ?? null, coat: [...cat.coat], size: cat.size };
-  wire(cat, shown);
+  // The Edit button follows the swipe, so it opens the photo actually on screen.
+  $('#mode', root).addEventListener('click', () => navigate(`#/sighting/${shown.id}`));
+
   if (sightings.length >= 2) drawTerritory(sightings, colour);
-}
-
-function wire(cat, shown) {
-  $('#mode', root).addEventListener('click', () => {
-    /* Blur first: render() refuses to rebuild while a field has focus, and without this
-     * the button would silently do nothing when tapped straight from the name box. */
-    if (document.activeElement !== null && root.contains(document.activeElement)) {
-      document.activeElement.blur();
-    }
-    /* Leaving edit mode must not lose a debounced edit — saveEdits fires it immediately
-     * rather than waiting out the timer she has just walked away from. */
-    if (editing && saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; saveEdits(cat); }
-    editing = !editing;
-    render();
-  });
-
-  if (!editing) return;
-
-  /* Date and location are the PHOTO's facts, not the animal's, so they are edited where
-   * every other photo fact is edited rather than duplicated onto this page. Losing the
-   * old grid of every photo lost the only route to that editor from here. */
-  $('#photo-facts', root).addEventListener('click', () => navigate(`#/sighting/${shown.id}`));
-
-  const input = $('#f-name', root);
-  input.addEventListener('input', () => {
-    edit.name = input.value.trim() === '' ? null : input.value.trim();
-    schedule(cat);
-  });
-
-  /* Tags save on the same debounce as the name rather than behind a Save button. Done
-   * only leaves the mode; the debounce already collapses a flurry of taps into ONE D1
-   * write, which is what a Save button would have existed to protect. */
-  wireChips(root, edit, () => schedule(cat));
-
-  $('#same-as', root).addEventListener('click', () => showMergePicker(cat));
-  for (const btn of root.querySelectorAll('[data-split]')) {
-    btn.addEventListener('click', () => split(Number(btn.dataset.split), cat));
-  }
-}
-
-/** Debounced rather than saved per keystroke or per tap: every PATCH is a D1 write plus
- *  an app_meta bump, and typing "Mochi" would otherwise cost ten of them. */
-function schedule(cat) {
-  if (saveTimer !== null) clearTimeout(saveTimer);
-  pendingFor = cat;
-  const note = $('#save-state', root);
-  if (note !== null) note.textContent = '';
-  saveTimer = setTimeout(() => saveEdits(cat), 900);
-}
-
-/** `note` is null once the page has closed; the PATCH still has to go. */
-function state(text) {
-  if (root === null) return;
-  const note = $('#save-state', root);
-  if (note !== null) note.textContent = text;
-}
-
-async function saveEdits(cat) {
-  saveTimer = null;
-  pendingFor = null;
-
-  // Send only what changed: an unchanged field in the body is still a column written.
-  const patch = {};
-  if (edit.name !== (cat.name ?? null)) patch.name = edit.name;
-  if (edit.coat.join(',') !== cat.coat.join(',')) patch.coat = edit.coat;
-  if (edit.size !== cat.size) patch.size = edit.size;
-  if (Object.keys(patch).length === 0) { state(''); return; }
-
-  state('saving…');
-  try {
-    await turnstile.ensurePass();
-    await patchCat(cat.id, patch);
-    await store.refresh();
-    state('saved');
-  } catch (err) {
-    // The page may already be gone, so this has to be visible in the console too.
-    console.error('[cat] save failed:', err);
-    state(`not saved — ${err.message}`);
-  }
-}
-
-function fail(err, what) {
-  console.error(`[cat] ${what} failed:`, err);
-  const note = $('#cat-err', root);
-  if (note !== null) note.textContent = err.message;
-}
-
-/**
- * "I've seen this cat before" — show every OTHER cat as a face and merge on one tap.
- *
- * Nearest first, because the cat she means is almost always one she photographed near
- * here. No search box, no multi-select, no confirmation: one tap is the whole gesture,
- * and it is undone by tapping "different cat" on the photo that moved.
- */
-function showMergePicker(cat) {
-  const slot = $('#merge-pick', root);
-  const others = store.catsWithSightings()
-    .filter((o) => o.id !== cat.id && o.sightings.length > 0);
-
-  if (others.length === 0) {
-    slot.innerHTML = '<p class="hand">no other cats yet</p>';
-    return;
-  }
-  const here = cat.sightings[0];
-  const near = (o) => Math.min(...o.sightings.map(
-    (s) => distanceM(here.lat, here.lon, s.lat, s.lon)));
-  others.sort((a, b) => near(a) - near(b));
-
-  slot.innerHTML = `
-    <p class="hand">which one are they?</p>
-    <div class="suggest-row">
-      ${others.map((o) => {
-        const face = o.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
-        return `
-        <button type="button" class="suggest" data-merge="${o.id}"
-                style="--ring:${esc(catColour(o.id).hex)}">
-          <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
-          <span class="nm">${esc(displayName(o))}</span>
-          <span class="why">${esc(distanceText(near(o)))} away</span>
-        </button>`;
-      }).join('')}
-    </div>`;
-
-  for (const btn of slot.querySelectorAll('[data-merge]')) {
-    btn.addEventListener('click', () => merge(cat, Number(btn.dataset.merge)));
-  }
-  /* Scroll the faces into view. Revealing UI below the fold and leaving the page where it
-   * was reads as the button having done nothing. rAF so the row has laid out first, and
-   * 'nearest' so it moves the minimum needed rather than yanking the page. */
-  requestAnimationFrame(() => slot.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
-}
-
-/**
- * Fold this cat into another. The OLDER cat survives, so the one she met first keeps its
- * name and colour whichever way round she taps.
- *
- * Not atomic and cannot be — there is no bulk endpoint — so a part-way failure leaves
- * some photos moved and says so, rather than rolling back and risking undoing a link
- * that did land.
- */
-/** Newest sighting, or -Infinity for a cat with none. */
-function newestAt(cat) {
-  return cat.sightings.reduce((a, s) => Math.max(a, s.seenAt), -Infinity);
-}
-
-/**
- * Two cats become one, and their descriptions have to become one too.
- *
- * COAT UNIONS; size takes the more recently seen cat's answer. A union loses nothing — a
- * cat tagged "orange" here and "tabby" there is an orange tabby, and discarding half
- * would quietly delete something she typed. Size cannot union (a cat is not both a kitten
- * and a chonk), so the newer observation wins as the more likely to still be true; the
- * older one is kept only where the newer has no answer.
- *
- * Petted needs no rule at all any more: it lives on each sighting, so merging two cats
- * simply carries every photo's own answer across with it. That is the clearest argument
- * that 004 put it in the right place.
- */
-function mergeTags(survivor, absorbed) {
-  const [newer, older] = newestAt(survivor) >= newestAt(absorbed)
-    ? [survivor, absorbed] : [absorbed, survivor];
-  return {
-    coat: [...new Set([...survivor.coat, ...absorbed.coat])].sort(),
-    size: newer.size ?? older.size,
-    // Whichever way round she taps, the cat she met first keeps its name.
-    name: survivor.name ?? absorbed.name,
-  };
-}
-
-async function merge(cat, otherId) {
-  const survivorId = Math.min(cat.id, otherId);
-  const absorbed = Math.max(cat.id, otherId);
-  const btn = $('#same-as', root);
-  btn.disabled = true;
-  btn.textContent = 'Joining…';
-  try {
-    await turnstile.ensurePass();
-    const all = store.catsWithSightings();
-    const doomed = all.find((c) => c.id === absorbed);
-    const keeper = all.find((c) => c.id === survivorId);
-    if (doomed === undefined || keeper === undefined) {
-      throw new Error('one of those cats is no longer here');
-    }
-    await patchCat(survivorId, mergeTags(keeper, doomed));
-    for (const s of doomed.sightings) {
-      // eslint-disable-next-line no-await-in-loop -- serial; see above
-      await patchSighting(s.id, { catId: survivorId });
-    }
-    await deleteCat(absorbed);
-    await store.refresh();
-    navigate(`#/cat/${survivorId}`);
-  } catch (err) {
-    btn.disabled = false;
-    btn.textContent = 'I\u2019ve seen this cat before';
-    fail(err, 'merge');
-  }
-}
-
-/** "different cat" — this photo leaves and becomes a cat of its own. The exact inverse
- *  of a merge, which is what makes every join safely reversible. */
-async function split(sightingId, cat) {
-  const btn = root.querySelector(`[data-split="${sightingId}"]`);
-  const label = btn === null ? '' : btn.textContent;
-  if (btn !== null) { btn.disabled = true; btn.textContent = 'moving…'; }
-  try {
-    await turnstile.ensurePass();
-    const fresh = await splitToNewCat(sightingId, cat);
-    navigate(`#/cat/${fresh.id}`);
-  } catch (err) {
-    if (btn !== null) { btn.disabled = false; btn.textContent = label; }
-    fail(err, 'split');
-  }
 }
 
 function drawTerritory(sightings, colour) {
@@ -405,17 +115,8 @@ export function mount(container, arg) {
 }
 
 export function unmount() {
-  editing = false;
   if (unstrip !== null) { unstrip(); unstrip = null; }
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
-  /* FLUSH, never drop. Swiping the sheet away within the debounce window used to bin the
-   * edit silently — she taps "chonk", leaves, and it was never saved. The PATCH is fired
-   * without awaiting it: unmount cannot be async, and the request outlives this page. */
-  if (saveTimer !== null) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-    if (pendingFor !== null) saveEdits(pendingFor);
-  }
   if (unsize !== null) { unsize(); unsize = null; }
   if (miniMap !== null) { miniMap.remove(); miniMap = null; }
   root = null;

@@ -1,33 +1,43 @@
 import {
-  DEFAULT_TILE_ID, LS, MAX_NOTE_LEN, TILE_SOURCES,
+  DEFAULT_TILE_ID, LS, MAX_NAME_LEN, MAX_NOTE_LEN, TILE_SOURCES,
 } from '../config.js';
-import { deleteSighting, patchSighting, photoUrl } from './api.js';
+import { deleteSighting, patchCat, patchSighting, photoUrl } from './api.js';
 import { catColour, displayName, inkFor } from './catcolor.js';
-import { pettedRow, wireChips } from './components/chips.js';
+import { chipRows, pettedRow, wireChips } from './components/chips.js';
+import { frame } from './components/filmstrip.js';
 import { getPref } from './device.js';
-import { $, esc } from './dom.js';
+import { $, distanceText, esc } from './dom.js';
 import { back, navigate } from './nav.js';
 import { LOCATION_SOURCE } from './pipeline.js';
-import { nameStyle } from './components/filmstrip.js';
-import { splitToNewCat } from './identity.js';
+import { distanceM } from './suggest.js';
+import { mergeCats, splitToNewCat } from './identity.js';
 import { keepSized } from './minimap.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
-/* One sighting: its note, when it was taken, and where.
+/* ONE PHOTOGRAPH, AND THE ONLY EDITOR IN THE APP.
  *
- * WHAT IS *NOT* HERE: coat and size. Those describe the animal rather than the
- * encounter, so since migration 003 they live on the cat and are edited on the cat page.
+ * It used to be half an editor. Coat, size, name and grouping lived in an edit mode on
+ * the cat page; date, place, note and petted lived here. Two screens, two layouts, two
+ * save models — a debounce there and a Save bar here — and no way to tell from either one
+ * which half of a cat you were allowed to change. Both Edit buttons now land here, opened
+ * on the photo she was looking at, and everything about that photo and its cat is on this
+ * one page in one order: who they are, then what happened in this picture, then where.
  *
- * PETTED *IS* HERE, since 004. It is the one tag that is genuinely about the encounter
- * — it is stamped on this polaroid, and the day she finally managed to pet him does not
- * retroactively make the photo from March a petting. So this page is the photo's own
- * facts: when, where, what she wrote on it, and whether she got to touch them.
+ * THE TWO HALVES ARE STILL TWO ROWS IN D1 and the page never pretends otherwise:
  *
- * EDITS ARE EXPLICIT, NOT LIVE. Every PATCH is a D1 write plus an app_meta bump against
- * a hard 100k/day cap, and a chip row is very easy to fiddle with — autosaving each tap
- * would turn one decision into eight writes. So changes accumulate locally and a Save
- * button appears once something actually differs.
+ *   the CAT      name, coat, size   — true of the animal, shared by all its photos
+ *   the SIGHTING petted, note, when, where — true of this encounter only
+ *
+ * Coat and size genuinely cannot differ between encounters without one of them being
+ * wrong. Petted genuinely can, which is why 004 moved it back onto the sighting, and it
+ * is drawn on this print rather than on all of them. Save sends at most one PATCH to each
+ * and only the fields that actually changed — every one is a D1 write plus an app_meta
+ * bump against a hard 100k/day cap.
+ *
+ * EDITS ARE EXPLICIT, NOT LIVE. A chip row is very easy to fiddle with and autosaving
+ * each tap would turn one decision into eight writes, so changes accumulate locally and
+ * the Save bar rises once something actually differs.
  *
  * `location_source` is stored but never displayed. Brennan: "if its just the source of
  * the data then not required, store it, but dont display" — the only thing worth
@@ -37,8 +47,10 @@ import * as turnstile from './turnstile.js';
 let root = null;
 let sightingId = null;
 let unsubscribe = null;
-let draft = null;        // the working copy; null means "showing server state"
+let draft = null;        // this photo's working copy; null means "showing server state"
 let original = null;
+let catDraft = null;     // the animal's working copy; null when the cat is not loaded
+let catOriginal = null;
 let miniMap = null;
 let miniMarker = null;
 let unsize = null;
@@ -46,11 +58,16 @@ let saving = false;
 
 function dirty() {
   if (draft === null || original === null) return false;
-  return draft.note !== original.note
+  const photo = draft.note !== original.note
     || draft.seenAt !== original.seenAt
     || draft.petted !== original.petted
     || draft.lat !== original.lat
     || draft.lon !== original.lon;
+  if (catDraft === null) return photo;
+  return photo
+    || catDraft.name !== catOriginal.name
+    || catDraft.coat.join(',') !== catOriginal.coat.join(',')
+    || catDraft.size !== catOriginal.size;
 }
 
 /** `<input type="datetime-local">` wants local wall time with no zone suffix. */
@@ -59,6 +76,29 @@ function localInputValue(ms) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
     + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function snapshot(s) {
+  return {
+    note: s.note ?? null,
+    petted: s.petted ?? null,
+    seenAt: s.seenAt,
+    lat: s.lat,
+    lon: s.lon,
+    locationSource: s.locationSource,
+    accuracyM: s.accuracyM ?? null,
+  };
+}
+
+function catSnapshot(cat) {
+  if (cat === null) return null;
+  return { name: cat.name ?? null, coat: [...cat.coat], size: cat.size };
+}
+
+function accuracyLine(d) {
+  if (d.locationSource === LOCATION_SOURCE.manual) return 'Placed by hand';
+  if (d.accuracyM === null) return '';
+  return `Accurate to about ${Math.round(d.accuracyM)} m`;
 }
 
 function render(state) {
@@ -76,27 +116,42 @@ function render(state) {
     return;
   }
 
-  original = snapshot(s);
-  draft = snapshot(s);
-
   /* WITH its sightings: the split needs to know whether this is the cat's only photo, and
-   * inherits the cat's description for the new one. */
+   * the new cat inherits this one's description. */
   const cat = store.catsWithSightings(state).find((c) => c.id === s.catId) ?? null;
   const colour = catColour(s.catId);
   const ring = colour === null ? 'var(--rule)' : colour.hex;
 
+  original = snapshot(s);
+  draft = snapshot(s);
+  catOriginal = catSnapshot(cat);
+  catDraft = catSnapshot(cat);
+
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(ring)};--ring-ink:${esc(inkFor(s.catId))}">
-      <figure class="print hero">
-        <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
-        <img src="${esc(photoUrl(s.photoFull))}" alt="" crossorigin="anonymous"
-             width="${esc(String(s.photoW))}" height="${esc(String(s.photoH))}">
-      </figure>
-      ${cat === null ? '' : `<div class="name-line">
-        <button type="button" class="nm ${esc(nameStyle(s.id))}" id="to-cat">${esc(displayName(cat))}</button>
-      </div>`}
+      <!-- BLANK FILM. The glance draws the name, date and petted stamp ON the print; here
+           they are all editable below, and a mark that cannot update until Save would be
+           contradicting the field two inches under it. -->
+      ${frame(s, {
+        name: cat === null ? 'this cat' : displayName(cat),
+        src: (x) => photoUrl(x.photoFull),
+        editing: true,
+      })}
+
+      ${cat === null ? '' : `
+        <hr class="rule">
+        <h2 class="sec">Who they are</h2>
+        <label class="field">
+          <span>Name <em>(optional)</em></span>
+          <input type="text" id="f-name" maxlength="${MAX_NAME_LEN}"
+                 placeholder="leave blank if you don&rsquo;t know"
+                 value="${esc(cat.name ?? '')}">
+        </label>
+        <div id="cat-chips">${chipRows(catDraft)}</div>`}
 
       <hr class="rule">
+      <h2 class="sec">This photo</h2>
+      <div id="photo-chips">${pettedRow(draft)}</div>
       <label class="field">
         <span>Note <em>(optional)</em></span>
         <input type="text" id="f-note" maxlength="${MAX_NOTE_LEN}"
@@ -108,9 +163,6 @@ function render(state) {
       </label>
 
       <hr class="rule thin">
-      ${pettedRow(draft)}
-
-      <hr class="rule">
       <div class="loc-line">
         <span class="sub" id="loc-line">${esc(accuracyLine(draft))}</span>
       </div>
@@ -118,9 +170,13 @@ function render(state) {
       <p class="hand">tap or drag to move the pin</p>
 
       <hr class="rule">
+      ${cat === null ? '' : `
+        <button type="button" class="btn-stick wide" id="same-as">I&rsquo;ve seen this cat before</button>
+        <div id="merge-pick"></div>`}
       ${cat === null || cat.sightings.length < 2 ? '' : `
-        <button type="button" class="btn-ghost wide" id="split">This is a different cat</button>`}
+        <button type="button" class="btn-ghost wide" id="split">This photo is a different cat</button>`}
       <button type="button" class="btn-ghost wide danger" id="del">Delete this photo</button>
+      <div class="map-note" id="edit-err" style="position:static"></div>
       <div style="height:80px"></div>
     </div>
 
@@ -135,24 +191,6 @@ function render(state) {
   drawPinMap(ring);
 }
 
-function snapshot(s) {
-  return {
-    note: s.note ?? null,
-    petted: s.petted ?? null,
-    seenAt: s.seenAt,
-    lat: s.lat,
-    lon: s.lon,
-    locationSource: s.locationSource,
-    accuracyM: s.accuracyM ?? null,
-  };
-}
-
-function accuracyLine(d) {
-  if (d.locationSource === LOCATION_SOURCE.manual) return 'Placed by hand';
-  if (d.accuracyM === null) return '';
-  return `Accurate to about ${Math.round(d.accuracyM)} m`;
-}
-
 /* ── wiring ────────────────────────────────────────────────────────────── */
 
 function markDirty() {
@@ -161,30 +199,24 @@ function markDirty() {
   bar.classList.toggle('down', !dirty());
 }
 
-function wire(s, cat) {
-  const toCat = $('#to-cat', root);
-  if (toCat !== null) toCat.addEventListener('click', () => navigate(`#/cat/${s.catId}`));
+function fail(err, what) {
+  console.error(`[sighting] ${what} failed:`, err);
+  const note = $('#edit-err', root);
+  if (note !== null) note.textContent = err.message;
+}
 
-  /* The same question as on the cat page, reachable from the map without going via the
-   * cat first — it is the photo she is looking at, so it is where she will ask. Offered
-   * only when the cat has another photo left; on a lone sighting it would delete the cat
-   * and immediately mint an identical one. */
-  const splitBtn = $('#split', root);
-  if (splitBtn !== null) {
-    splitBtn.addEventListener('click', async () => {
-      splitBtn.disabled = true;
-      splitBtn.textContent = 'moving…';
-      try {
-        await turnstile.ensurePass();
-        const fresh = await splitToNewCat(s.id, cat);
-        navigate(`#/cat/${fresh.id}`);
-      } catch (err) {
-        splitBtn.disabled = false;
-        splitBtn.textContent = 'This is a different cat';
-        console.error('[sighting] split failed:', err);
-      }
+function wire(s, cat) {
+  /* TWO DRAFTS, TWO ROOTS. wireChips writes straight into the object it is given, so the
+   * rows that describe the animal and the row that describes this photo have to be wired
+   * separately or one would be writing coat tags onto the sighting. */
+  if (cat !== null) {
+    $('#f-name', root).addEventListener('input', (e) => {
+      catDraft.name = e.target.value.trim() === '' ? null : e.target.value.trim();
+      markDirty();
     });
+    wireChips($('#cat-chips', root), catDraft, markDirty);
   }
+  wireChips($('#photo-chips', root), draft, markDirty);
 
   $('#f-note', root).addEventListener('input', (e) => {
     draft.note = e.target.value.trim() === '' ? null : e.target.value.trim();
@@ -199,18 +231,21 @@ function wire(s, cat) {
     markDirty();
   });
 
-  // Petted saves on the Save button with everything else, not per tap: every PATCH is a
-  // D1 write plus an app_meta bump against a hard 100k/day cap.
-  wireChips(root, draft, markDirty);
-
   $('#revert', root).addEventListener('click', () => {
     draft = null;
     original = null;
+    catDraft = null;
+    catOriginal = null;
     render(store.get());
   });
-  $('#save', root).addEventListener('click', () => save(s.id));
+  $('#save', root).addEventListener('click', () => save(s, cat));
   $('#del', root).addEventListener('click', () => remove(s.id));
 
+  if (cat !== null) {
+    $('#same-as', root).addEventListener('click', () => showMergePicker(s, cat));
+  }
+  const splitBtn = $('#split', root);
+  if (splitBtn !== null) splitBtn.addEventListener('click', () => split(s, cat));
 }
 
 function drawPinMap(ring) {
@@ -258,7 +293,35 @@ function drawPinMap(ring) {
 
 /* ── mutations ─────────────────────────────────────────────────────────── */
 
-async function save(id) {
+/**
+ * Send whatever actually differs, at most one PATCH per row.
+ *
+ * Shared by the Save button and by the two identity actions, which call it FIRST: merging
+ * or splitting re-reads the cat from the server, so anything she had typed and not saved
+ * would be silently binned by a tap that looks unrelated to it.
+ */
+async function applyEdits(s, cat) {
+  const patch = {};
+  if (draft.note !== original.note) patch.note = draft.note;
+  if (draft.petted !== original.petted) patch.petted = draft.petted;
+  if (draft.seenAt !== original.seenAt) patch.seenAt = draft.seenAt;
+  if (draft.lat !== original.lat || draft.lon !== original.lon) {
+    patch.lat = draft.lat;
+    patch.lon = draft.lon;
+    patch.locationSource = draft.locationSource;
+    patch.accuracyM = draft.accuracyM;
+  }
+  if (Object.keys(patch).length > 0) await patchSighting(s.id, patch);
+
+  if (cat === null) return;
+  const catPatch = {};
+  if (catDraft.name !== catOriginal.name) catPatch.name = catDraft.name;
+  if (catDraft.coat.join(',') !== catOriginal.coat.join(',')) catPatch.coat = catDraft.coat;
+  if (catDraft.size !== catOriginal.size) catPatch.size = catDraft.size;
+  if (Object.keys(catPatch).length > 0) await patchCat(cat.id, catPatch);
+}
+
+async function save(s, cat) {
   if (saving || !dirty()) return;
   saving = true;
   const btn = $('#save', root);
@@ -266,29 +329,95 @@ async function save(id) {
   btn.textContent = 'Saving…';
   try {
     await turnstile.ensurePass();
-    // Send only what changed: an unchanged field in the body is still a column written.
-    const patch = {};
-    if (draft.note !== original.note) patch.note = draft.note;
-    if (draft.petted !== original.petted) patch.petted = draft.petted;
-    if (draft.seenAt !== original.seenAt) patch.seenAt = draft.seenAt;
-    if (draft.lat !== original.lat || draft.lon !== original.lon) {
-      patch.lat = draft.lat;
-      patch.lon = draft.lon;
-      patch.locationSource = draft.locationSource;
-      patch.accuracyM = draft.accuracyM;
-    }
-    await patchSighting(id, patch);
+    await applyEdits(s, cat);
     draft = null;
     original = null;
     await store.refresh();
     render(store.get());
   } catch (err) {
-    console.error('[sighting] save failed:', err);
     btn.disabled = false;
     btn.textContent = 'Save changes';
-    btn.insertAdjacentHTML('afterend', `<div class="map-note">${esc(err.message)}</div>`);
+    fail(err, 'save');
   } finally {
     saving = false;
+  }
+}
+
+/**
+ * "I've seen this cat before" — show every OTHER cat as a face and merge on one tap.
+ *
+ * Nearest first, because the cat she means is almost always one she photographed near
+ * here. No search box, no multi-select, no confirmation: one tap is the whole gesture,
+ * and it is undone by tapping "this photo is a different cat".
+ */
+function showMergePicker(s, cat) {
+  const slot = $('#merge-pick', root);
+  const others = store.catsWithSightings()
+    .filter((o) => o.id !== cat.id && o.sightings.length > 0);
+
+  if (others.length === 0) {
+    slot.innerHTML = '<p class="hand">no other cats yet</p>';
+    return;
+  }
+  const near = (o) => Math.min(...o.sightings.map(
+    (x) => distanceM(s.lat, s.lon, x.lat, x.lon)));
+  others.sort((a, b) => near(a) - near(b));
+
+  slot.innerHTML = `
+    <p class="hand">which one are they?</p>
+    <div class="suggest-row">
+      ${others.map((o) => {
+        const face = o.sightings.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
+        return `
+        <button type="button" class="suggest" data-merge="${o.id}"
+                style="--ring:${esc(catColour(o.id).hex)}">
+          <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
+          <span class="nm">${esc(displayName(o))}</span>
+          <span class="why">${esc(distanceText(near(o)))} away</span>
+        </button>`;
+      }).join('')}
+    </div>`;
+
+  for (const btn of slot.querySelectorAll('[data-merge]')) {
+    btn.addEventListener('click', () => merge(s, cat, Number(btn.dataset.merge)));
+  }
+  /* Scroll the faces into view. Revealing UI below the fold and leaving the page where it
+   * was reads as the button having done nothing. rAF so the row has laid out first, and
+   * 'nearest' so it moves the minimum needed rather than yanking the page. */
+  requestAnimationFrame(() => slot.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+}
+
+async function merge(s, cat, otherId) {
+  const btn = $('#same-as', root);
+  btn.disabled = true;
+  btn.textContent = 'Joining…';
+  try {
+    await turnstile.ensurePass();
+    await applyEdits(s, cat);
+    const survivorId = await mergeCats(cat.id, otherId);
+    navigate(`#/cat/${survivorId}`);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'I’ve seen this cat before';
+    fail(err, 'merge');
+  }
+}
+
+/** "a different cat" — this photo leaves and becomes a cat of its own. The exact inverse
+ *  of a merge, which is what makes every join safely reversible. */
+async function split(s, cat) {
+  const btn = $('#split', root);
+  btn.disabled = true;
+  btn.textContent = 'moving…';
+  try {
+    await turnstile.ensurePass();
+    await applyEdits(s, cat);
+    const fresh = await splitToNewCat(s.id, cat);
+    navigate(`#/cat/${fresh.id}`);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'This photo is a different cat';
+    fail(err, 'split');
   }
 }
 
@@ -300,7 +429,7 @@ async function remove(id) {
     btn.dataset.armed = 'true';
     btn.textContent = 'Really delete? Tap again';
     setTimeout(() => {
-      if (btn.isConnected) { btn.dataset.armed = 'false'; btn.textContent = 'Delete this sighting'; }
+      if (btn.isConnected) { btn.dataset.armed = 'false'; btn.textContent = 'Delete this photo'; }
     }, 4000);
     return;
   }
@@ -313,9 +442,9 @@ async function remove(id) {
     await store.refresh();
     back();
   } catch (err) {
-    console.error('[sighting] delete failed:', err);
     btn.disabled = false;
-    btn.textContent = 'Delete this sighting';
+    btn.textContent = 'Delete this photo';
+    fail(err, 'delete');
   }
 }
 
@@ -324,6 +453,8 @@ export function mount(container, arg) {
   sightingId = Number(arg);
   draft = null;
   original = null;
+  catDraft = null;
+  catOriginal = null;
   unsubscribe = store.subscribe(render);
 }
 
@@ -333,6 +464,8 @@ export function unmount() {
   if (miniMap !== null) { miniMap.remove(); miniMap = null; miniMarker = null; }
   draft = null;
   original = null;
+  catDraft = null;
+  catOriginal = null;
   root = null;
   sightingId = null;
 }

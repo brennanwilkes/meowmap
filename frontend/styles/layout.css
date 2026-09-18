@@ -77,7 +77,7 @@
 /* The cat page shows a polaroid, the tags, the way in AND a territory map, so its
    photo has to be a little shorter than the sheet's to keep the first three on screen
    together. */
-.screen.detail { --polaroid-h: 44vh; }
+.screen.detail { --polaroid-h: 58vh; }
 
 .detail-body { flex: 1 1 auto; min-height: 0; background: var(--paper); }
 

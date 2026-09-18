@@ -571,6 +571,11 @@ make the card read as a div:
 4. **It is glossy.** A broad diagonal highlight across the card and a second, stronger one
    over the image — the emulsion is the shiniest part of a polaroid. Without it the card
    is matte and looks printed.
+5. **THE IMAGE AREA IS NOT A HOLE IN THE CARD, IT SITS ON TOP OF IT.** On real film the
+   emulsion is a separate layer laminated over the white, so it stands a hair proud: a
+   crisp dark cut edge, a short soft shadow falling onto the paper just outside it, and a
+   faint wider bloom. Without those the photo is a colour change with no thickness, which
+   is exactly what an `<img>` in a `<div>` looks like.
 
 **Proportions:** frame `aspect-ratio: .72`, equal margins on three sides (percentage
 padding, which resolves against WIDTH so the margins stay optically equal), and the rest
@@ -616,7 +621,12 @@ in the field below.
 
 **THE CAT'S NAME LIVES ON THE PHOTOGRAPH**, in one of three hand-applied treatments —
 handwritten (`.nm.hand`), rubber-stamped (`.nm.inked`) or a stuck-on sticker
-(`.nm.stuck`, which is where the cat's colour went). The treatment is chosen from the
+(`.nm.stuck`, which is where the cat's colour went). **The sticker is CUT OUT BY HAND, so
+its white margin is not even**: two white rings at different spreads, the second nudged up
+and right, so the margin is fatter along the top and one side. A single uniform ring is
+just a rounded rectangle with a border, which is what it was and why it did not read as a
+sticker; the unevenness is the tell that someone went round it with scissors rather than a
+die. A diagonal gloss on top is the vinyl. The treatment is chosen from the
 **SIGHTING's id**, so it changes from print to print: written on one, stamped on the next,
 a stuck-on label on the third. It was keyed to the CAT first, on the reasoning that a
 cat's name should not change medium between two frames of its own strip — which turned out
@@ -637,6 +647,23 @@ no-scroll sheet possible.
 The sighting editor is the one place a name is not on a photo (there it is the link to the
 cat), and it uses the same treatment for that cat via the exported `nameStyle(catId)`.
 
+**A GLANCE IS ONE OBJECT ON A PAGE, not a card with a footer.** The map sheet and the cat
+page share `.glance-stage`: the strip, an Edit button in the top-right corner, and the
+cat's coat and size as `.pintag` labels **pinned to the page, not to the photo**. The
+labels are SIBLINGS of `.filmstrip`, never children — the strip clips and scrolls, they do
+not, so the prints shuffle sideways underneath labels that stay put. That is the whole
+conceit: the labels belong to the cat, the photographs are loose prints. They are
+`pointer-events: none`, or a label lying across a print would eat the swipe meant to page
+it, and sides alternate with each label in its own vertical band (the step closing up as
+the count grows), so all seven coat tags still cannot stack on each other.
+
+It replaced a bottom row under a rule holding the tags and Edit. That row cost a band of
+height on a sheet trying not to scroll, left an empty stripe under it whenever the content
+came up short, and made two or three tiny chips huddle at the left of a full-width line —
+and the row was the only reason there was a band to waste. The sheet's ground is now ruled
+paper (`background-attachment: local`, same rule as `.pad`), which is what makes the
+labels read as stuck to a page rather than as chrome.
+
 **A glance must not scroll.** She taps a pin to look at a cat; finding the tags below the
 fold turns a look into a task. The sheet is `max-height: 92%`, the polaroid is sized from
 the viewport height, and the tags and the way in share ONE line (`.glance-foot`). The Edit
@@ -649,29 +676,49 @@ chips it is not lone.
 3px off the page, so a nominal 4px gap is about zero actual daylight — "This is a
 different cat" and "Delete this photo" appeared to overlap.
 
-## The cat page opens as a glance
+## The cat page is a glance and only a glance
 
 **Tapping a cat lands read-only, with an Edit button** — the same shape as the map sheet.
 It used to open straight into a form, which made every visit look like a task when most
-are just "who is this again". Edit reveals the name tag input, the chip rows, the grouping
-question and the per-photo "different cat"; Done leaves the mode and FLUSHES the debounce
-rather than waiting out a timer she has walked away from. **Edit mode shows ONE photo — the one she swiped to — and the name exactly once.** It used
-to keep the whole filmstrip, every frame carrying the cat's name as a static tag, and then
-add the editable nameplate below it: the name appeared twice and the page rearranged itself
-under her the moment she tapped Edit. Now the editable tag hangs off the single frame
-(`frame()` from `components/filmstrip.js`, shared with the strip), which is the same shape
-as the map sheet's Edit opening the frame on screen. `showIndex` survives a re-render and
-resets per mount. The grid of every photo went with it, so the split question became "This
-photo is a different cat" about the one on screen, and a "When & where this photo was
-taken" button keeps the only route from here to `#/sighting/<id>`. The mode button blurs
-first,
-because `render()` refuses to rebuild while a field has focus and would otherwise do
-nothing when tapped straight from the name box.
+are just "who is this again".
+
+**It no longer has an edit mode of its own.** It had one for a while: Edit revealed the
+name field, the chip rows, the grouping question and the per-photo "different cat", saved
+on a debounce, and showed ONE photo (the one she had swiped to) so the name did not appear
+twice. All of that now lives in `#/sighting/<id>` — see Editing below for why — and the
+Edit button simply opens that photo. `showIndex` still survives a re-render and resets per
+mount, because the Edit button has to follow the swipe.
+
+What is left is the stage, the territory map when there are two or more sightings, and
+nothing else. A cat page that can only be looked at cannot be half-saved, and it means
+there is exactly one screen in the app where anything can be changed.
 
 ## Editing
 
-- **The sheet is a glance; `#/sighting/<id>` is the only editor.** Two editors that must
-  agree is a bug factory.
+- **`#/sighting/<id>` IS THE ONLY EDITOR, and it now edits the cat as well as the photo.**
+  This rule was written early and then quietly broken: the cat page grew an edit mode for
+  the animal (name, coat, size, grouping) while this page kept the photograph (petted,
+  note, when, where). Two screens, two layouts, two save models — a debounce there and a
+  Save bar here — and nothing on either telling her which half of a cat she was allowed to
+  change. Both Edit buttons now land here, opened on the photo she was looking at, in one
+  order: who they are, then what happened in this picture, then where. **The cat page has
+  no edit mode at all** and is a pure glance.
+  - The two halves are still two D1 rows and the page never pretends otherwise. Save sends
+    at most ONE PATCH to each, carrying only the fields that actually changed.
+  - **Two drafts, two roots.** `wireChips` writes straight into the object it is handed, so
+    the coat/size rows (`#cat-chips`, the animal) and the petted row (`#photo-chips`, this
+    photo) are wired separately — one call over the whole page would write coat tags onto
+    the sighting.
+  - **`applyEdits()` runs before a merge or a split**, not just from the Save button. Both
+    re-read the cat from the server, so anything typed and unsaved would otherwise be
+    binned by a tap that looks unrelated to it.
+  - **`mergeCats`/`mergeTags` live in `identity.js`** beside `splitToNewCat`, since they
+    are exact inverses and must not be able to disagree.
+  - **The editor's polaroid is BLANK FILM** — no name, no date, no stamp. Every one of them
+    has a labelled field below, and a mark that cannot update until Save would sit two
+    inches above the field contradicting it. The empty chin keeps its depth from a
+    `min-height`, or the figcaption collapses to the card's padding and stops reading as
+    film.
 - **Edits accumulate locally and save on a button**, never per tap: every PATCH is a D1
   write plus an `app_meta` bump against a hard 100k/day cap. The body carries only the
   fields that actually changed.
@@ -748,6 +795,17 @@ nothing when tapped straight from the name box.
   is enough when the sheet is already open and not enough while it is animating, which is
   why the territory map loaded "sometimes". Leaflet measures its container once and never
   notices it changing; the observer fires whenever the box actually changes.
+- **The unselected chip's ring is an `outline`, not a border.** A dashed border is
+  painted as four independent runs, each with its own dash phase derived from that side's
+  length, so a box whose width lands on a fractional pixel can drop a whole side. "did not
+  pet them" lost its left edge, and — the clue that finally named it — ONLY while the chip
+  beside it was also unselected: selecting that one changed its width by the 0.5px the
+  solid border adds, nudging this one back onto a whole pixel. Two rounds of widening the
+  row's slack did nothing, because it was never clipping. `outline` is ONE ring round the
+  whole box; `outline-offset: -2px` paints it strictly inside, so no clipping ancestor and
+  no neighbour can take a piece of it either. The border stays as 2px transparent to keep
+  the layout box. The row's gap also went 8px → 12px: two flat dashed boxes that close
+  together read as one box with a line through it.
 - **Chips can bleed past their layout box.** They are rotated AND wear a 3.5px die-cut
   paper ring, so the painted box is wider than the layout box on both sides. Flush against
   the left edge of a container that clips (`.pad` is `overflow-x: hidden`, because every

@@ -12,7 +12,14 @@
    102% rather than 100% so the top border does not peek during the transition. */
 .sheet {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 41;
-  background: var(--paper-hi);
+  /* Ruled paper, so the prints read as objects lying ON a page rather than as content
+     inside a panel — which is what makes the pinned coat labels look stuck to the page
+     while the photographs shuffle past underneath them. `local` so the ruling scrolls
+     with the content, the same rule .pad follows and for the same reason. */
+  background-color: var(--paper-hi);
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0 27px, rgba(163, 152, 128, .16) 27px 28px);
+  background-attachment: local;
   border-top: 2.5px solid var(--ink);
   padding: 0 17px calc(20px + var(--safe-b));
   transform: translateY(102%);
@@ -20,11 +27,12 @@
   /* TALL ENOUGH NOT TO SCROLL. A glance that scrolls is not a glance — she taps a pin
      to look at a cat, and finding the tags below the fold turns a look into a task. The
      sheet is sized for its whole content and the polaroid is sized from the viewport
-     height to match (--polaroid-h), so on any phone the photo, the tags and the way in
-     all land on screen together. `overflow-y: auto` stays as the safety net for a long
-     pending-upload notice, not as the normal case. */
+     height to match (--polaroid-h), so on any phone the whole glance lands at once. The
+     tags cost no height at all now — they are pinned over the print's edges — so the
+     print gets the room the old footer was taking. `overflow-y: auto` stays as the safety
+     net for a long pending-upload notice, not as the normal case. */
   max-height: 92%; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  --polaroid-h: 56vh;
+  --polaroid-h: 70vh;
 }
 .sheet.open { transform: translateY(0); }
 

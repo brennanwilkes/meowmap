@@ -34,9 +34,8 @@ const LAYOUTS = 6;
  * a strip identical, which is the one thing a scrapbook never is. */
 const NAME_STYLES = ['hand', 'inked', 'stuck'];
 
-/** @param seed  the SIGHTING's id: the treatment belongs to the print, not to the cat.
- *  Exported so the sighting page labels its photo the way that photo's polaroid does. */
-export function nameStyle(seed) {
+/** @param seed  the SIGHTING's id: the treatment belongs to the print, not to the cat. */
+function nameStyle(seed) {
   return NAME_STYLES[Math.abs(seed ?? 0) % NAME_STYLES.length];
 }
 
@@ -53,8 +52,9 @@ function pettedStamp(petted) {
  *
  * @param opts.name   the cat's display name
  * @param opts.src    (sighting) => image URL; the sheet resolves pending rows locally
- * @param opts.editing  lay the caption out as a form instead of as handwriting, and drop
- *                      the name mark: an editor names the cat in a labelled field below.
+ * @param opts.editing  BLANK FILM: no name, no date, no stamp. The editor has a labelled
+ *                      field for every one of them, and a mark that cannot update until
+ *                      Save would sit two inches above the field contradicting it.
  */
 export function frame(s, { name, src, editing = false }) {
   /* Square is the polaroid format, but a little off-square sneaks in more of a tall or
@@ -76,9 +76,10 @@ export function frame(s, { name, src, editing = false }) {
                width="${esc(String(s.photoW ?? ''))}" height="${esc(String(s.photoH ?? ''))}">
         </span>
         <figcaption class="scrawl${lay}">
-          ${editing ? '' : `<span class="nm ${style}">${esc(name)}</span>`}
-          <span class="when">${esc(dateText(s.seenAt))}</span>
-          ${pettedStamp(s.petted)}
+          ${editing ? '' : `
+            <span class="nm ${style}">${esc(name)}</span>
+            <span class="when">${esc(dateText(s.seenAt))}</span>
+            ${pettedStamp(s.petted)}`}
         </figcaption>
       </figure>
     </div>`;

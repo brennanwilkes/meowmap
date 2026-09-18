@@ -20,17 +20,27 @@
 
 /* Unselected chips lie flat on the page; selected ones are stuck on. The state reads
    instantly and it is the most sticker-ish thing on the screen. */
+/* THE UNSELECTED RING IS AN `outline`, NOT A BORDER, and it is offset INWARDS.
+   A dashed border is painted as four independent runs, each with its own dash phase
+   derived from that side's length — so a box whose width lands on a fractional pixel can
+   drop a whole side, and "did not pet them" lost its left edge whenever the chip beside
+   it was unselected (selecting that one changed its width by the 0.5px the solid border
+   adds, which nudged this one back onto a whole pixel and it reappeared). An outline is
+   ONE ring round the whole box, and `outline-offset: -2px` paints it strictly inside, so
+   no clipping ancestor and no neighbour can take a piece of it either. The border stays
+   as a transparent 2px so the layout box is unchanged. */
 .chip {
   font-family: var(--font-stick); font-size: var(--t-sm); font-weight: 700;
   background: transparent; color: var(--ink-faint);
-  border: 2px dashed var(--ink-faint); border-radius: var(--r-cut);
+  border: 2px solid transparent; border-radius: var(--r-cut);
+  outline: 2px dashed var(--ink-faint); outline-offset: -2px;
   padding: 4px 11px;
   transition: transform var(--up), box-shadow var(--up), background var(--up),
               color var(--up), border-color var(--up);
 }
 .chip[aria-pressed="true"] {
   color: var(--ink); background: var(--fill);
-  border: 2.5px solid var(--ink); border-style: solid;
+  border: 2.5px solid var(--ink); outline: none;
   box-shadow: var(--cut), var(--lift);
   transform: rotate(var(--tilt, -2deg));
 }
@@ -40,7 +50,7 @@
   box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
   transition: transform var(--down), box-shadow var(--down);
 }
-.chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chiprow { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
 
 .btn-stick {
   font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
@@ -220,6 +230,16 @@
   /* Square, deliberately: the image area of real film is cut square even though the card
      it sits in is not. */
   border-radius: 0;
+  /* THE IMAGE AREA IS NOT A HOLE IN THE CARD, IT SITS ON TOP OF IT. On real film the
+     emulsion is a separate layer laminated over the white, so it stands a hair proud and
+     its cut edge is crisp and dark, with a short soft shadow falling onto the paper just
+     outside it. Without those two the photo reads as an <img> dropped into a div: a
+     colour change with no thickness. Ordered outwards — the cut edge, then the shadow it
+     throws, then the faint bloom the gloss puts on the white around it. */
+  box-shadow:
+    0 0 0 1px rgba(26, 22, 16, .45),
+    0 2px 5px -1px rgba(32, 28, 22, .38),
+    0 0 0 4px rgba(32, 28, 22, .045);
 }
 .polaroid .window img {
   display: block; width: 100%; height: 100%; object-fit: cover;
@@ -280,14 +300,25 @@
 }
 /* Stuck on: a sticker, by the same three rules as every other one — die-cut paper
    margin, hard offset shadow, hand-stuck tilt. This is where the cat's colour went when
-   the brass plate was dropped. */
+   the brass plate was dropped.
+
+   IT IS CUT OUT BY HAND, SO THE WHITE MARGIN IS NOT EVEN. A single uniform ring is just a
+   rounded rectangle with a border, which is what this looked like and why it did not read
+   as a sticker. Two white rings at different spreads, the second nudged up and right,
+   give a margin that is fatter along the top and one side — the tell that someone went
+   round it with scissors rather than a die. The gloss on top is the vinyl. */
 .nm.stuck {
   font-family: var(--font-stick); font-size: var(--t-lg); font-weight: 800;
   color: var(--ring-ink, var(--ink));
-  background: var(--ring, var(--marigold));
+  background:
+    linear-gradient(148deg, rgba(255, 255, 255, .38), rgba(255, 255, 255, 0) 44%),
+    var(--ring, var(--marigold));
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
   padding: 5px 11px;
-  box-shadow: 0 0 0 3.5px var(--film), var(--lift);
+  box-shadow:
+    0 0 0 3.5px var(--film),
+    2.5px -2px 0 5px var(--film),
+    var(--lift);
 }
 
 /* THE SIX ARRANGEMENTS ARE THE SIX PERMUTATIONS of three marks over three bands — top,
@@ -330,8 +361,17 @@
    is an editor. */
 .polaroid.editing { aspect-ratio: auto; padding-bottom: 5.5%; }
 .polaroid.editing .window { aspect-ratio: 1; }
+/* `align-items: flex-start` is load-bearing: a stamp and a date are inline marks, and a
+   flex column stretches its children by default — which made the petted stamp a
+   comically full-width box the moment the polaroid squared up for editing. */
+/* An UNWRITTEN-ON polaroid, so the chin has to keep its depth from a minimum rather than
+   from its contents — an empty figcaption would otherwise collapse to the card's padding
+   and stop reading as film. `align-items: flex-start` for anything ever put back in it: a
+   flex column stretches its children, which is what made the petted stamp a comically
+   full-width box when the stamp was still drawn here. */
 .polaroid.editing .scrawl {
-  display: flex; flex-direction: column; gap: 8px; padding: 12px 2px 2px;
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 8px; padding: 12px 2px 2px; min-height: 46px;
 }
 .polaroid.editing .scrawl > * { position: static; transform: none; }
 
@@ -368,7 +408,7 @@
 
 .strip-dots {
   display: flex; justify-content: center; gap: 6px;
-  margin: 2px 0 8px;
+  margin: 13px 0 4px;
 }
 .strip-dots span {
   width: 6px; height: 6px; border-radius: 50%;
@@ -376,3 +416,51 @@
   transition: opacity var(--up), background var(--up);
 }
 .strip-dots span.on { background: var(--ink); opacity: 1; }
+
+/* ── the glance stage ──────────────────────────────────────────────────────
+   A GLANCE IS ONE OBJECT ON A PAGE, not a card with a footer.
+
+   It used to be the strip with a bottom row under a rule carrying the tags and the Edit
+   button. That row cost a band of height on a sheet that is trying not to scroll, left an
+   empty stripe beneath it whenever the content came up short, and made two or three tiny
+   chips huddle on the left of a full-width line. So the row is gone:
+
+   - EDIT IS A CORNER BUTTON, in its own band above the prints, where a tab on a folder
+     would be. It is the only control here, so it does not need a row of its own furniture.
+   - THE TAGS ARE PINNED TO THE PAGE, not to the photo. They are siblings of the strip
+     rather than children, so THE PRINTS SCROLL SIDEWAYS UNDERNEATH THEM while they stay
+     put — which is the whole conceit: the labels belong to the cat, and the photos are
+     loose prints being shuffled past. `.filmstrip` clips horizontally; `.pinned` is
+     outside it, so it is not clipped and can hang over the print's edges.
+   - `pointer-events: none` throughout, or a label lying across the print would eat the
+     swipe that is meant to page it. */
+.glance-stage { position: relative; padding-top: 44px; }
+.glance-edit { position: absolute; top: 0; right: 0; z-index: 4; }
+
+.pinned { position: absolute; inset: 44px 0 26px; pointer-events: none; z-index: 3; }
+/* Alternating sides down the page, each in its own vertical band, so however many coat
+   tags a cat collects they can never land on top of one another. `--top` and `--rot` are
+   computed in pinnedTags(): the step closes up as the count grows. */
+.pintag {
+  position: absolute; top: var(--top, 12%);
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
+  color: var(--ink); background: var(--paper-hi);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 7px 13px;
+  transform: rotate(var(--rot, -4deg));
+  box-shadow: var(--cut), var(--lift);
+  white-space: nowrap;
+}
+.pintag.l { left: 0; }
+.pintag.r { right: 0; }
+/* Stuck down with a scrap of the same tape as the prints, so it reads as put there by
+   hand rather than as a label the app drew. */
+.pintag::after {
+  content: ''; position: absolute; top: -7px; left: 50%; width: 34px; height: 13px;
+  margin-left: -17px; transform: rotate(-3deg);
+  background: linear-gradient(158deg,
+    rgba(255, 254, 250, .82), rgba(250, 248, 240, .55) 42%, rgba(255, 254, 250, .76));
+  box-shadow: 0 1px 2px rgba(46, 42, 36, .28), inset 0 0 0 1px rgba(255, 255, 255, .5);
+  clip-path: polygon(4% 0%, 96% 0%, 90% 28%, 98% 55%, 90% 78%, 96% 100%,
+                     4% 100%, 10% 78%, 2% 55%, 10% 28%);
+}
