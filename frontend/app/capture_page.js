@@ -102,7 +102,9 @@ function draftView() {
     <div class="pad capture-draft">
       <figure class="print">
         <span class="tape" style="top:-11px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
-        <img src="${esc(objectUrl)}" alt="The cat you just photographed" style="height:210px">
+        <!-- NO FIXED HEIGHT. 210px was flattening every portrait shot into a narrow
+             strip; .print img sizes by whichever edge runs out first. -->
+        <img src="${esc(objectUrl)}" alt="The cat you just photographed">
       </figure>
       ${notice}
 

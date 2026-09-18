@@ -15,7 +15,7 @@
    itself, see the dashed-ring block in sticker.css. Two rounds of widening this were
    spent chasing it, which is why the number is now only as big as the ring actually is
    rather than a guess with padding on top. */
-.chiprow { padding: 4px 5px; margin-left: -5px; margin-right: -5px; }
+.chiprow { padding: 3px 5px; margin: 0 -5px; }
 .rule {
   border: 0;
   height: 1px;

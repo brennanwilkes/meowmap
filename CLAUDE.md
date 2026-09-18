@@ -968,10 +968,13 @@ there is exactly one screen in the app where anything can be changed.
   and silently deletes the ring. One line doing exactly that (`.coat-filter .chip[aria-pressed="false"]`)
   is why the map's filter looked flat and characterless next to the same chips elsewhere.
 
-  The chip row's gap went 8px → 12px → **9px** along the way: the widening was a hunch
-  that two flat dashed boxes close together were reading as one box with a line through
-  it, and they were not — the ring simply was not being painted on one edge. The extra air
-  only made the rows sprawl. The row's own side slack is likewise just the 3.5px ring plus
+  The chip row's gap went 8px → 12px → 9px → **6px** along the way. The widening was a
+  hunch that two flat dashed boxes close together were reading as one box with a line
+  through it, and they were not — the ring simply was not being painted on one edge. But
+  the reason it ended up TIGHTER than the original 8 is worth keeping: an unselected chip
+  used to be transparent and is now a scrap of cream paper, and **a visible box makes the
+  same gap read as twice the gap**, so the number that looked right against outlines is
+  too loose against objects. The row's own side slack is likewise just the 3.5px ring plus
   a hair, not the 10px two rounds of chasing had grown it to. An unselected chip is now a
   scrap of PAPER rather than a ghost — flat, but with the page's own cream behind it and the ring stitched in the
   colour it will become, so the row says something before anything is tapped.
@@ -1008,6 +1011,15 @@ there is exactly one screen in the app where anything can be changed.
   board it was asking about.
 - **A revealed picker must scroll itself into view.** Showing faces below the fold and
   leaving the page where it was reads as the button having done nothing.
+- **A taped `.print` is sized by whichever edge runs out first, and the mount hugs it.**
+  `width: 100%` plus a `max-height` is fine for a landscape photo and wrong for a portrait
+  one: the picture hits the height cap, stops growing, and `object-fit: contain` then
+  letterboxes it onto the mount — so a tall shot came out as a narrow strip with paper
+  down both sides and most of the available height unused. Both dimensions are `auto`
+  under a pair of maxima instead, so the photograph takes whichever bound it reaches first
+  at its own ratio with no letterbox, and `.print` is `width: fit-content` so the paper is
+  cut to the picture rather than the picture floating in the middle of a full-width sheet.
+  The capture draft's inline `height: 210px` went with it.
 - **Photos are never cropped to a fixed pixel height.** `object-fit: cover` on a fixed
   height cut most of the cat out of a portrait shot. Height follows the image's own aspect
   ratio, capped with `max-height`, and `contain` letterboxes onto the paper mount — which
