@@ -190,7 +190,13 @@ $('#tabs').addEventListener('click', (e) => {
 
 window.addEventListener('hashchange', route);
 
-$('#cog').addEventListener('click', () => { location.hash = '#/settings'; });
+/* Settings over an already-open detail SWAPS it rather than stacking on it — see
+ * navigate() in nav.js. Otherwise closing Settings dropped her back onto the cat page she
+ * had opened it from, which is not where she was heading. */
+$('#cog').addEventListener('click', () => {
+  if (detail !== null) { location.replace('#/settings'); return; }
+  location.hash = '#/settings';
+});
 
 /* ── swipe the detail sheet back down ──────────────────────────────────── */
 

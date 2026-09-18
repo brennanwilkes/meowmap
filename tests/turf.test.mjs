@@ -15,10 +15,18 @@ const MOCHI = [
   [48.4262, -123.3521],
 ];
 
-check('a turf needs three sightings; two gets a line', () => {
+check('a turf starts at the second sighting', () => {
   assert.strictEqual(shouldDrawTurf(1), false);
-  assert.strictEqual(shouldDrawTurf(2), false);
+  assert.strictEqual(shouldDrawTurf(2), true);
   assert.strictEqual(shouldDrawTurf(3), true);
+});
+
+check('two points still make a sane ring', () => {
+  const { ring } = turfRing([[48.4284, -123.3656], [48.4291, -123.3640]]);
+  assert.ok(ring.length > 8);
+  for (const [lat, lon] of ring) {
+    assert.ok(Number.isFinite(lat) && Number.isFinite(lon));
+  }
 });
 
 check('the ring encloses every sighting with room to spare', () => {

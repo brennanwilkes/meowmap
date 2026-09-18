@@ -80,32 +80,12 @@ export function wireChips(root, draft, onChange) {
 }
 
 /**
- * The same tags, as LABELS PINNED TO THE PAGE around the photographs.
+ * The cat's description as plain labels, in display order.
  *
- * For the places that only report what a cat is — the map sheet and the cat page. They
- * are rendered as a SIBLING of the filmstrip, never inside it, which is the entire point:
- * the strip clips and scrolls, these do not, so the prints shuffle sideways underneath
- * labels that stay put. The labels belong to the cat; the photographs are loose prints.
- *
- * They replaced a row of interactive-looking-but-dead chips under a rule. Two or three
- * small chips on a full-width line huddled at the left and wasted a band of height on a
- * sheet that is trying not to scroll — and the row was the reason there was a band to
- * waste.
- *
- * SIDES ALTERNATE AND EACH LABEL GETS ITS OWN VERTICAL BAND, so a cat wearing all seven
- * coat tags still cannot stack two of them on top of each other. The step closes up as
- * the count grows rather than running off the bottom.
+ * The filmstrip renders them, ONE COPY UNDER EACH PRINT — see frameFoot() in
+ * filmstrip.js for why they are not a single fixed set floating over the strip.
  */
-export function pinnedTags(tagged) {
+export function tagLabels(tagged) {
   const coat = Array.isArray(tagged.coat) ? tagged.coat : [];
-  const all = tagged.size === null || tagged.size === undefined ? coat : [...coat, tagged.size];
-  if (all.length === 0) return '';
-
-  const step = all.length < 2 ? 0 : Math.min(19, 62 / (all.length - 1));
-  return `<div class="pinned">${all.map((label, i) => {
-    const side = i % 2 === 0 ? 'l' : 'r';
-    const top = (9 + i * step).toFixed(1);
-    const rot = i % 2 === 0 ? -4.5 : 3.5;
-    return `<span class="pintag ${side}" style="--top:${top}%;--rot:${rot}deg">${esc(label)}</span>`;
-  }).join('')}</div>`;
+  return tagged.size === null || tagged.size === undefined ? coat : [...coat, tagged.size];
 }

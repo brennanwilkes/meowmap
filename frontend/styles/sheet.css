@@ -13,9 +13,8 @@
 .sheet {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 41;
   /* Ruled paper, so the prints read as objects lying ON a page rather than as content
-     inside a panel — which is what makes the pinned coat labels look stuck to the page
-     while the photographs shuffle past underneath them. `local` so the ruling scrolls
-     with the content, the same rule .pad follows and for the same reason. */
+     inside a panel. `local` so the ruling scrolls with the content, the same rule .pad
+     follows and for the same reason. */
   background-color: var(--paper-hi);
   background-image: repeating-linear-gradient(
     to bottom, transparent 0 27px, rgba(163, 152, 128, .16) 27px 28px);
@@ -28,9 +27,9 @@
      to look at a cat, and finding the tags below the fold turns a look into a task. The
      sheet is sized for its whole content and the polaroid is sized from the viewport
      height to match (--polaroid-h), so on any phone the whole glance lands at once. The
-     tags cost no height at all now — they are pinned over the print's edges — so the
-     print gets the room the old footer was taking. `overflow-y: auto` stays as the safety
-     net for a long pending-upload notice, not as the normal case. */
+     tags and the Edit button ride inside the strip now, under each print, so there is no
+     fixed footer band to leave an empty stripe below. `overflow-y: auto` stays as the
+     safety net for a long pending-upload notice, not as the normal case. */
   max-height: 92%; overflow-y: auto; -webkit-overflow-scrolling: touch;
   --polaroid-h: 70vh;
 }

@@ -48,15 +48,45 @@ function pettedStamp(petted) {
 }
 
 /**
+ * What sits under each print: the cat's labels, and the way in to edit THIS photo.
+ *
+ * DUPLICATED PER FRAME, deliberately. They were one fixed set pinned over the strip,
+ * which looked lovely standing still and wrong in motion — the prints slid sideways
+ * underneath labels that did not move, so the labels read as belonging to the sheet
+ * rather than to anything on it. Riding in the frame costs a copy per slide and buys
+ * back the thing that matters: everything you can see belongs to the print you are
+ * looking at.
+ *
+ * IT ALSO DELETES A BUG CLASS. The Edit button used to live outside the strip and open
+ * whatever index a scroll handler had last recorded — so on the cat page it opened the
+ * first photo however far she had swiped, because the handler updated a variable the
+ * click closure had already captured. A button that rides ON the print cannot point at
+ * a different one; there is nothing left to keep in sync.
+ */
+function frameFoot(s, tags) {
+  // IDs can be 0, and a queued upload has none at all until the Worker answers.
+  const canEdit = s.id !== null && s.id !== undefined;
+  if (tags.length === 0 && !canEdit) return '';
+  return `
+    <div class="frame-foot">
+      <div class="tags">
+        ${tags.map((label, i) => `<span class="pintag" style="--rot:${i % 2 === 0 ? '-3.5' : '2.5'}deg">${esc(label)}</span>`).join('')}
+      </div>
+      ${canEdit ? `<button type="button" class="btn-stick sm" data-edit="${esc(String(s.id))}">Edit</button>` : ''}
+    </div>`;
+}
+
+/**
  * One polaroid.
  *
  * @param opts.name   the cat's display name
  * @param opts.src    (sighting) => image URL; the sheet resolves pending rows locally
+ * @param opts.tags   the cat's coat and size labels, repeated under every print
  * @param opts.editing  BLANK FILM: no name, no date, no stamp. The editor has a labelled
  *                      field for every one of them, and a mark that cannot update until
  *                      Save would sit two inches above the field contradicting it.
  */
-export function frame(s, { name, src, editing = false }) {
+export function frame(s, { name, src, tags = [], editing = false }) {
   /* Square is the polaroid format, but a little off-square sneaks in more of a tall or
    * wide photo without the card stopping looking like a polaroid. Outside this band the
    * chin either swells into dead space or is squeezed down to nothing, and the window is
@@ -82,6 +112,7 @@ export function frame(s, { name, src, editing = false }) {
             ${pettedStamp(s.petted)}`}
         </figcaption>
       </figure>
+      ${editing ? '' : frameFoot(s, tags)}
     </div>`;
 }
 
@@ -101,12 +132,14 @@ export function filmstrip(sightings, opts) {
 }
 
 /**
- * Track which frame is showing and report it.
+ * Keep the dots in step with the strip, and report where it settles.
  *
- * `onChange` receives the index whenever it settles, so a caller can point its Edit
- * button at the photo actually on screen. Returns a cleanup function.
+ * `onChange` is optional — the dots are this function's own job and the only caller that
+ * still wants the index is the cat page, which remembers it across a re-render. It used
+ * to be how an outside Edit button found the photo on screen; the button lives on the
+ * print now, so nothing has to be kept in sync. Returns a cleanup function.
  */
-export function wireFilmstrip(el, startIndex, onChange) {
+export function wireFilmstrip(el, startIndex, onChange = null) {
   const dots = el.parentNode.querySelector('.strip-dots');
   let raf = 0;
   let current = startIndex;
@@ -136,7 +169,7 @@ export function wireFilmstrip(el, startIndex, onChange) {
     if (i === current) return;
     current = i;
     mark(i);
-    onChange(i);
+    if (onChange !== null) onChange(i);
   };
   const onScroll = () => {
     if (raf === 0) raf = requestAnimationFrame(settle);

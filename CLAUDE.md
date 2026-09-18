@@ -139,9 +139,14 @@ header states the two rules that erode silently. In short:
   in Settings, so a betrayal is a one-tap fix rather than a redeploy.
 - **OSM Humanitarian only serves from the `a.`/`b.`/`c.` subdomains** — bare
   `tile.openstreetmap.fr/hot/{z}/{x}/{y}.png` returns 404. Get the `{s}` shard right.
-- **Territory blobs:** 3+ sightings earns a "<name>'s turf" zone; 2 gets a dashed line.
-  Connector lines past 4–5 points turn to spaghetti. The blob is the support function of
-  the points at 44 angles, padded ~70 m, with a deterministic sine wobble.
+- **Territory blobs: 2+ sightings earns a "<name>'s turf" zone.** The blob is the support
+  function of the points at 44 angles, padded ~70 m, with a deterministic sine wobble;
+  connector lines past 4–5 points turn to spaghetti, which is why it is a zone. It was 3+,
+  with two sightings drawing a dashed connector instead — but the SECOND sighting is the
+  exact moment a cat stops being a dot and starts having a patch it lives on, which is the
+  whole point of the map, and holding that back until the third made the app look like it
+  had not noticed. The support function of two points is a stadium, which is a perfectly
+  good territory. Both dashed-line branches went with it.
 - **`fitBounds` before the container has laid out is the "map opens zoomed right out"
   bug.** It computes a zoom for the viewport Leaflet last measured, and against a
   zero-height box that zoom is wildly wrong; it is intermittent because whether layout has
@@ -647,22 +652,35 @@ no-scroll sheet possible.
 The sighting editor is the one place a name is not on a photo (there it is the link to the
 cat), and it uses the same treatment for that cat via the exported `nameStyle(catId)`.
 
-**A GLANCE IS ONE OBJECT ON A PAGE, not a card with a footer.** The map sheet and the cat
-page share `.glance-stage`: the strip, an Edit button in the top-right corner, and the
-cat's coat and size as `.pintag` labels **pinned to the page, not to the photo**. The
-labels are SIBLINGS of `.filmstrip`, never children — the strip clips and scrolls, they do
-not, so the prints shuffle sideways underneath labels that stay put. That is the whole
-conceit: the labels belong to the cat, the photographs are loose prints. They are
-`pointer-events: none`, or a label lying across a print would eat the swipe meant to page
-it, and sides alternate with each label in its own vertical band (the step closing up as
-the count grows), so all seven coat tags still cannot stack on each other.
+**THE CAT'S LABELS AND THE WAY IN RIDE WITH THE PRINT**, one copy per frame, in
+`.frame-foot` inside each `.frame`. Three arrangements were tried and the first two both
+failed in ways worth keeping:
 
-It replaced a bottom row under a rule holding the tags and Edit. That row cost a band of
-height on a sheet trying not to scroll, left an empty stripe under it whenever the content
-came up short, and made two or three tiny chips huddle at the left of a full-width line —
-and the row was the only reason there was a band to waste. The sheet's ground is now ruled
-paper (`background-attachment: local`, same rule as `.pad`), which is what makes the
-labels read as stuck to a page rather than as chrome.
+1. A bottom row under a rule holding the tags and an Edit button. It cost a band of height
+   on a sheet trying not to scroll, left an empty stripe under it whenever the content
+   came up short, and made two or three tiny chips huddle at the left of a full-width
+   line.
+2. The labels as fixed siblings of `.filmstrip`, pinned over the strip's edges. Lovely
+   standing still and **wrong in motion** — the prints slid sideways underneath labels
+   that did not move, so the labels read as belonging to the sheet rather than to anything
+   on it.
+3. Inside the frame, scrolling with the photograph they describe. Costs a copy per slide;
+   buys back the thing that matters, which is that everything visible belongs to the print
+   in front of you.
+
+**It also deletes a bug class.** An Edit button outside the strip has to be TOLD which
+photo is showing, and on the cat page it was told at render time and never after — the
+scroll handler updated `showIndex`, but the click closure had already captured `shown`,
+so swiping to the second photo and tapping Edit reliably opened the first. A button that
+rides ON the print cannot point at another one; `wireFilmstrip`'s `onChange` is optional
+now and the sheet passes none at all.
+
+`.frame-foot` is a GRID (`minmax(0, 1fr) auto`), not a flex row, for the same reason the
+action bars are: an overflowing flex line pushes its first item outside the container, so
+a cat wearing all seven coat tags would shove the button off the end. A `.pintag` is a
+scrap of paper with tape over it, not a `.chip` — a chip is a control and these are not
+tappable. The sheet's ground is ruled paper (`background-attachment: local`, same rule as
+`.pad`).
 
 **A glance must not scroll.** She taps a pin to look at a cat; finding the tags below the
 fold turns a look into a task. The sheet is `max-height: 92%`, the polaroid is sized from
@@ -732,6 +750,16 @@ there is exactly one screen in the app where anything can be changed.
   It used to set `detail` afterwards, so a page that threw left the sheet visible with
   `detail === null` — and `closeDetail` returned early, leaving a blank panel that
   nothing could dismiss until a reload. `closeDetail` now hides unconditionally.
+- **PULLING A SHEET DOWN LANDS ON A MAIN SCREEN, not on another sheet.** Every detail
+  route shares one layer, so opening a second from inside the first LOOKS like a
+  replacement and BEHAVES like a stack: `back()` walks the hash history and found the
+  detail she had just left rather than the tab underneath, so the sheet appeared to bounce
+  back up or to need dismissing twice. `navigate(hash, { replace: true })` is for anything
+  that swaps one detail for another — the cat page's Edit, a merge, a split, and the cog
+  while a detail is open. Only an entry from a TAB pushes, so there is exactly one detail
+  entry to come back off. It uses `location.replace`, not `history.replaceState`: only the
+  former fires a `hashchange` for a same-document fragment change, and with replaceState
+  the URL changes and the router never runs.
 - **Detail views and the bottom sheet have NO back button — you swipe them down.** Both
   stop short of the top edge so the page behind shows, both wear a grabber, and in both
   a drag only starts on the grabber or at scrollTop 0 (otherwise a downward flick
@@ -767,6 +795,13 @@ there is exactly one screen in the app where anything can be changed.
   content. That is the whole reason it is allowed to exist here: a FIXED ruling under
   scrolling text is what made Settings unreadable, because the lines crossed every line of
   type at a different offset each frame. Ruled paper that moves with the writing is paper.
+- **Every card on the Cats board is the same polaroid** the sheet and the cat page draw,
+  at card size — all five rules from the polaroid section apply, and it is not literally
+  `.polaroid` only because that one is sized from HEIGHT so a sheet can fit it without
+  scrolling, while these are sized by the grid column. The cat's colour moved from the
+  card's edge to a **felt-tip underline under the name**, because rule 2 is that a
+  polaroid has no outline and the identity cue had to go somewhere a hand-made mark
+  belongs. `::before` is already the pin or the tape, so the gloss is `::after`.
 - **Photo cards are little prints**, not UI cards: hairline mount, deep chin for the
   caption, hand-stuck tilt, and a push pin or a strip of tape (alternating by `nth-child`,
   `pointer-events: none` so neither eats the tap). The heavy ink keyline read as a card,

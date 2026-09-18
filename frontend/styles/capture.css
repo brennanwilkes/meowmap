@@ -202,43 +202,78 @@
   gap: 12px; margin-top: 10px;
 }
 
-/* Every photo card is a LITTLE PRINT: paper mount, a deep chin under the photo for the
-   caption, a hairline rather than a heavy keyline, and a hand-stuck tilt. The heavy
-   2.5px ink border they used to wear made them read as UI cards, and the dashed variant
-   read as "broken" rather than "not named yet". */
+/* EVERY CARD ON THIS BOARD IS THE SAME POLAROID as the sheet and the cat page draw, at
+   card size. It was a paper mount with a hairline keyline and the hard offset sticker
+   shadow, which is a perfectly good little print and is NOT what the rest of the app is
+   showing any more — so the board looked like a different app's screen. The five rules
+   are in sticker.css above `.polaroid` and all five apply here: cool film white with a
+   warm fall-off, NO outline, rounded outer corners over a square image area, gloss, and
+   an emulsion that stands proud of the paper.
+
+   It is not literally `.polaroid` because that one is sized from HEIGHT so a sheet can
+   fit it without scrolling; these are sized by the grid column. Same values, different
+   constraint. */
 .cat-card, .loose-card {
   display: flex; flex-direction: column;
-  background: var(--paper-hi); color: var(--ink); text-align: center;
-  border: 1.5px solid var(--rule); border-radius: var(--r-cut);
-  padding: 5px 5px 0;
-  box-shadow: 2px 3px 0 rgba(46, 42, 36, .22);
+  color: var(--ink); text-align: center;
+  background: linear-gradient(177deg, var(--film) 0%, var(--film) 62%, var(--film-low) 100%);
+  border: 0; border-radius: var(--r-film);
+  /* Percentage padding resolves against WIDTH, so the three margins stay optically equal
+     at any column width — the same trick .polaroid uses. */
+  padding: 5.5% 5.5% 0;
+  box-shadow:
+    0 1px 1px rgba(32, 28, 22, .16),
+    0 6px 13px -5px rgba(32, 28, 22, .38);
   transition: transform var(--up), box-shadow var(--up);
+}
+/* The gloss on the card. ::before is already the pin or the tape. */
+.cat-card::after, .loose-card::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  border-radius: inherit;
+  background: linear-gradient(116deg,
+    rgba(255, 255, 255, 0) 26%, rgba(255, 255, 255, .55) 41%,
+    rgba(255, 255, 255, .08) 53%, rgba(255, 255, 255, 0) 70%);
+  mix-blend-mode: overlay;
 }
 /* Hand-stuck, not grid-aligned. nth-child rather than random so a re-render never
    makes the whole page twitch. */
 .cat-card:nth-child(3n+1), .loose-card:nth-child(3n+1) { transform: rotate(-1.4deg); }
 .cat-card:nth-child(3n+2), .loose-card:nth-child(3n+2) { transform: rotate(1.1deg); }
 .cat-card:nth-child(3n),   .loose-card:nth-child(3n)   { transform: rotate(-.5deg); }
+/* A photograph is pressed flat against the desk, not flattened onto it like a sticker:
+   it keeps a shadow, just a smaller and closer one. */
 .cat-card:active, .loose-card:active {
   transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
-  box-shadow: 0 0 0 rgba(46, 42, 36, 0);
+  box-shadow: 0 1px 1px rgba(32, 28, 22, .18);
   transition: transform var(--down), box-shadow var(--down);
 }
 
+/* SQUARE, like the image area of real film, rather than a fixed 88px crop — so the window
+   stays square whatever width the grid column happens to be. */
 .cat-card img.cat-face, .loose-card img {
-  display: block; width: 100%; height: 88px; object-fit: cover;
-  /* A real print sits very slightly below its mount. */
-  box-shadow: inset 0 0 0 1px rgba(46, 42, 36, .22);
+  display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover;
+  border-radius: 0;
+  background: #14120f;
+  filter: sepia(.07) saturate(1.04) contrast(1.05);
+  /* The emulsion sits ON the card, not in a hole in it: cut edge, the shadow it throws,
+     and the faint bloom the gloss puts on the white around it. */
+  box-shadow:
+    0 0 0 1px rgba(26, 22, 16, .45),
+    0 2px 4px -1px rgba(32, 28, 22, .34),
+    0 0 0 3px rgba(32, 28, 22, .045);
 }
-/* The cat's colour, on the print's edge rather than around the photo. */
-.cat-card { border-color: var(--ring, var(--rule)); border-width: 2px; }
+/* THE CAT'S COLOUR IS NOW A FELT-TIP UNDERLINE, not the card's edge. Rule 2 of the
+   polaroid is that there is NO outline — a keyline round the card is the single biggest
+   tell that it is a div — so the identity cue had to move onto the white, where a mark
+   made by hand belongs anyway. */
 .cat-card .nm {
   font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
-  padding-top: 6px;
+  margin: 8px 6px 0; padding-bottom: 3px;
+  border-bottom: 3px solid var(--ring, var(--rule));
 }
 .cat-card .why, .loose-card .why {
-  font-family: var(--font-hand); font-size: var(--t-xs); color: var(--ink-soft);
-  padding: 2px 2px 8px;
+  font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft);
+  padding: 6px 2px 9px;
   /* ONE LINE, ALWAYS. "seen 3 times · 3 months ago" wrapping to two lines made every
      card in the row taller and the grid ragged; the middle dot is the part that can go. */
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -253,7 +288,10 @@
   display: flex; align-items: center; justify-content: center; gap: 7px;
   padding: 5px 4px 9px; min-width: 0;
 }
-.cat-card .caption .stamp { flex: 0 0 auto; background: var(--paper-hi); }
+.cat-card .caption .stamp {
+  flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1.5px var(--film), inset 0 0 0 3px currentColor;
+}
 .cat-card .caption .seen {
   font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft);
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -262,7 +300,7 @@
 /* Pinned or taped to the page. Alternating so a grid does not look stamped out, and
    pointer-events:none so neither ever eats the tap that opens the cat. */
 .cat-card::before, .loose-card::before {
-  content: ''; position: absolute; pointer-events: none; z-index: 2;
+  content: ''; position: absolute; pointer-events: none; z-index: 3;
 }
 .cat-card, .loose-card { position: relative; }
 /* A push pin: a shaded dome with a specular highlight. */
@@ -285,9 +323,8 @@
   transform: rotate(-38deg);
 }
 
-/* Not named yet is a permanent, first-class state: the print is simply unlabelled. It is
-   NOT dashed and NOT greyed — both read as broken rather than as ordinary. */
-.loose-card { border-style: solid; }
+/* Not named yet is a permanent, first-class state: the print is simply unlabelled — no
+   dash, no grey, and now no keyline either, because the card has none to vary. */
 .loose-card .btn-ghost.sm {
   width: 100%; margin: 0 0 6px; font-size: var(--t-xs); padding: 4px 6px;
 }
@@ -386,12 +423,6 @@
      "different cat" and "delete this photo" appeared to overlap. */
   margin-top: 14px;
 }
-
-/* A sighting inside a cat: the photo is the button, with its own actions underneath. */
-.loose-card .face {
-  display: block; width: 100%; padding: 0; background: none; border: 0;
-}
-.loose-card .face img { width: 100%; height: 88px; object-fit: cover; border-radius: var(--r-cut); }
 
 #edit-err:empty { display: none; }
 

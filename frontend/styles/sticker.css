@@ -408,7 +408,7 @@
 
 .strip-dots {
   display: flex; justify-content: center; gap: 6px;
-  margin: 13px 0 4px;
+  margin: 14px 0 4px;
 }
 .strip-dots span {
   width: 6px; height: 6px; border-radius: 50%;
@@ -417,47 +417,48 @@
 }
 .strip-dots span.on { background: var(--ink); opacity: 1; }
 
-/* ── the glance stage ──────────────────────────────────────────────────────
-   A GLANCE IS ONE OBJECT ON A PAGE, not a card with a footer.
+/* ── what sits under each print ────────────────────────────────────────────
+   THE CAT'S LABELS AND THE WAY IN RIDE WITH THE PRINT, one copy per frame.
 
-   It used to be the strip with a bottom row under a rule carrying the tags and the Edit
-   button. That row cost a band of height on a sheet that is trying not to scroll, left an
-   empty stripe beneath it whenever the content came up short, and made two or three tiny
-   chips huddle on the left of a full-width line. So the row is gone:
+   Three arrangements were tried. A bottom row under a rule cost a band of height on a
+   sheet trying not to scroll and left an empty stripe under it. Labels pinned over the
+   strip as fixed siblings looked lovely standing still and wrong in motion — the prints
+   slid sideways underneath labels that did not move, so the labels read as belonging to
+   the sheet rather than to anything on it. Inside the frame they scroll with the
+   photograph they describe, which is what they are.
 
-   - EDIT IS A CORNER BUTTON, in its own band above the prints, where a tab on a folder
-     would be. It is the only control here, so it does not need a row of its own furniture.
-   - THE TAGS ARE PINNED TO THE PAGE, not to the photo. They are siblings of the strip
-     rather than children, so THE PRINTS SCROLL SIDEWAYS UNDERNEATH THEM while they stay
-     put — which is the whole conceit: the labels belong to the cat, and the photos are
-     loose prints being shuffled past. `.filmstrip` clips horizontally; `.pinned` is
-     outside it, so it is not clipped and can hang over the print's edges.
-   - `pointer-events: none` throughout, or a label lying across the print would eat the
-     swipe that is meant to page it. */
-.glance-stage { position: relative; padding-top: 44px; }
-.glance-edit { position: absolute; top: 0; right: 0; z-index: 4; }
+   It also deletes a bug class: an Edit button outside the strip has to be told which
+   photo is showing, and on the cat page it was told at render time and never updated, so
+   it opened the first print however far she had swiped. A button ON the print cannot
+   point at another one.
 
-.pinned { position: absolute; inset: 44px 0 26px; pointer-events: none; z-index: 3; }
-/* Alternating sides down the page, each in its own vertical band, so however many coat
-   tags a cat collects they can never land on top of one another. `--top` and `--rot` are
-   computed in pinnedTags(): the step closes up as the count grows. */
+   A GRID, NOT A FLEX ROW. An overflowing flex line pushes its first item outside the
+   container — that is how "Undo" ended up off the left edge of the save bar through two
+   attempted fixes. Grid tracks clamp their children, so a cat wearing all seven coat tags
+   wraps inside its own column instead of shoving the button off the end. */
+.frame-foot {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 10px;
+  margin-top: 14px; padding: 0 2px;
+}
+.frame-foot .tags { display: flex; flex-wrap: wrap; gap: 10px 12px; min-width: 0; }
+
+/* A scrap of paper with a name on it, stuck down with tape — the same vocabulary as the
+   prints themselves, so it reads as part of the scrapbook rather than as a filter chip.
+   Not a .chip: a chip is a control, and these are not tappable. */
 .pintag {
-  position: absolute; top: var(--top, 12%);
+  position: relative;
   font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
   color: var(--ink); background: var(--paper-hi);
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
   padding: 7px 13px;
-  transform: rotate(var(--rot, -4deg));
+  transform: rotate(var(--rot, -3.5deg));
   box-shadow: var(--cut), var(--lift);
   white-space: nowrap;
 }
-.pintag.l { left: 0; }
-.pintag.r { right: 0; }
-/* Stuck down with a scrap of the same tape as the prints, so it reads as put there by
-   hand rather than as a label the app drew. */
 .pintag::after {
   content: ''; position: absolute; top: -7px; left: 50%; width: 34px; height: 13px;
-  margin-left: -17px; transform: rotate(-3deg);
+  margin-left: -17px; transform: rotate(-3deg); pointer-events: none;
   background: linear-gradient(158deg,
     rgba(255, 254, 250, .82), rgba(250, 248, 240, .55) 42%, rgba(255, 254, 250, .76));
   box-shadow: 0 1px 2px rgba(46, 42, 36, .28), inset 0 0 0 1px rgba(255, 255, 255, .5);

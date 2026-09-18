@@ -1,12 +1,12 @@
 import { DEFAULT_TILE_ID, LS, TILE_SOURCES } from '../config.js';
 import { photoUrl } from './api.js';
 import { catColour, displayName, inkFor } from './catcolor.js';
-import { pinnedTags } from './components/chips.js';
+import { tagLabels } from './components/chips.js';
 import { filmstrip, wireFilmstrip } from './components/filmstrip.js';
 import { getPref } from './device.js';
 import { $, esc } from './dom.js';
 import { navigate } from './nav.js';
-import { turfRing, shouldDrawTurf } from './turf.js';
+import { turfRing } from './turf.js';
 import { keepSized } from './minimap.js';
 import * as store from './store.js';
 
@@ -21,8 +21,8 @@ import * as store from './store.js';
  * this page had always been quietly breaking is stated in CLAUDE.md: two editors that
  * must agree is a bug factory.
  *
- * What is left is the same shape as the map's bottom sheet, deliberately: a print you can
- * page sideways through, the cat's labels pinned to the page around it, and one way in.
+ * What is left is the same shape as the map's bottom sheet, deliberately: prints you can
+ * page sideways through, each carrying the cat's labels and its own way in.
  */
 
 let root = null;
@@ -49,15 +49,14 @@ function render(state = store.get()) {
   const sightings = [...cat.sightings].sort((a, b) => b.seenAt - a.seenAt);
 
   if (showIndex >= sightings.length) showIndex = 0;
-  const shown = sightings[showIndex];
 
   root.innerHTML = `
     <div class="pad" style="--ring:${esc(colour.hex)};--ring-ink:${esc(inkFor(cat.id))}">
-      <div class="glance-stage">
-        <button type="button" class="btn-stick sm glance-edit" id="mode">Edit</button>
-        ${filmstrip(sightings, { name: displayName(cat), src: (x) => photoUrl(x.photoFull) })}
-        ${pinnedTags(cat)}
-      </div>
+      ${filmstrip(sightings, {
+        name: displayName(cat),
+        src: (x) => photoUrl(x.photoFull),
+        tags: tagLabels(cat),
+      })}
 
       ${sightings.length < 2 ? '' : `
         <hr class="rule">
@@ -66,10 +65,19 @@ function render(state = store.get()) {
     </div>`;
 
   if (unstrip !== null) { unstrip(); unstrip = null; }
+  // Only so a store refresh puts her back on the photo she was looking at.
   unstrip = wireFilmstrip($('.filmstrip', root), showIndex, (i) => { showIndex = i; });
 
-  // The Edit button follows the swipe, so it opens the photo actually on screen.
-  $('#mode', root).addEventListener('click', () => navigate(`#/sighting/${shown.id}`));
+  /* Each print carries its own Edit button. It used to be one button outside the strip,
+   * opening `shown` — captured at RENDER time from showIndex, which the scroll handler
+   * only updated afterwards — so swiping to the second photo and tapping Edit reliably
+   * opened the first. A button that rides on the print cannot point at another one. */
+  root.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-edit]');
+    if (btn === null) return;
+    // Detail → detail: REPLACE, so pulling down returns to the tab, not to this page.
+    navigate(`#/sighting/${btn.dataset.edit}`, { replace: true });
+  });
 
   if (sightings.length >= 2) drawTerritory(sightings, colour);
 }
@@ -88,16 +96,12 @@ function drawTerritory(sightings, colour) {
     maxNativeZoom: chosen.maxNativeZoom,
   }).addTo(miniMap);
 
+  // Only drawn at two or more sightings, which is also where a turf starts.
   const points = sightings.map((s) => [s.lat, s.lon]);
-  if (shouldDrawTurf(sightings.length)) {
-    L.polygon(turfRing(points), {
-      color: colour.hex, weight: 2, opacity: .85, fillColor: colour.hex, fillOpacity: .17,
-      dashArray: '7 5', interactive: false,
-    }).addTo(miniMap);
-  } else {
-    L.polyline(points, { color: colour.hex, weight: 2, dashArray: '6 6', interactive: false })
-      .addTo(miniMap);
-  }
+  L.polygon(turfRing(points), {
+    color: colour.hex, weight: 2, opacity: .85, fillColor: colour.hex, fillOpacity: .17,
+    dashArray: '7 5', interactive: false,
+  }).addTo(miniMap);
   for (const s of sightings) {
     L.circleMarker([s.lat, s.lon], {
       radius: 5, color: '#2e2a24', weight: 2, fillColor: colour.hex, fillOpacity: 1,

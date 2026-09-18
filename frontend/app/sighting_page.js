@@ -395,7 +395,7 @@ async function merge(s, cat, otherId) {
     await turnstile.ensurePass();
     await applyEdits(s, cat);
     const survivorId = await mergeCats(cat.id, otherId);
-    navigate(`#/cat/${survivorId}`);
+    navigate(`#/cat/${survivorId}`, { replace: true });
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'I’ve seen this cat before';
@@ -413,7 +413,7 @@ async function split(s, cat) {
     await turnstile.ensurePass();
     await applyEdits(s, cat);
     const fresh = await splitToNewCat(s.id, cat);
-    navigate(`#/cat/${fresh.id}`);
+    navigate(`#/cat/${fresh.id}`, { replace: true });
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'This photo is a different cat';

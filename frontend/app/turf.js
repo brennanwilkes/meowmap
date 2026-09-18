@@ -1,7 +1,11 @@
 /* "Mochi's turf" — the territory blob drawn around a cat's sightings.
  *
- * Replaces connector lines, which turn to spaghetti past four or five points. Three or
- * more sightings earns a blob; two gets a dashed line (the caller decides, see TURF_MIN).
+ * Replaces connector lines, which turn to spaghetti past four or five points. TWO OR MORE
+ * sightings earns a blob. It was three, with two drawing a dashed connector instead —
+ * but a second sighting is the exact moment a cat stops being a dot and starts having a
+ * patch it lives on, which is the whole point of the map, and holding that back until the
+ * third made the app look like it had not noticed. The support function of two points is
+ * a stadium, which is a perfectly good territory.
  *
  * Shape: the SUPPORT FUNCTION of the points sampled at fixed angles, padded outward,
  * with a deterministic wobble. Chosen over a convex hull with rounded corners because it
@@ -12,7 +16,7 @@
  * shimmer between renders, which it did when seeded from Math.random.
  */
 
-export const TURF_MIN_SIGHTINGS = 3;
+export const TURF_MIN_SIGHTINGS = 2;
 export const TURF_PAD_M = 70;
 /** Only once you are genuinely zoomed in. At 14 the blob is small and the label just
  *  collides with its neighbours. */

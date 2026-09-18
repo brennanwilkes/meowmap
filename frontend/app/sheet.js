@@ -3,7 +3,7 @@ import { photoUrl } from './api.js';
 import { displayName, inkFor, ringFor } from './catcolor.js';
 import { navigate } from './nav.js';
 import { filmstrip, wireFilmstrip } from './components/filmstrip.js';
-import { pinnedTags } from './components/chips.js';
+import { tagLabels } from './components/chips.js';
 
 /* The detail sheet. A sibling of the map div, not an L.popup — there is no L.popup or
  * L.tooltip anywhere in this codebase.
@@ -14,8 +14,6 @@ import { pinnedTags } from './components/chips.js';
  * one place editing happens — one editor, not two that must agree. */
 
 let objectUrls = new Set();
-/** The frame currently on screen, so Edit opens what she is looking at. */
-let showing = null;
 let unstrip = null;
 
 function releaseUrls() {
@@ -59,29 +57,24 @@ export function openSightingSheet(sighting, cat) {
     ? [sighting]
     : [...cat.sightings].sort((a, b) => b.seenAt - a.seenAt);
   const startIndex = Math.max(0, shots.findIndex((x) => x.clientId === sighting.clientId));
-  showing = shots[startIndex] ?? sighting;
 
   sheet.innerHTML = `
     <div class="grabber"></div>
     ${pendingNote}
-    <div class="glance-stage">
-      ${sighting.pending === true ? '' : `
-        <button type="button" class="btn-stick sm glance-edit" id="sheet-open">Edit</button>`}
-      ${filmstrip(shots, { name, src: photoFor })}
-      ${pinnedTags(tagged)}
-    </div>`;
+    ${filmstrip(shots, { name, src: photoFor, tags: tagLabels(tagged) })}`;
 
   if (unstrip !== null) { unstrip(); unstrip = null; }
-  // The Edit button follows the swipe: it must open the photo actually on screen.
-  unstrip = wireFilmstrip($('.filmstrip', sheet), startIndex, (i) => { showing = shots[i]; });
+  unstrip = wireFilmstrip($('.filmstrip', sheet), startIndex);
 
-  // A queued sighting has no server id yet, so there is nothing to open.
-  if (sighting.pending !== true) {
-    $('#sheet-open').addEventListener('click', () => {
-      closeSheet();
-      navigate(`#/sighting/${showing.id}`);
-    });
-  }
+  /* Every print carries its own Edit button, so there is nothing to keep in step with the
+   * swipe — the button she can see is the one on the photo she can see. A queued upload
+   * has no server id yet and renders none. */
+  sheet.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-edit]');
+    if (btn === null) return;
+    closeSheet();
+    navigate(`#/sighting/${btn.dataset.edit}`);
+  });
 
   // --ring is read by the sheet's own sticker styling.
   sheet.style.setProperty('--ring', ring);

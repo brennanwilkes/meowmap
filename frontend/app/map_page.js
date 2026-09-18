@@ -163,16 +163,8 @@ function drawTurf(state) {
     const pts = cat.sightings.map((s) => [s.lat, s.lon]);
     const ring = ringFor(cat.id);
 
-    if (!shouldDrawTurf(pts.length)) {
-      // Two sightings is a line; connector lines past four or five turn to spaghetti,
-      // which is why three earns a territory instead.
-      if (pts.length === 2) {
-        turfLayers.push(L.polyline(pts, {
-          color: ring, weight: 3, dashArray: '6 6', opacity: .9, interactive: false,
-        }).addTo(map));
-      }
-      continue;
-    }
+    // A lone sighting is just a pin; from the second onwards it earns a territory.
+    if (!shouldDrawTurf(pts.length)) continue;
 
     const { ring: poly, centre } = turfRing(pts);
     turfLayers.push(L.polygon(poly, {
