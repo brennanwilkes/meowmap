@@ -86,7 +86,11 @@ function groupedPanel() {
   const tags = [...cat.coat, cat.size].filter((t) => t !== null && t !== undefined);
   return `
       <div class="grouped" style="--ring:${esc(catColour(cat.id))}">
-        <span class="nm">${esc(displayName(cat))}</span>
+        <!-- The ONE place a blank name cannot simply be omitted: this panel has no
+             photograph on it, so with no name and no tags it would be an empty coloured
+             box. "this cat" is a pronoun for the one she just tapped, not a label about
+             the absence of a name. -->
+        <span class="nm">${esc(displayName(cat) === '' ? 'this cat' : displayName(cat))}</span>
         ${tags.length === 0 ? '' : `<span class="why">${esc(tags.join(' · '))}</span>`}
       </div>
       <button type="button" class="btn-ghost wide" id="ungroup">No, this is a different cat</button>`;
@@ -156,7 +160,7 @@ function suggestionView(candidates, cats) {
           <button type="button" class="suggest" data-cat="${cat.id}"
                   style="--ring:${esc(catColour(cat.id))}">
             <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
-            <span class="nm">${esc(displayName(cat))}</span>
+            ${displayName(cat) === '' ? '' : `<span class="nm">${esc(displayName(cat))}</span>`}
             <span class="why">${esc(reasonText(score, now))}</span>
           </button>`;
         }).join('')}
@@ -392,7 +396,7 @@ function showPicker() {
         <button type="button" class="suggest" data-pick="${cat.id}"
                 style="--ring:${esc(catColour(cat.id))}">
           <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
-          <span class="nm">${esc(displayName(cat))}</span>
+          ${displayName(cat) === '' ? '' : `<span class="nm">${esc(displayName(cat))}</span>`}
           <span class="why">${esc(Number.isFinite(metres) ? distanceText(metres) : '')}</span>
         </button>`;
       }).join('')}

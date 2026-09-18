@@ -86,7 +86,12 @@
   box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
   transition: transform var(--down), box-shadow var(--down);
 }
-.chiprow { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+/* 8px was the original and right; it went to 12 on a hunch that two flat dashed boxes
+   sitting close together were reading as one box with a line through it. They were not —
+   the ring was simply not being painted on one edge (see the dashed-ring block above) —
+   and the extra air just made the rows sprawl. 9 keeps a hair of the daylight without
+   the gap becoming the thing you notice. */
+.chiprow { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 8px; }
 
 .btn-stick {
   font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;

@@ -379,7 +379,7 @@ function showMergePicker(s, cat) {
         <button type="button" class="suggest" data-merge="${o.id}"
                 style="--ring:${esc(catColour(o.id).hex)}">
           <img src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
-          <span class="nm">${esc(displayName(o))}</span>
+          ${displayName(o) === '' ? '' : `<span class="nm">${esc(displayName(o))}</span>`}
           <span class="why">${esc(distanceText(near(o)))} away</span>
         </button>`;
       }).join('')}

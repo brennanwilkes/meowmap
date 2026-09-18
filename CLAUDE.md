@@ -922,7 +922,10 @@ there is exactly one screen in the app where anything can be changed.
   under every face on the board, and, worst, in the middle of "Not named yet's turf" on
   the map. Unnamed is permanent and first-class here and most cats live in it, so it
   should look like a photo nobody has written on yet. **An unnamed cat still gets its turf
-  blob; it just gets no label on it.**
+  blob; it just gets no label on it.** The ONE exception is the capture form's "this is
+  that cat" panel: it has no photograph on it, so with no name and no tags it would be an
+  empty coloured box, and it says "this cat" — a pronoun for the one she just tapped, not
+  a label about the absence of a name.
 - **A cat is "them", never "it".** Only where it means the animal: a photo still has "no
   location saved in it", and the app still "sorts itself out".
 - **`splitToNewCat` is shared** (`identity.js`) between the cat page and the sighting
@@ -965,9 +968,12 @@ there is exactly one screen in the app where anything can be changed.
   and silently deletes the ring. One line doing exactly that (`.coat-filter .chip[aria-pressed="false"]`)
   is why the map's filter looked flat and characterless next to the same chips elsewhere.
 
-  The chip row's gap also went 8px → 12px: two flat dashed boxes that close together read
-  as one box with a line through it. And an unselected chip is now a scrap of PAPER rather
-  than a ghost — flat, but with the page's own cream behind it and the ring stitched in the
+  The chip row's gap went 8px → 12px → **9px** along the way: the widening was a hunch
+  that two flat dashed boxes close together were reading as one box with a line through
+  it, and they were not — the ring simply was not being painted on one edge. The extra air
+  only made the rows sprawl. The row's own side slack is likewise just the 3.5px ring plus
+  a hair, not the 10px two rounds of chasing had grown it to. An unselected chip is now a
+  scrap of PAPER rather than a ghost — flat, but with the page's own cream behind it and the ring stitched in the
   colour it will become, so the row says something before anything is tapped.
 - **Chips can bleed past their layout box.** They are rotated AND wear a 3.5px die-cut
   paper ring, so the painted box is wider than the layout box on both sides. Flush against
@@ -991,6 +997,15 @@ there is exactly one screen in the app where anything can be changed.
   outside the container: "Undo" ended up off the left edge with its border clipped through
   two attempted fixes (`margin-left:auto`, then `justify-content`). Grid tracks clamp
   their children, so the failure mode is structurally impossible rather than discouraged.
+- **A face picker is a TWO-UP BOARD that scrolls down, never a horizontal strip.**
+  `.suggest-row` — "is this one of these?", "I've seen this cat before", and the merge
+  picker — was a sideways scroller of 128px cards, which hid the third face off the right
+  edge behind a gesture nobody looks for on a screen that is already asking a question.
+  Down is the direction these pages scroll anyway. Two columns and not `auto-fill`: there
+  are at most three candidates, and a third column would shrink the one thing the screen
+  exists to show. `.suggest` shares the `.cat-card` polaroid block, because it is the same
+  object answering the same question and looked like a different app's widget beside the
+  board it was asking about.
 - **A revealed picker must scroll itself into view.** Showing faces below the fold and
   leaving the page where it was reads as the button having done nothing.
 - **Photos are never cropped to a fixed pixel height.** `object-fit: cover` on a fixed

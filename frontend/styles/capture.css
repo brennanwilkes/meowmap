@@ -6,13 +6,16 @@
    "maybe just some HR like lined paper ish to separate the sections". */
 .rule.thin { margin: 10px 0 8px; opacity: .6; }
 
-/* Chips are ROTATED and wear a 3.5px die-cut paper ring, so their painted box is wider
-   than their layout box on both sides. Flush against the left edge of a container that
-   clips (.pad is overflow-x:hidden, because every card here is tilted) the first chip in
-   a row lost its left border — "did not pet them" with one side shaved off. The row is
-   given slack and pulled back out by the same amount, so the layout is unchanged and
-   there is somewhere for the ink to go. */
-.chiprow { padding: 4px 10px; margin-left: -10px; margin-right: -10px; }
+/* A SELECTED chip is rotated and wears a 3.5px die-cut paper ring, so its painted box is
+   wider than its layout box on both sides, and .pad clips (overflow-x:hidden, because
+   every card here is tilted). The row is given that much slack and pulled back out by the
+   same amount, so the layout is unchanged and there is somewhere for the ink to go.
+
+   This is NOT what caused "did not pet them" to lose a border — that was the dashed edge
+   itself, see the dashed-ring block in sticker.css. Two rounds of widening this were
+   spent chasing it, which is why the number is now only as big as the ring actually is
+   rather than a guess with padding on top. */
+.chiprow { padding: 4px 5px; margin-left: -5px; margin-right: -5px; }
 .rule {
   border: 0;
   height: 1px;
@@ -80,30 +83,25 @@
 
 .saved-note { font-size: var(--t-lg); margin: 6px 0 14px; }
 
-.suggest-row { display: flex; gap: 11px; overflow-x: auto; padding: 4px 2px 14px; }
-.suggest {
-  flex: 0 0 128px;
-  display: flex; flex-direction: column; gap: 5px;
-  background: var(--paper-hi); color: var(--ink);
-  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  padding: 7px;
-  box-shadow: var(--cut), var(--lift);
-  transform: rotate(-1.2deg);
-  transition: transform var(--up), box-shadow var(--up);
+/* TWO TO A ROW, SCROLLING DOWN — the same board the Cats tab is, not a filmstrip.
+   It was a horizontal scroller of 128px cards, which hid the third face off the right
+   edge behind a gesture nobody looks for on a screen that is already answering a
+   question. Down is the direction this page scrolls anyway, so the faces just carry on
+   in it and every candidate is on screen at a size worth looking at. Two columns rather
+   than auto-fill: there are at most three, and a third column would shrink the one thing
+   this screen exists to show. */
+.suggest-row {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px; padding: 6px 2px 14px;
 }
-.suggest:nth-child(even) { transform: rotate(1.4deg); }
-.suggest:active {
-  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
-  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
-  transition: transform var(--down), box-shadow var(--down);
+.suggest .nm {
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
+  margin-top: 8px;
 }
-.suggest img {
-  width: 100%; height: 104px; object-fit: cover;
-  border-radius: var(--r-cut);
-  box-shadow: 0 0 0 3px var(--ring);
+.suggest .why {
+  font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft);
+  padding: 4px 2px 9px;
 }
-.suggest .nm { font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700; }
-.suggest .why { font-family: var(--font-hand); font-size: var(--t-xs); color: var(--ink-soft); }
 
 /* ── taped cards ───────────────────────────────────────────────────────── */
 
@@ -164,7 +162,6 @@
 }
 
 @media (pointer: coarse) {
-  .suggest { flex-basis: 140px; }
   .field input { min-height: 46px; }
 }
 
@@ -208,8 +205,12 @@
 
    It is not literally `.polaroid` because that one is sized from HEIGHT so a sheet can
    fit it without scrolling; these are sized by the grid column. Same values, different
-   constraint. */
-.cat-card, .loose-card {
+   constraint.
+
+   `.suggest` — the faces on "is this one of these?" — is in here too. It is the same
+   object answering the same question ("which cat is this"), and it looked like a
+   different app's widget beside the board it is asking about. */
+.cat-card, .loose-card, .suggest {
   display: flex; flex-direction: column;
   color: var(--ink); text-align: center;
   background: linear-gradient(177deg, var(--film) 0%, var(--film) 62%, var(--film-low) 100%);
@@ -223,7 +224,7 @@
   transition: transform var(--up), box-shadow var(--up);
 }
 /* The gloss on the card. ::before is already the pin or the tape. */
-.cat-card::after, .loose-card::after {
+.cat-card::after, .loose-card::after, .suggest::after {
   content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
   border-radius: inherit;
   background: linear-gradient(116deg,
@@ -233,12 +234,12 @@
 }
 /* Hand-stuck, not grid-aligned. nth-child rather than random so a re-render never
    makes the whole page twitch. */
-.cat-card:nth-child(3n+1), .loose-card:nth-child(3n+1) { transform: rotate(-1.4deg); }
-.cat-card:nth-child(3n+2), .loose-card:nth-child(3n+2) { transform: rotate(1.1deg); }
-.cat-card:nth-child(3n),   .loose-card:nth-child(3n)   { transform: rotate(-.5deg); }
+.cat-card:nth-child(3n+1), .loose-card:nth-child(3n+1), .suggest:nth-child(3n+1) { transform: rotate(-1.4deg); }
+.cat-card:nth-child(3n+2), .loose-card:nth-child(3n+2), .suggest:nth-child(3n+2) { transform: rotate(1.1deg); }
+.cat-card:nth-child(3n),   .loose-card:nth-child(3n),   .suggest:nth-child(3n) { transform: rotate(-.5deg); }
 /* A photograph is pressed flat against the desk, not flattened onto it like a sticker:
    it keeps a shadow, just a smaller and closer one. */
-.cat-card:active, .loose-card:active {
+.cat-card:active, .loose-card:active, .suggest:active {
   transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
   box-shadow: 0 1px 1px rgba(32, 28, 22, .18);
   transition: transform var(--down), box-shadow var(--down);
@@ -246,7 +247,7 @@
 
 /* SQUARE, like the image area of real film, rather than a fixed 88px crop — so the window
    stays square whatever width the grid column happens to be. */
-.cat-card img.cat-face, .loose-card img {
+.cat-card img.cat-face, .loose-card img, .suggest img {
   display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover;
   border-radius: 0;
   background: #14120f;
@@ -298,12 +299,12 @@
 
 /* Pinned or taped to the page. Alternating so a grid does not look stamped out, and
    pointer-events:none so neither ever eats the tap that opens the cat. */
-.cat-card::before, .loose-card::before {
+.cat-card::before, .loose-card::before, .suggest::before {
   content: ''; position: absolute; pointer-events: none; z-index: 3;
 }
-.cat-card, .loose-card { position: relative; }
+.cat-card, .loose-card, .suggest { position: relative; }
 /* A push pin: a shaded dome with a specular highlight. */
-.cat-card:nth-child(2n)::before, .loose-card:nth-child(2n)::before {
+.cat-card:nth-child(2n)::before, .loose-card:nth-child(2n)::before, .suggest:nth-child(2n)::before {
   left: 50%; top: -7px; margin-left: -6px;
   width: 12px; height: 12px; border-radius: 50%;
   background:
@@ -313,7 +314,7 @@
   box-shadow: 0 1px 2px rgba(46, 42, 36, .45);
 }
 /* A strip of tape across the corner. */
-.cat-card:nth-child(2n+1)::before, .loose-card:nth-child(2n+1)::before {
+.cat-card:nth-child(2n+1)::before, .loose-card:nth-child(2n+1)::before, .suggest:nth-child(2n+1)::before {
   left: -9px; top: 8px;
   width: 34px; height: 13px;
   background: var(--tape);
