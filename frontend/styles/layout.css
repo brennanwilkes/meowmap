@@ -123,6 +123,12 @@
 
 /* Not a bar. Three page markers stuck to the bottom edge with the ruled page showing
    between them — a continuous full-width bar reads as chrome and fights the conceit. */
+/* THE NAV IS GONE WHILE A PHOTO IS BEING SAVED — saving is the one flow in the app
+   holding something half-finished that a tab tap would throw away, and the draft's own
+   save bar is its way out. `display: none` is enough and gives the height back on its
+   own: the tab strip is `flex: 0 0 auto` in a column whose .stage is `flex: 1 1 auto`. */
+body.capturing .tabs { display: none; }
+
 .tabs {
   flex: 0 0 auto;
   display: flex; gap: 10px; align-items: center; justify-content: center;

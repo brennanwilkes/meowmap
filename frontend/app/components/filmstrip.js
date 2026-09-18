@@ -18,15 +18,44 @@ import { dateText, esc } from '../dom.js';
 
 /* ── what goes on the white ────────────────────────────────────────────────
  *
- * A polaroid's caption area is written on BY HAND, at whatever angle the pen happened to
- * be, wherever there was room. Three marks live there — the cat's name, the date, and the
- * petted stamp — and the arrangement is picked per photo from a set of LAYOUTS rather
- * than jittered independently, because independent jitter reads as noise and can overlap.
+ * A polaroid's chin is where everything true of the photograph is written, and here that
+ * is SEVEN kinds of mark: the cat's name, the date, the note she wrote on it, the petted
+ * stamp, one label per coat tag, the size, and the way in to edit it.
+ *
+ * THEY ARE ONE SYSTEM, NOT TWO. The marks were absolutely positioned from a set of
+ * hand-checked arrangements while the labels and the button sat in a fixed row along the
+ * bottom — which cannot distribute evenly, because neither half knows how much room the
+ * other is using. The result was everything crushed against the bottom edge with a void
+ * through the middle. So the chin is now a FLEX COLUMN of rows with `space-between`: the
+ * rows spread themselves over whatever height there is, however many marks there are.
+ *
+ * Rows, not free placement, is what makes it safe. Marks cannot overlap because they are
+ * in normal flow, so a long name or eight coat tags degrade by wrapping instead of by
+ * landing on top of each other — which is exactly what absolute positioning could not
+ * promise once the number of marks stopped being fixed at three.
+ *
+ * The hand-placed feel comes from the two things that are still free: each ROW picks its
+ * own horizontal alignment from a template, and each MARK gets its own small rotation.
+ * Nothing lines up with anything else, which is the point.
  *
  * Everything here is DETERMINISTIC from the row's id. A re-render must not make the page
  * twitch, and a photo has to look the same every time she opens it.
  */
-const LAYOUTS = 6;
+
+/** Where each row sits. Chosen per photo, so two prints of one cat differ. */
+const ROW_ALIGNS = [
+  ['flex-start', 'flex-end', 'center', 'flex-end', 'flex-start'],
+  ['flex-end', 'flex-start', 'flex-end', 'center', 'flex-end'],
+  ['center', 'flex-end', 'flex-start', 'flex-end', 'center'],
+  ['flex-start', 'center', 'flex-end', 'flex-start', 'flex-end'],
+  ['flex-end', 'center', 'center', 'flex-end', 'flex-start'],
+  ['center', 'flex-start', 'flex-end', 'center', 'flex-end'],
+];
+/** Walked from the photo's id so no two marks share an angle. */
+const TILTS = [-2.6, 1.9, -1.4, 2.4, -3.1, 1.2, -1.8, 2.8, -2.2, 1.6];
+
+/** At most two marks to a row: three of anything wider than a date will not fit. */
+const PER_ROW = 2;
 
 /* The name is applied to EACH PRINT SEPARATELY — written on one, stamped on the next,
  * a stuck-on label on the third — because that is what a person with a pen, a stamp and
@@ -47,35 +76,76 @@ function pettedStamp(petted) {
     : '<span class="stamp pale">not petted</span>';
 }
 
+/** IDs can be 0, and a queued upload has none at all until the Worker answers. */
+function canEdit(s) {
+  return s.id !== null && s.id !== undefined;
+}
+
 /**
- * What sits at the BOTTOM OF THE WHITE, under the handwriting: the cat's labels, and the
- * way in to edit this photo.
+ * How many rows this print's chin needs.
  *
- * DUPLICATED PER PRINT, deliberately, and ON the card rather than beneath it. They were
- * first one fixed set pinned over the strip, which looked lovely standing still and wrong
- * in motion — the prints slid sideways underneath labels that did not move, so the labels
- * read as belonging to the sheet rather than to anything on it. Then a row under each
- * card, which moved correctly but left the object and its labels as two separate things
- * stacked up. On the white they are part of the photograph, which is what a polaroid's
- * chin is FOR: the card is the whole object and everything true of it is written there.
- *
- * IT ALSO DELETES A BUG CLASS. The Edit button used to live outside the strip and open
- * whatever index a scroll handler had last recorded — so on the cat page it opened the
- * first photo however far she had swiped, because the handler updated a variable the
- * click closure had already captured. A button that rides ON the print cannot point at
- * a different one; there is nothing left to keep in sync.
+ * Exported shape matters: `filmstrip` takes the MAX across the strip and gives every card
+ * the same answer, because the petted stamp is per-photo and one card an inch taller than
+ * the one beside it reads as a layout bug rather than as a scrapbook.
  */
-function filmFoot(s, tags) {
-  // IDs can be 0, and a queued upload has none at all until the Worker answers.
-  const canEdit = s.id !== null && s.id !== undefined;
-  if (tags.length === 0 && !canEdit) return '';
-  return `
-    <div class="film-foot">
-      <div class="tags">
-        ${tags.map((label, i) => `<span class="pintag" style="--rot:${i % 2 === 0 ? '-3.5' : '2.5'}deg">${esc(label)}</span>`).join('')}
-      </div>
-      ${canEdit ? `<button type="button" class="btn-stick sm" data-edit="${esc(String(s.id))}">Edit</button>` : ''}
-    </div>`;
+function rowCount(s, tags) {
+  const marks = 2
+    + (s.note === null || s.note === undefined || s.note === '' ? 0 : 1)
+    + (s.petted === null || s.petted === undefined ? 0 : 1)
+    + tags.length;
+  return Math.ceil(marks / PER_ROW) + (canEdit(s) ? 1 : 0);
+}
+
+/**
+ * How tall the card is, from how much is written on it.
+ *
+ * A fixed ratio cannot work once the chin holds a variable number of marks: the .72 of
+ * the real 88x107mm card starved anything past three, and a ratio deep enough for eight
+ * coat tags is a bookmark rather than a photograph. The card grows by roughly one mark-row
+ * at a time and is clamped at both ends, so it never stops reading as film.
+ */
+function cardRatio(rows) {
+  return Math.min(0.80, Math.max(0.52, 0.88 - 0.055 * rows)).toFixed(3);
+}
+
+/** The marks, in rows. See the header for why this is flow and not absolute placement. */
+function chin(s, name, tags, rows) {
+  const n = Math.abs(s.id ?? s.seenAt);
+  const marks = [
+    `<span class="nm ${nameStyle(n)}">${esc(name)}</span>`,
+    `<span class="when">${esc(dateText(s.seenAt))}</span>`,
+  ];
+  /* THE NOTE IS ALWAYS HANDWRITTEN — never stamped, never a stuck-on label, whatever
+   * treatment the name happens to be wearing on this print. The other marks are facts
+   * about the cat and can plausibly have been applied with a stamp or a label; a note is
+   * a sentence she wrote, and there is no such thing as a rubber stamp of it. */
+  if (s.note !== null && s.note !== undefined && s.note !== '') {
+    marks.push(`<span class="scribble">${esc(s.note)}</span>`);
+  }
+  const stamp = pettedStamp(s.petted);
+  if (stamp !== '') marks.push(stamp);
+  for (const label of tags) marks.push(`<span class="pintag">${esc(label)}</span>`);
+
+  const grouped = [];
+  for (let i = 0; i < marks.length; i += PER_ROW) grouped.push(marks.slice(i, i + PER_ROW));
+  /* The button gets a row to itself at the bottom, and is the ONE mark that is never
+   * rotated: everything else here is decoration and this is a tap target. */
+  if (canEdit(s)) {
+    grouped.push([`<button type="button" class="btn-stick sm" data-edit="${esc(String(s.id))}">Edit</button>`]);
+  }
+  /* Pad to the strip-wide row count with empty rows, so `space-between` spreads every
+   * card's marks over the same height and the strip does not look ragged. */
+  while (grouped.length < rows) grouped.splice(grouped.length - 1, 0, []);
+
+  const aligns = ROW_ALIGNS[n % ROW_ALIGNS.length];
+  let m = 0;
+  return grouped.map((row, r) => `
+    <div class="mark-row" style="--just:${aligns[r % aligns.length]}">
+      ${row.map((html) => {
+        const rot = TILTS[(n + m++) % TILTS.length];
+        return `<span class="mark" style="--rot:${rot}deg">${html}</span>`;
+      }).join('')}
+    </div>`).join('');
 }
 
 /**
@@ -83,44 +153,45 @@ function filmFoot(s, tags) {
  *
  * @param opts.name   the cat's display name
  * @param opts.src    (sighting) => image URL; the sheet resolves pending rows locally
- * @param opts.tags   the cat's coat and size labels, repeated under every print
- * @param opts.editing  BLANK FILM: no name, no date, no stamp. The editor has a labelled
- *                      field for every one of them, and a mark that cannot update until
- *                      Save would sit two inches above the field contradicting it.
+ * @param opts.tags   the cat's coat and size labels, written on every print
+ * @param opts.rows   the strip-wide row count, so every card comes out the same height.
+ *                    Omitted for a lone frame, which then sizes itself.
+ * @param opts.editing  BLANK FILM: nothing written on it at all. The editor has a labelled
+ *                      field for every mark, and one that cannot update until Save would
+ *                      sit two inches above the field contradicting it.
  */
-export function frame(s, { name, src, tags = [], editing = false }) {
+export function frame(s, { name, src, tags = [], rows = null, editing = false }) {
   /* Square is the polaroid format, but a little off-square sneaks in more of a tall or
    * wide photo without the card stopping looking like a polaroid. Outside this band the
    * chin either swells into dead space or is squeezed down to nothing, and the window is
    * `cover` so the clamp crops rather than letterboxing. */
   const raw = s.photoW > 0 && s.photoH > 0 ? s.photoW / s.photoH : 1;
   const ar = Math.min(1.12, Math.max(0.93, raw)).toFixed(3);
-  const n = Math.abs(s.id ?? s.seenAt);
-  const lay = editing ? '' : ` lay-${n % LAYOUTS}`;
-  const style = nameStyle(n);
+  const lines = rows === null ? rowCount(s, tags) : rows;
 
   return `
     <div class="frame">
-      <figure class="polaroid${editing ? ' editing' : ''}" style="--ar:${esc(ar)}">
+      <figure class="polaroid${editing ? ' editing' : ''}"
+              style="--ar:${esc(ar)};--pr:${esc(cardRatio(lines))}">
         <span class="tape" style="top:-9px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
         <span class="window">
           <img src="${esc(src(s))}" alt="${esc(name)}" crossorigin="anonymous"
                width="${esc(String(s.photoW ?? ''))}" height="${esc(String(s.photoH ?? ''))}">
         </span>
-        <figcaption class="scrawl${lay}">
-          ${editing ? '' : `
-            <span class="nm ${style}">${esc(name)}</span>
-            <span class="when">${esc(dateText(s.seenAt))}</span>
-            ${pettedStamp(s.petted)}`}
+        <figcaption class="scrawl">
+          ${editing ? '' : chin(s, name, tags, lines)}
         </figcaption>
-        ${editing ? '' : filmFoot(s, tags)}
       </figure>
     </div>`;
 }
 
 /** @param sightings  newest first; one slide each */
 export function filmstrip(sightings, opts) {
-  const slides = sightings.map((s) => frame(s, opts)).join('');
+  /* ONE HEIGHT FOR THE WHOLE STRIP. The petted stamp is per-photo, so two prints of the
+   * same cat can want a different number of rows — and a card an inch taller than the one
+   * beside it reads as a layout bug rather than as a scrapbook. */
+  const rows = Math.max(...sightings.map((s) => rowCount(s, opts.tags ?? [])));
+  const slides = sightings.map((s) => frame(s, { ...opts, rows })).join('');
 
   /* Dots only when there is somewhere to go. Without them a single visible print gives no
    * hint that swiping does anything — the affordance has to be on screen. */

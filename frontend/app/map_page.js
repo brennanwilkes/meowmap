@@ -10,7 +10,7 @@ import * as store from './store.js';
 import { ringFor } from './catcolor.js';
 import { TURF_MIN_ZOOM, shouldDrawTurf, turfRing } from './turf.js';
 import { displayName } from './catcolor.js';
-import { openSightingSheet } from './sheet.js';
+import { closeSheet, openSightingSheet } from './sheet.js';
 import { emptyFilter, filterCats, filterSightings, isActive, toggle } from './filter.js';
 import { startLocating } from './geolocate.js';
 
@@ -452,6 +452,12 @@ export function onShown() {
 }
 
 export function unmount() {
+  /* THE SHEET IS A SHELL ELEMENT, NOT PART OF THIS PAGE. It is a sibling of every screen
+   * at z-index 41, so an open one does not leave with the map — it hangs over whatever
+   * comes next, and the capture form is where that was being seen: a pull-up of some
+   * other cat appearing over the upload she was filling in, its photo missing because the
+   * object URLs below were revoked out from under it on the way out. */
+  closeSheet();
   window.removeEventListener(TILE_CHANGED, applyTileSource);
   if (mapSizer !== null) { mapSizer.disconnect(); mapSizer = null; }
   lastTap = null;

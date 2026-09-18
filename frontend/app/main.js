@@ -226,6 +226,11 @@ $('#cog').addEventListener('click', () => {
 const DISMISS_PX = 90;
 const DISMISS_VELOCITY = 0.5;   // px/ms — a quick flick counts even if it is short
 const COMMIT_PX = 8;            // slop before a drag is a drag rather than a tap
+/* How much a downward drag has to out-measure a sideways one to dismiss the sheet when it
+ * STARTED on the filmstrip. 1 would mean a swipe that drifts a degree past diagonal takes
+ * the photo off the screen; anything much above 2 and the strip is effectively excluded
+ * again, which is the thing being fixed. */
+const STRIP_BIAS = 1.6;
 const VELOCITY_WINDOW_MS = 100;
 
 (() => {
@@ -234,6 +239,7 @@ const VELOCITY_WINDOW_MS = 100;
   let startX = 0;
   let dragging = false;
   let decided = false;
+  let biased = false;
   let offset = 0;
   let frame = 0;
   /* Recent samples only — anything older than the window is dropped, so `velocity` below
@@ -267,16 +273,24 @@ const VELOCITY_WINDOW_MS = 100;
 
   el.addEventListener('touchstart', (e) => {
     if (detail === null || e.touches.length !== 1) return;
-    /* A LEAFLET MAP AND THE FILMSTRIP OWN THEIR OWN DRAG. Without this, panning a
-     * mini-map inside a detail page drags the whole sheet down with it — the map pans,
-     * the sheet follows, and the page appears to scroll on its own — and paging sideways
-     * through photos dismisses the sheet. Anything that handles its own gestures has to
-     * be excluded here rather than fought afterwards. */
-    if (e.target.closest('.leaflet-container, .filmstrip') !== null) return;
+    /* A LEAFLET MAP OWNS ITS OWN DRAG. Without this, panning a mini-map inside a detail
+     * page drags the whole sheet down with it — the map pans, the sheet follows, and the
+     * page appears to scroll on its own. Leaflet claims the touch outright, so it is the
+     * one thing that has to be excluded rather than shared with. */
+    if (e.target.closest('.leaflet-container') !== null) return;
+    /* THE FILMSTRIP IS SHARED, NOT EXCLUDED. It used to be in the line above, and the
+     * photograph is most of what is on a cat page — so the only place a downward swipe
+     * did anything was the grabber, right at the top of the screen, which is a long reach
+     * and completely undiscoverable. It was excluded because paging sideways with a bit
+     * of downward drift used to dismiss the sheet; that was before the slop threshold and
+     * the direction test existed, and they are what actually solve it. A touch starting
+     * on the strip just has to clear a higher bar to count as vertical. */
+    const strict = e.target.closest('.filmstrip') !== null;
     const fromGrab = e.target.closest('.grab') !== null;
     if (!fromGrab && scrolledDown(e.target)) return;
     startY = e.touches[0].clientY;
     startX = e.touches[0].clientX;
+    biased = strict;
     dragging = true;
     decided = false;
     offset = 0;
@@ -298,8 +312,13 @@ const VELOCITY_WINDOW_MS = 100;
        * the gesture — can never recover. That is what made the swipe-down feel dead.
        * Below the slop threshold, commit to nothing. */
       if (Math.abs(dx) < COMMIT_PX && Math.abs(dy) < COMMIT_PX) return;
-      // Let a horizontal swipe or an upward pull go to the page untouched.
-      if (Math.abs(dx) > Math.abs(dy) || dy < 0) { dragging = false; el.style.transition = ''; return; }
+      // Let a horizontal swipe or an upward pull go to the page untouched. On the
+      // filmstrip the downward pull has to win by a clear margin, because that surface
+      // has a real sideways gesture of its own to protect.
+      const needed = biased ? Math.abs(dx) * STRIP_BIAS : Math.abs(dx);
+      if (dy < 0 || Math.abs(dy) <= needed) {
+        dragging = false; el.style.transition = ''; return;
+      }
       decided = true;
     }
     e.preventDefault();

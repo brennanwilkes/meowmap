@@ -7,7 +7,7 @@ import { chipRows, pettedRow, wireChips } from './components/chips.js';
 import { frame } from './components/filmstrip.js';
 import { getPref } from './device.js';
 import { $, distanceText, esc } from './dom.js';
-import { back, navigate } from './nav.js';
+import { back } from './nav.js';
 import { LOCATION_SOURCE } from './pipeline.js';
 import { distanceM } from './suggest.js';
 import { mergeCats, splitToNewCat } from './identity.js';
@@ -332,8 +332,15 @@ async function save(s, cat) {
     await applyEdits(s, cat);
     draft = null;
     original = null;
+    catDraft = null;
+    catOriginal = null;
     await store.refresh();
-    render(store.get());
+    /* SAVING IS FINISHING, so it goes back the way a merge and a split do. Staying put
+     * left her looking at the editor's single squared-up polaroid — which is the right
+     * thing while she is editing and the wrong thing once she is done, because she came
+     * from a cat with three photographs and the one on screen is no longer the answer to
+     * anything she is asking. */
+    back();
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'Save changes';
@@ -394,8 +401,10 @@ async function merge(s, cat, otherId) {
   try {
     await turnstile.ensurePass();
     await applyEdits(s, cat);
-    const survivorId = await mergeCats(cat.id, otherId);
-    navigate(`#/cat/${survivorId}`, { replace: true });
+    await mergeCats(cat.id, otherId);
+    // Back where she came from, NOT onto the cat that survived. Answering "who is this"
+    // is not a request to go and look at somebody else's page.
+    back();
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'I’ve seen this cat before';
@@ -412,8 +421,8 @@ async function split(s, cat) {
   try {
     await turnstile.ensurePass();
     await applyEdits(s, cat);
-    const fresh = await splitToNewCat(s.id, cat);
-    navigate(`#/cat/${fresh.id}`, { replace: true });
+    await splitToNewCat(s.id, cat);
+    back();
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'This photo is a different cat';

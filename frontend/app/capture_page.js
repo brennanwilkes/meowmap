@@ -124,11 +124,15 @@ function draftView() {
       </div>
       <div class="mini-map" id="mini-map"></div>
       <p class="hand">tap the map to move the pin</p>
+      <div style="height:84px"></div>
+    </div>
 
-      <div class="save-row">
-        <button type="button" class="btn-ghost" id="discard">Discard</button>
-        <button type="button" class="btn-stick big" id="save">Save this cat</button>
-      </div>
+    <!-- OUTSIDE .pad, which is the scroll container. This is a form with a mini-map in
+         the middle of it, so the two buttons scrolled away exactly when she had finished
+         filling it in — and the nav is hidden here, so this bar is the only way out. -->
+    <div class="save-bar" id="snap-bar">
+      <button type="button" class="btn-ghost" id="discard">Discard</button>
+      <button type="button" class="btn-stick" id="save">Save this cat</button>
     </div>`;
 }
 
@@ -473,6 +477,11 @@ function wireSuggestion(saved) {
 
 export function mount(container) {
   root = container;
+  /* NO NAV WHILE SHE IS FILLING THIS IN. Saving a photo is the one flow in the app with a
+   * half-finished thing in it that tapping a tab would throw away, and the two buttons at
+   * the bottom are its own way out — a nav under them is both a second way out and a
+   * bigger target for the wrong one. */
+  document.body.classList.add('capturing');
   /* The router guarantees a photo is waiting — it redirects #/snap to the map otherwise,
    * because redirecting from HERE does not work: go() rewrites the hash after mount()
    * returns, so a navigate() inside mount is immediately undone and the app sticks on an
@@ -492,6 +501,7 @@ export function mount(container) {
 }
 
 export function unmount() {
+  document.body.classList.remove('capturing');
   if (locating !== null) { locating.cancel(); locating = null; }
   destroyMiniMap();
   releasePhoto();

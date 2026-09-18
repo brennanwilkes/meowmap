@@ -331,6 +331,16 @@ why that button is one tap and this one is not. There is no counterpart for "lib
 only"; do not go looking for one again.
 
 
+**THE NAV IS HIDDEN WHILE A PHOTO IS BEING SAVED** (`body.capturing`, set in
+`capture_page.mount`). Saving is the one flow in the app holding something half-finished
+that a tab tap would throw away, and the draft's own Discard/Save bar is its way out — a
+nav under that bar is both a second way out and a bigger target for the wrong one.
+`display: none` gives the height back on its own, because the tab strip is `flex: 0 0
+auto` in a column whose `.stage` is `flex: 1 1 auto`; there is no `--nav-h` arithmetic to
+undo. That bar lives OUTSIDE `.pad` for the same reason the sighting editor's does: the
+form has a mini-map in the middle of it, so the buttons scrolled away exactly when she had
+finished filling it in.
+
 **`ingest()` is async and nothing awaits it**, so anything it throws lands in an unhandled
 rejection and the screen simply stays blank. That is how a missing `busyView` — deleted as
 collateral with `idleView` when the Snap tab became two glyphs — produced "photo upload
@@ -408,6 +418,13 @@ she linked photos, and "not identified yet" was meant to be a comfortable restin
 on the phone it was not. A fresh upload had no colour, no territory and no page, and the
 only way to give it one was to open the Cats tab and declare a photo the same cat as
 itself. Cost: one extra row written per upload (4 → 5 against the 100k/day cap).
+
+**The suggester's hard cut is 450 m** (`MAX_DISTANCE_M` in `suggest.js`). It was 250,
+which drew the line inside one cat's actual range: they wander a block or two, she
+photographs them from wherever she is standing, and the pin carries 10–20 m of GPS error
+on top — the common miss was the same cat on the far corner of the same park. Missing a
+suggestion costs her the whole grouping flow; an extra face in a row of three costs a
+glance.
 
 Linking is therefore **merging two cats**, and it is phrased as a question in her words:
 
@@ -529,8 +546,15 @@ few metres apart cannot be hit individually on a phone.
 - **The index comes from `frame.offsetLeft`, never `scrollLeft / clientWidth`** — frames are
   narrower than the track and there is a gap, so that arithmetic drifts further out with
   every slide. The Edit button follows the swipe and opens the photo on screen.
-- **`.filmstrip` is excluded from both sheets' dismiss gestures**, like `.leaflet-container`:
-  it is its own scroller, and paging sideways with any downward drift dismissed the sheet.
+- **`.filmstrip` is SHARED with both sheets' dismiss gestures, not excluded from them.**
+  It used to be excluded alongside `.leaflet-container` — and the photograph is most of
+  what is on a cat page or a map sheet, so the only surface that answered a downward swipe
+  was the grabber at the very top of the screen: a long reach and undiscoverable. The
+  original reason (paging sideways with a little downward drift dismissed the sheet) dates
+  from before the slop threshold and the direction test, which are what actually solve it.
+  A touch STARTING on the strip now just has to clear a higher bar — `STRIP_BIAS`, 1.6 —
+  to count as vertical. `.leaflet-container` stays fully excluded, because Leaflet claims
+  the touch outright rather than sharing it.
 
 ## Stamps, polaroids and the collar tag
 
@@ -649,12 +673,12 @@ under a photo is not how anyone labels a photo. You write on it, stamp it, or st
 label on it. Putting the name on the white also freed the row of height that made a
 no-scroll sheet possible.
 
-The sighting editor is the one place a name is not on a photo (there it is the link to the
-cat), and it uses the same treatment for that cat via the exported `nameStyle(catId)`.
+The sighting editor is the one place a name is not drawn on a photo at all: there it is an
+ordinary labelled field, because a mark on a photograph is a lovely thing to look at and a
+poor thing to type into.
 
-**THE CAT'S LABELS AND THE WAY IN ARE PRINTED ON THE WHITE**, one copy per card, in
-`.film-foot` inside each `.polaroid`. Four arrangements were tried and the first three all
-failed differently:
+**THE CAT'S LABELS AND THE WAY IN ARE PRINTED ON THE WHITE TOO**, one copy per card.
+Four arrangements were tried and the first three all failed differently:
 
 1. A bottom row under the strip, under a rule, holding the tags and one Edit button. It
    cost a band of height on a sheet trying not to scroll, left an empty stripe under it
@@ -669,13 +693,44 @@ failed differently:
 4. On the white. **A polaroid's chin is FOR this**: the card is the whole object and
    everything true of it is written there.
 
-So the chin carries FIVE kinds of mark now — name, date, petted stamp, labels, Edit — and
-`.polaroid`'s ratio went **.72 → .64** to pay for them (anything shallower starved the
-handwriting, anything deeper stops looking like film). The handwriting keeps the scattered
-upper area, `.scrawl`, which has a `min-height` floor: past it the card simply grows,
-which is better than three marks landing on each other. The labels and the button sit
-along the bottom, both tilted, so the row reads as things applied by hand rather than as a
-toolbar that happens to be on a photograph.
+## The chin is ONE system, not two
+
+Seven kinds of mark live there: the name, the date, the note, the petted stamp, one label
+per coat tag, the size, and the way in.
+
+The first version of (4) still had two systems — three marks absolutely positioned from
+hand-checked arrangements, plus the labels and the button in a fixed row along the bottom.
+**Two systems cannot distribute evenly**, because neither half knows how much room the
+other is using, and the result was everything crushed against the bottom edge with a void
+through the middle. So `.scrawl` is a flex column of `.mark-row`s with `space-between`:
+the rows spread themselves over whatever height there is, however many marks there are.
+
+- **Flow, not free placement, is what makes it safe.** Marks cannot overlap because they
+  are in normal flow, so a long name or eight coat tags degrade by WRAPPING rather than by
+  landing on top of each other. Absolute positioning could not promise that once the
+  number of marks stopped being fixed at three.
+- **The card's ratio grows with the row count.** `cardRatio()` sets `--pr` from the number
+  of rows and clamps it at both ends. A fixed ratio cannot work here: .72 (the real
+  88×107mm card) starved anything past three marks, and a ratio deep enough for eight coat
+  tags is a bookmark rather than a photograph.
+- **`filmstrip()` takes the MAX row count across the strip** and gives every card the same
+  answer. The petted stamp and the note are per-photo, so two prints of one cat can want
+  different heights — and a card an inch taller than the one beside it reads as a layout
+  bug rather than as a scrapbook. Short cards are padded with empty rows, which
+  `space-between` then uses as spacers.
+- **The hand-placed feel comes from the two things still free:** each ROW picks its
+  horizontal alignment from a template keyed to the photo's id, and each MARK gets its own
+  small rotation. Nothing lines up with anything else, which is the point.
+- **The rotation goes on a `.mark` WRAPPER**, never on the mark itself — several of these
+  already use `transform` for their own press physics, and one of them is a button.
+- **EDIT IS NEVER ANGLED.** Everything else on the white is decoration; that one is a tap
+  target, and a rotated button reads as another sticker rather than as the way in.
+
+**THE NOTE IS ALWAYS HANDWRITTEN** (`.scribble`), whatever treatment the name is wearing
+on that print. The other marks are facts about the cat and can plausibly have been applied
+with a stamp or a stuck-on label; a note is a sentence she wrote, and there is no such
+thing as a rubber stamp of it. It is also the only mark allowed to wrap, being the only
+one that can be a whole sentence.
 
 **A taped label hangs over the card's bottom edge** (`margin-bottom: -9px` on the row, and
 a small negative left margin on the first label). Something held on by tape is stuck ON
@@ -692,21 +747,16 @@ so swiping to the second photo and tapping Edit reliably opened the first. A but
 rides ON the print cannot point at another one; `wireFilmstrip`'s `onChange` is optional
 now and the sheet passes none at all.
 
-`.film-foot` is a GRID (`minmax(0, 1fr) auto`), not a flex row, for the same reason the
-action bars are: an overflowing flex line pushes its first item outside the container, so
-a cat wearing all seven coat tags would shove the button off the end. A `.pintag` is a
-scrap of cream paper with tape over it, not a `.chip` — a chip is a control and these only
-report, and it is cream rather than white because a label cut from the same white it is
-stuck to is invisible. The sheet's ground is ruled paper (`background-attachment: local`,
-same rule as `.pad`).
+A `.pintag` is a scrap of cream paper with tape over it, not a `.chip` — a chip is a
+control and these only report, and it is cream rather than white because a label cut from
+the same white it is stuck to is invisible. The sheet's ground is ruled paper
+(`background-attachment: local`, same rule as `.pad`).
 
 **A glance must not scroll.** She taps a pin to look at a cat; finding the tags below the
-fold turns a look into a task. The sheet is `max-height: 92%`, the polaroid is sized from
-the viewport height, and the tags and the way in share ONE line (`.glance-foot`). The Edit
-button used to be a full-width sticker under a row of small chips, which made the least
-interesting thing on screen the largest and cost a whole row of height. The full-width
-rule it was following is about a LONE button reading as floating debris — paired with the
-chips it is not lone.
+fold turns a look into a task. The sheet is `max-height: 92%` and the polaroid is sized
+from the viewport height (`--polaroid-h`), which is what makes that possible — and since
+the tags and the Edit button moved onto the card itself there is nothing else on the sheet
+to fit at all.
 
 **`.btn-*.wide` stack with 14px, not 4px.** Each wears a 3.5px die-cut paper ring and sits
 3px off the page, so a nominal 4px gap is about zero actual daylight — "This is a
@@ -755,6 +805,10 @@ there is exactly one screen in the app where anything can be changed.
     inches above the field contradicting it. The empty chin keeps its depth from a
     `min-height`, or the figcaption collapses to the card's padding and stops reading as
     film.
+- **Saving GOES BACK**, the same way a merge and a split do. Staying put left her looking
+  at the editor's single squared-up polaroid — right while she is editing, wrong once she
+  is done, because she arrived from a cat with several photographs and the one still on
+  screen has stopped being the answer to anything she is asking.
 - **Edits accumulate locally and save on a button**, never per tap: every PATCH is a D1
   write plus an `app_meta` bump against a hard 100k/day cap. The body carries only the
   fields that actually changed.
@@ -831,6 +885,15 @@ there is exactly one screen in the app where anything can be changed.
   number tied to the old fixed 190px photo height; once photos kept their own aspect ratio
   that number pointed at nothing. It now sits in the print's top-right corner at a steeper
   angle than anything else — the one thing stuck on afterwards rather than laid out.
+- **THE SHEET IS A SHELL ELEMENT AND OUTLIVES THE MAP PAGE.** `#sheet` and `#veil` are
+  siblings of every screen at z-index 40/41, so an open sheet does not leave when the map
+  unmounts — it hangs over whatever comes next. That was the "weird pull-up of an existing
+  cat while I was editing the upload form": leaving the map with a sheet open floated it
+  over the capture screen, with its photo missing because `map_page.unmount()` revokes the
+  object URLs underneath it on the way out. `unmount()` calls `closeSheet()`.
+- **A merge or a split goes BACK, never to the cat that resulted.** Answering "who is
+  this" is not a request to go and look at somebody else's page, and landing on one left
+  her somewhere she had not asked to be with nothing but a swipe to get out.
 - **A cat is "them", never "it".** Only where it means the animal: a photo still has "no
   location saved in it", and the app still "sorts itself out".
 - **`splitToNewCat` is shared** (`identity.js`) between the cat page and the sighting
@@ -848,17 +911,22 @@ there is exactly one screen in the app where anything can be changed.
   is enough when the sheet is already open and not enough while it is animating, which is
   why the territory map loaded "sometimes". Leaflet measures its container once and never
   notices it changing; the observer fires whenever the box actually changes.
-- **The unselected chip's ring is an `outline`, not a border.** A dashed border is
-  painted as four independent runs, each with its own dash phase derived from that side's
-  length, so a box whose width lands on a fractional pixel can drop a whole side. "did not
-  pet them" lost its left edge, and — the clue that finally named it — ONLY while the chip
-  beside it was also unselected: selecting that one changed its width by the 0.5px the
-  solid border adds, nudging this one back onto a whole pixel. Two rounds of widening the
-  row's slack did nothing, because it was never clipping. `outline` is ONE ring round the
-  whole box; `outline-offset: -2px` paints it strictly inside, so no clipping ancestor and
-  no neighbour can take a piece of it either. The border stays as 2px transparent to keep
-  the layout box. The row's gap also went 8px → 12px: two flat dashed boxes that close
-  together read as one box with a line through it.
+- **The unselected chip's ring is FOUR BACKGROUND GRADIENTS, one per edge** — not a
+  dashed border, and not a dashed outline either. This took three attempts and the first
+  two are worth keeping as a warning. A dashed BORDER is rendered as four independent runs
+  whose dash phase comes from each side's length, so a box whose width lands on a
+  fractional pixel drops a whole side: "did not pet them" lost its left edge, and ONLY
+  while the chip beside it was also unselected — selecting that one changed its width by
+  the 0.5px a solid border adds and nudged this one back onto a whole pixel. (Two rounds
+  of widening the row's slack did nothing first, because it was never clipping.) Moving to
+  `outline` removed the neighbour and any clipping ancestor from the picture, and **the
+  bug simply swapped sides** — same rasteriser, same four segments, same rounding.
+  `repeating-linear-gradient` has no dash-phase logic in it at all: each edge is a
+  background layer of fixed size at a fixed position, so what gets painted cannot depend
+  on the box's width or which pixel grid it lands on. The border stays 2px transparent to
+  keep the layout box; `--dash`/`--gap` must stay in step with any other dashed element.
+  The row's gap also went 8px → 12px: two flat dashed boxes that close together read as
+  one box with a line through it.
 - **Chips can bleed past their layout box.** They are rotated AND wear a 3.5px die-cut
   paper ring, so the painted box is wider than the layout box on both sides. Flush against
   the left edge of a container that clips (`.pad` is `overflow-x: hidden`, because every

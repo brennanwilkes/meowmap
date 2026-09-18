@@ -20,27 +20,49 @@
 
 /* Unselected chips lie flat on the page; selected ones are stuck on. The state reads
    instantly and it is the most sticker-ish thing on the screen. */
-/* THE UNSELECTED RING IS AN `outline`, NOT A BORDER, and it is offset INWARDS.
-   A dashed border is painted as four independent runs, each with its own dash phase
-   derived from that side's length — so a box whose width lands on a fractional pixel can
-   drop a whole side, and "did not pet them" lost its left edge whenever the chip beside
-   it was unselected (selecting that one changed its width by the 0.5px the solid border
-   adds, which nudged this one back onto a whole pixel and it reappeared). An outline is
-   ONE ring round the whole box, and `outline-offset: -2px` paints it strictly inside, so
-   no clipping ancestor and no neighbour can take a piece of it either. The border stays
-   as a transparent 2px so the layout box is unchanged. */
+/* THE UNSELECTED RING IS PAINTED BY HAND, as four background gradients — one per edge.
+
+   This is the third attempt and the first that cannot fail. A dashed BORDER is rendered
+   as four independent runs whose dash phase comes from each side's length, so a box whose
+   width lands on a fractional pixel drops a whole side: "did not pet them" lost its left
+   edge, and only while the chip beside it was also unselected, because selecting that one
+   changed its width by the 0.5px a solid border adds and nudged this one back onto a
+   whole pixel. Moving to `outline` removed the neighbour and the clipping from the
+   picture and the bug simply swapped sides — same rasteriser, same four segments, same
+   rounding.
+
+   Four `repeating-linear-gradient`s have no dash-phase logic in them at all. Each edge is
+   a background layer of a fixed size at a fixed position, so what gets painted does not
+   depend on the box's width, its neighbours, or which pixel grid it lands on. The border
+   stays 2px transparent to keep the layout box identical.
+
+   Keep --dash and --gap in step with the ring on any other dashed element, or the chips
+   stop matching the ghost buttons. */
 .chip {
+  --dash: 6px; --gap: 5px;
   font-family: var(--font-stick); font-size: var(--t-sm); font-weight: 700;
-  background: transparent; color: var(--ink-faint);
+  background-color: transparent; color: var(--ink-faint);
+  background-image:
+    repeating-linear-gradient(90deg, var(--ink-faint) 0 var(--dash),
+      transparent var(--dash) calc(var(--dash) + var(--gap))),
+    repeating-linear-gradient(90deg, var(--ink-faint) 0 var(--dash),
+      transparent var(--dash) calc(var(--dash) + var(--gap))),
+    repeating-linear-gradient(180deg, var(--ink-faint) 0 var(--dash),
+      transparent var(--dash) calc(var(--dash) + var(--gap))),
+    repeating-linear-gradient(180deg, var(--ink-faint) 0 var(--dash),
+      transparent var(--dash) calc(var(--dash) + var(--gap)));
+  background-size: 100% 2px, 100% 2px, 2px 100%, 2px 100%;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: no-repeat;
   border: 2px solid transparent; border-radius: var(--r-cut);
-  outline: 2px dashed var(--ink-faint); outline-offset: -2px;
   padding: 4px 11px;
   transition: transform var(--up), box-shadow var(--up), background var(--up),
               color var(--up), border-color var(--up);
 }
+/* Selected chips lose the painted ring entirely: they are stuck on, with a real border. */
 .chip[aria-pressed="true"] {
-  color: var(--ink); background: var(--fill);
-  border: 2.5px solid var(--ink); outline: none;
+  color: var(--ink); background-image: none; background-color: var(--fill);
+  border: 2.5px solid var(--ink);
   box-shadow: var(--cut), var(--lift);
   transform: rotate(var(--tilt, -2deg));
 }
@@ -196,14 +218,14 @@
    card stopping looking like a polaroid. `cover`, so there is never a letterbox. */
 .polaroid {
   position: relative; display: flex; flex-direction: column;
-  /* .72 was the 88x107mm card. The chin now carries FIVE kinds of mark — the name, the
-     date, the petted stamp, the cat's labels and the way in — so it is deepened to .64
-     and the card reads as a slightly long polaroid rather than as a cramped one. Anything
-     shallower starved the handwriting; anything deeper stops looking like film. */
-  aspect-ratio: .64;
+  /* THE CARD GROWS WITH WHAT IS WRITTEN ON IT. .72 is the real 88x107mm polaroid, and it
+     starved a chin holding more than three marks — but a ratio deep enough for eight coat
+     tags is a bookmark, not a photograph. cardRatio() in filmstrip.js sets --pr from the
+     row count and clamps it at both ends, so it never stops reading as film. */
+  aspect-ratio: var(--pr, .68);
   /* Percentage padding resolves against WIDTH, so all three margins stay optically
-     equal however wide the frame is. The bottom margin is on .film-foot instead, so the
-     labels sit ON the white with the same margin as everything else. */
+     equal however wide the frame is. The bottom one is on .scrawl, which carries a
+     negative margin so a taped label can hang over the card's edge. */
   padding: 5.5% 5.5% 0;
   border-radius: var(--r-film);
   background: linear-gradient(177deg, var(--film) 0%, var(--film) 62%, var(--film-low) 100%);
@@ -215,7 +237,7 @@
      `min()` against 100% means it is width-bound on a tall screen and height-bound on a
      short one, and the aspect ratio holds either way — which `max-height` alone cannot
      do, because it clamps the height and leaves the width at 100%. */
-  width: min(100%, calc(var(--polaroid-h, 50vh) * .64));
+  width: min(100%, calc(var(--polaroid-h, 50vh) * var(--pr, .68)));
   margin: 10px auto 0;
 }
 /* The gloss on the card. Overlay so it lifts the white without washing it out. */
@@ -264,31 +286,64 @@
     linear-gradient(0deg, rgba(0, 0, 0, .13), rgba(0, 0, 0, 0) 5%);
 }
 
-/* ── what is written on the white ──────────────────────────────────────────
-   Three marks: the cat's NAME, the DATE, and the PETTED STAMP. They are placed by
-   LAYOUT, not by independent jitter — six arrangements, chosen from the sighting's id.
-   Independent jitter on three absolutely-positioned things reads as noise and eventually
-   overlaps; a set of arrangements that were each checked reads as someone having written
-   on the photo. Nothing here is aligned to anything else, which is the point.
+/* ── what is written on the white ─────────────────────────────────────────
+   SIX KINDS OF MARK, ONE SYSTEM: the name, the date, the petted stamp, one label per coat
+   tag, the size, and the way in to edit the photo.
 
-   All of it is deterministic: a re-render must not make the page twitch, and a photo has
-   to look the same every time she opens it.
+   They were two systems — three marks absolutely positioned from hand-checked
+   arrangements, and the labels plus the button in a fixed row along the bottom — and two
+   systems CANNOT distribute evenly, because neither half knows how much room the other is
+   using. Everything ended up crushed against the bottom edge with a void through the
+   middle. So the chin is a flex column of rows with `space-between`: the rows spread
+   themselves over whatever height there is, however many marks there are, and the card's
+   own ratio grows with the row count (--pr) so there is always a sensible amount of it.
 
-   THE NAME'S TREATMENT COMES FROM THE PHOTO — handwritten on one print, stamped on the
-   next, a stuck-on label on the third. Keying it to the CAT instead made every frame of
-   a strip identical, which is the one thing a scrapbook never is. */
+   FLOW, NOT FREE PLACEMENT, is what makes it safe. Marks cannot overlap because they are
+   in normal flow, so a long name or eight coat tags degrade by wrapping instead of by
+   landing on top of each other — which absolute positioning could not promise once the
+   number of marks stopped being fixed at three.
+
+   The hand-placed feel comes from the two things still free: each ROW picks its own
+   horizontal alignment from a template keyed to the photo's id, and each MARK gets its
+   own small rotation. Nothing lines up with anything else, which is the point.
+
+   The rotation goes on a `.mark` WRAPPER rather than on the mark itself: several of these
+   already use `transform` for their own press physics, and one of them is a button. */
 .polaroid .scrawl {
-  position: relative; flex: 1 1 auto;
-  /* Marks are placed against this box, so it must be the HANDWRITTEN part of the chin and
-     nothing else — the labels below are a sibling, not a fourth mark in here. The floor
-     stops a cat with a lot of coat tags from squeezing the handwriting to nothing: past
-     that the card simply grows, which is better than three marks landing on top of each
-     other. */
-  min-height: 84px;
-  padding: 0;
+  flex: 1 1 auto;
+  display: flex; flex-direction: column; justify-content: space-between;
+  gap: 6px;
+  padding: 9px 0 3%;
+  /* A TAPED LABEL HANGS OVER THE CARD'S BOTTOM EDGE. Something held on by tape is stuck
+     ON the card rather than laid out inside it, and the overhang is the tell that it was
+     added afterwards. `.filmstrip` carries the bottom padding that stops its own
+     `overflow-y: hidden` shearing them off. */
+  margin-bottom: -9px;
 }
-.polaroid .scrawl > * { position: absolute; transform: rotate(var(--rot, 0deg)); }
-.polaroid .scrawl .nm { max-width: 64%; }
+.polaroid .scrawl .mark-row {
+  display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: var(--just, flex-start);
+  gap: 7px 11px;
+}
+/* An empty row is a spacer: `space-between` uses it to keep every card in a strip
+   distributing its marks over the same height. */
+.polaroid .scrawl .mark-row:empty { min-height: 0; }
+.polaroid .scrawl .mark {
+  display: inline-flex; max-width: 100%;
+  transform: rotate(var(--rot, 0deg));
+}
+/* EDIT IS NEVER ANGLED. Everything else on the white is decoration; this is a tap target,
+   and a rotated button reads as another sticker rather than as the way in. */
+.polaroid .scrawl .mark:has(> .btn-stick) { transform: none; }
+
+.polaroid .scrawl .nm { max-width: 100%; }
+/* Whatever she wrote on the back, in her own hand. ALWAYS handwritten — see chin() in
+   filmstrip.js. It is the one mark that can be a whole sentence, so it is the one that is
+   allowed to wrap. */
+.polaroid .scrawl .scribble {
+  font-family: var(--font-hand); font-size: var(--t-md); color: var(--ink);
+  line-height: 1.15; max-width: 100%;
+}
 .polaroid .scrawl .when {
   font-family: var(--font-hand); font-size: var(--t-md); color: var(--ink-soft);
   white-space: nowrap;
@@ -331,164 +386,15 @@
     var(--lift);
 }
 
-/* THE SIX ARRANGEMENTS ARE THE SIX PERMUTATIONS of three marks over three bands — top,
-   middle, bottom — with the side alternating within each one.
-
-   That structure is doing two jobs. It SPREADS the marks down the chin, so there is no
-   large void left over: hand-placed marks that all hug the top and bottom edges leave a
-   dead stripe through the middle, which is what the first pass did and what read as
-   "tons of empty blank space". And because no two marks are ever in the same band, they
-   CANNOT overlap however long a name gets — which independent jitter could not promise.
-
-   NOTHING GETS CLOSER THAN ~6% TO ANY EDGE. A mark flush to the edge reads as clipped
-   rather than as written, and the print's outer corners are rounded, so the corners are
-   the last place anything should sit. */
-.scrawl.lay-0 .nm    { left:7%;top:4%;--rot:-2.6deg }
-.scrawl.lay-0 .when  { right:8%;top:40%;--rot:-1deg }
-.scrawl.lay-0 .stamp { left:9%;bottom:5%;--rot:9deg }
-.scrawl.lay-1 .nm    { left:8%;top:5%;--rot:1.9deg }
-.scrawl.lay-1 .stamp { right:7%;top:40%;--rot:-7deg }
-.scrawl.lay-1 .when  { left:7%;bottom:6%;--rot:-2.2deg }
-.scrawl.lay-2 .when  { left:7%;top:5%;--rot:1.4deg }
-.scrawl.lay-2 .nm    { right:7%;top:40%;--rot:2.2deg }
-.scrawl.lay-2 .stamp { left:8%;bottom:6%;--rot:-12deg }
-.scrawl.lay-3 .stamp { right:7%;top:4%;--rot:11deg }
-.scrawl.lay-3 .nm    { left:8%;top:40%;--rot:-1.6deg }
-.scrawl.lay-3 .when  { right:9%;bottom:6%;--rot:2.6deg }
-.scrawl.lay-4 .when  { right:8%;top:5%;--rot:1.1deg }
-.scrawl.lay-4 .stamp { left:7%;top:40%;--rot:-9deg }
-.scrawl.lay-4 .nm    { left:7%;bottom:5%;--rot:-3.1deg }
-.scrawl.lay-5 .stamp { left:8%;top:5%;--rot:13deg }
-.scrawl.lay-5 .when  { right:7%;top:40%;--rot:-1.7deg }
-.scrawl.lay-5 .nm    { right:8%;bottom:6%;--rot:1.5deg }
-
-/* EDIT MODE IS A FORM, NOT HANDWRITING. Absolutely-positioned marks at jaunty angles are
-   lovely to look at and a poor thing to type into, so editing squares everything up and
-   lets the chin grow to fit. THE NAME LEAVES THE PHOTOGRAPH ENTIRELY and becomes an
-   ordinary labelled field below it, the same one the note and the date use: an
-   underlined handwritten box on the film white had no label, used its placeholder as
-   one, and was as wide as the name happened to be. The glance is a scrapbook; the editor
-   is an editor. */
-.polaroid.editing { aspect-ratio: auto; padding-bottom: 5.5%; }
-.polaroid.editing .window { aspect-ratio: 1; }
-/* `align-items: flex-start` is load-bearing: a stamp and a date are inline marks, and a
-   flex column stretches its children by default — which made the petted stamp a
-   comically full-width box the moment the polaroid squared up for editing. */
-/* An UNWRITTEN-ON polaroid, so the chin has to keep its depth from a minimum rather than
-   from its contents — an empty figcaption would otherwise collapse to the card's padding
-   and stop reading as film. `align-items: flex-start` for anything ever put back in it: a
-   flex column stretches its children, which is what made the petted stamp a comically
-   full-width box when the stamp was still drawn here. */
-.polaroid.editing .scrawl {
-  display: flex; flex-direction: column; align-items: flex-start;
-  gap: 8px; padding: 12px 2px 2px; min-height: 46px;
-}
-.polaroid.editing .scrawl { min-height: 46px; }
-.polaroid.editing .scrawl > * { position: static; transform: none; }
-
-/* ── the filmstrip ─────────────────────────────────────────────────────────
-   A cat's photos, paged sideways. Native scroll-snap, not a JS carousel: momentum,
-   rubber-banding at the ends and VoiceOver all come free, and there is no gesture of
-   ours to fight the sheet's own drag-to-dismiss.
-
-   THE NEXT PRINT PEEKS, deliberately. Full-width frames give no hint that anything is
-   beside them; an edge of the next one showing is the affordance, and it reads as a
-   stack of prints rather than as a widget. Dots underneath say how many. */
-.filmstrip {
-  display: flex; gap: 12px;
-  overflow-x: auto; overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none; -webkit-overflow-scrolling: touch;
-  /* Room for the tilt and for the card's soft shadow, which falls well below it — with
-     overflow-y hidden, anything not paid for here is simply cut off. */
-  padding: 2px 0 16px;
-}
-.filmstrip::-webkit-scrollbar { display: none; }
-.filmstrip .frame {
-  flex: 0 0 86%;
-  scroll-snap-align: start;
-  /* One swipe moves ONE photo, however hard it is flicked. Landing three along is
-     disorienting when each frame is a different cat photo that looks much like the last. */
-  scroll-snap-stop: always;
-  min-width: 0;
-}
-/* Nothing to page through: no peek, no wasted width, and NO SCROLLING AT ALL. With the
-   overflow left auto, a single frame still rubber-banded a few pixels under a sideways
-   drag — a jiggle that promises another photo that does not exist. */
-.filmstrip.solo { overflow-x: hidden; }
-.filmstrip.solo .frame { flex: 0 0 100%; }
-
-.strip-dots {
-  display: flex; justify-content: center; gap: 6px;
-  margin: 14px 0 4px;
-}
-.strip-dots span {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--ink-faint); opacity: .45;
-  transition: opacity var(--up), background var(--up);
-}
-.strip-dots span.on { background: var(--ink); opacity: 1; }
-
-/* ── what is printed along the bottom of the white ────────────────────────
-   THE CAT'S LABELS AND THE WAY IN SIT ON THE CARD, under the handwriting.
-
-   Four arrangements were tried and the first three all failed differently:
-
-   1. A row beneath the strip, under a rule, holding the tags and one Edit button. It cost
-      a band of height on a sheet trying not to scroll, left an empty stripe under it
-      whenever the content came up short, and made two or three tiny chips huddle at the
-      left of a full-width line.
-   2. Fixed labels pinned over the strip's edges. Lovely standing still and WRONG IN
-      MOTION — the prints slid sideways underneath labels that did not move, so they read
-      as belonging to the sheet rather than to anything on it.
-   3. A row under each card, inside the frame. It moved correctly and still left the
-      object and its labels as two things stacked up.
-   4. On the white. A polaroid's chin is FOR this: the card is the whole object, and
-      everything true of it is written there.
-
-   So the chin holds five kinds of mark now — name, date, petted stamp, labels, Edit — and
-   `.polaroid`'s ratio went .72 → .64 to pay for them. The handwriting keeps the scattered
-   upper area (`.scrawl`); these two sit along the bottom, tilted, so the row reads as
-   things applied by hand rather than as a toolbar that happens to be on a photo.
-
-   IT ALSO DELETES A BUG CLASS. An Edit button outside the strip has to be TOLD which
-   photo is showing, and on the cat page it was told at render time and never after — the
-   scroll handler updated the index but the click closure had already captured the
-   sighting, so swiping to the second photo and tapping Edit reliably opened the first. A
-   button that rides ON the print cannot point at another one.
-
-   A GRID, NOT A FLEX ROW. An overflowing flex line pushes its first item outside the
-   container — that is how "Undo" ended up off the left edge of the save bar through two
-   attempted fixes. Grid tracks clamp their children, so a cat wearing all seven coat tags
-   wraps inside its own column instead of shoving the button off the end. */
-.polaroid .film-foot {
-  flex: 0 0 auto;
-  display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center; gap: 8px 10px;
-  padding: 4px 0 3%;
-  /* THE LABELS HANG OVER THE CARD'S BOTTOM EDGE, because a thing held on by tape is stuck
-     ON the card rather than laid out inside it — the overhang is the tell that it was
-     added afterwards. A negative margin on the last flex child paints past the box
-     without disturbing the aspect ratio; `.filmstrip` carries the bottom padding that
-     stops its own `overflow-y: hidden` shearing them off. */
-  margin-bottom: -9px;
-}
-.polaroid .film-foot .tags { display: flex; flex-wrap: wrap; gap: 7px 9px; min-width: 0; }
-/* Nudged out over the white's left margin, for the same reason. The Edit button is NOT
-   nudged: it is the one thing here that has to be reliably hittable. */
-.polaroid .film-foot .pintag:first-child { margin-left: -6px; }
-.polaroid .film-foot .btn-stick.sm { transform: rotate(-2deg); }
-
-/* A scrap of paper with a name on it, taped to the card — the same vocabulary as the
-   prints themselves. NOT a .chip: a chip is a control, and these only report. Cream on
-   film white, because a label cut from the same white it is stuck to is invisible. */
+/* A scrap of cream paper with a coat tag on it, taped to the card. NOT a .chip: a chip is
+   a control, and these only report. Cream rather than white, because a label cut from the
+   same white it is stuck to is invisible. */
 .pintag {
   position: relative;
   font-family: var(--font-stick); font-size: var(--t-sm); font-weight: 800;
   color: var(--ink); background: var(--paper-hi);
   border: 2px solid var(--ink); border-radius: var(--r-cut);
   padding: 5px 10px;
-  transform: rotate(var(--rot, -3.5deg));
   box-shadow: var(--lift);
   white-space: nowrap;
 }
@@ -502,6 +408,13 @@
                      4% 100%, 10% 78%, 2% 55%, 10% 28%);
 }
 
+/* EDIT MODE IS BLANK FILM. Nothing is written on it — every mark has a labelled field
+   below — so the chin keeps its depth from a minimum rather than from its contents, and
+   the card drops the computed ratio and grows to fit the form instead. */
+.polaroid.editing { aspect-ratio: auto; padding-bottom: 5.5%; }
+.polaroid.editing .window { aspect-ratio: 1; }
+.polaroid.editing .scrawl { min-height: 46px; margin-bottom: 0; padding: 12px 2px 2px; }
+
 /* ── the filmstrip ─────────────────────────────────────────────────────────
    A cat's photos, paged sideways. Native scroll-snap, not a JS carousel: momentum,
    rubber-banding at the ends and VoiceOver all come free, and there is no gesture of
@@ -544,46 +457,3 @@
   transition: opacity var(--up), background var(--up);
 }
 .strip-dots span.on { background: var(--ink); opacity: 1; }
-
-/* ── what sits under each print ────────────────────────────────────────────
-   THE CAT'S LABELS AND THE WAY IN RIDE WITH THE PRINT, one copy per frame.
-
-   Three arrangements were tried. A bottom row under a rule cost a band of height on a
-   sheet trying not to scroll and left an empty stripe under it. Labels pinned over the
-   strip as fixed siblings looked lovely standing still and wrong in motion — the prints
-   slid sideways underneath labels that did not move, so the labels read as belonging to
-   the sheet rather than to anything on it. Inside the frame they scroll with the
-   photograph they describe, which is what they are.
-
-   It also deletes a bug class: an Edit button outside the strip has to be told which
-   photo is showing, and on the cat page it was told at render time and never updated, so
-   it opened the first print however far she had swiped. A button ON the print cannot
-   point at another one.
-
-   A GRID, NOT A FLEX ROW. An overflowing flex line pushes its first item outside the
-   container — that is how "Undo" ended up off the left edge of the save bar through two
-   attempted fixes. Grid tracks clamp their children, so a cat wearing all seven coat tags
-   wraps inside its own column instead of shoving the button off the end. */
-
-/* A scrap of paper with a name on it, stuck down with tape — the same vocabulary as the
-   prints themselves, so it reads as part of the scrapbook rather than as a filter chip.
-   Not a .chip: a chip is a control, and these are not tappable. */
-.pintag {
-  position: relative;
-  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 800;
-  color: var(--ink); background: var(--paper-hi);
-  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
-  padding: 7px 13px;
-  transform: rotate(var(--rot, -3.5deg));
-  box-shadow: var(--cut), var(--lift);
-  white-space: nowrap;
-}
-.pintag::after {
-  content: ''; position: absolute; top: -7px; left: 50%; width: 34px; height: 13px;
-  margin-left: -17px; transform: rotate(-3deg); pointer-events: none;
-  background: linear-gradient(158deg,
-    rgba(255, 254, 250, .82), rgba(250, 248, 240, .55) 42%, rgba(255, 254, 250, .76));
-  box-shadow: 0 1px 2px rgba(46, 42, 36, .28), inset 0 0 0 1px rgba(255, 255, 255, .5);
-  clip-path: polygon(4% 0%, 96% 0%, 90% 28%, 98% 55%, 90% 78%, 96% 100%,
-                     4% 100%, 10% 78%, 2% 55%, 10% 28%);
-}

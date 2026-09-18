@@ -78,10 +78,6 @@
   background: linear-gradient(90deg, #b9b1a3, #6b6459 45%, #2e2a24);
 }
 
-.save-row { display: flex; gap: 10px; align-items: stretch; margin: 20px 0 8px; }
-.save-row .btn-ghost { flex: 0 0 auto; }
-.save-row .btn-stick { flex: 1 1 auto; }
-
 .saved-note { font-size: var(--t-lg); margin: 6px 0 14px; }
 
 .suggest-row { display: flex; gap: 11px; overflow-x: auto; padding: 4px 2px 14px; }

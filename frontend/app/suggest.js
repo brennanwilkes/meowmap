@@ -8,13 +8,19 @@
  * is why it is deliberately simple and why a weak signal must demote rather than exclude.
  */
 
-export const MAX_DISTANCE_M = 250;   // a cat two blocks away is a different cat
+/* A cat several blocks away is a different cat — but 250 m was drawing the line inside
+ * one cat's actual range. They wander a block or two, she photographs them from wherever
+ * she happens to be standing, and the pin carries 10-20 m of GPS error on top; the common
+ * miss was the same cat on the far corner of the same park. Missing a suggestion costs
+ * her the whole grouping flow, while an extra face in a row of three costs a glance. */
+export const MAX_DISTANCE_M = 450;
 export const MAX_SUGGESTIONS = 3;
 
 const DAY_MS = 86_400_000;
 
 /** Metres between two lat/lon points. Equirectangular rather than haversine: at the
- *  250 m cutoff the error is far below GPS accuracy, and it is a third of the cost. */
+ *  sub-kilometre distances this is used for, the error is far below GPS accuracy and it
+ *  costs a third as much. */
 export function distanceM(aLat, aLon, bLat, bLon) {
   const mPerLat = 111_320;
   const mPerLon = 111_320 * Math.cos(((aLat + bLat) / 2) * Math.PI / 180);

@@ -107,6 +107,8 @@ document.addEventListener('keydown', (e) => {
  * The sheet scrolls internally, so without the scrollTop check a downward flick halfway
  * through a long sighting would dismiss it instead of scrolling. */
 const SHEET_DISMISS_PX = 70;
+/** See main.js: how much a downward drag must out-measure a sideways one on the strip. */
+const STRIP_BIAS = 1.6;
 
 (() => {
   const sheet = document.getElementById('sheet');
@@ -114,17 +116,21 @@ const SHEET_DISMISS_PX = 70;
   let startX = 0;
   let dragging = false;
   let decided = false;
+  let biased = false;
   let dy = 0;
 
   sheet.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
-    /* The filmstrip is its own scroller and owns sideways movement. Without this, paging
-     * to the next photo with any downward drift dismisses the sheet instead. */
-    if (e.target.closest('.filmstrip') !== null) return;
+    /* THE FILMSTRIP IS SHARED, NOT EXCLUDED — see the long note in main.js. The photo is
+     * most of what is on this sheet, so excluding it left the grabber as the only surface
+     * that answered a downward swipe. A touch starting there just has to clear a higher
+     * bar to count as vertical. */
+    const strict = e.target.closest('.filmstrip') !== null;
     const onGrabber = e.target.closest('.grabber') !== null;
     if (!onGrabber && sheet.scrollTop > 0) return;
     startY = e.touches[0].clientY;
     startX = e.touches[0].clientX;
+    biased = strict;
     dragging = true;
     decided = false;
     dy = 0;
@@ -140,7 +146,10 @@ const SHEET_DISMISS_PX = 70;
        * and deciding from it abandons a genuine drag that started with a little wobble.
        * Same rule as the detail layer in main.js. */
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      if (Math.abs(dx) > Math.abs(dy) || dy < 0) { dragging = false; sheet.style.transition = ''; return; }
+      const needed = biased ? Math.abs(dx) * STRIP_BIAS : Math.abs(dx);
+      if (dy < 0 || Math.abs(dy) <= needed) {
+        dragging = false; sheet.style.transition = ''; return;
+      }
       decided = true;
     }
     e.preventDefault();
