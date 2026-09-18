@@ -172,6 +172,10 @@ function drawTurf(state) {
       fillColor: ring, fillOpacity: 0.17, interactive: false, smoothFactor: 1,
     }).addTo(map));
 
+    /* NO LABEL ON AN UNNAMED CAT. The blob still draws — that is her territory either
+     * way — but there is nothing to write on it, and the label used to read "'s turf"
+     * with a blank where the name should be. */
+    if (displayName(cat) === '') continue;
     turfLayers.push(
       L.marker(centre, {
         // Its own pane, because both labels and pins are markers and markerPane sorts

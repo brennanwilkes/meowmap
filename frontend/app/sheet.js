@@ -35,7 +35,7 @@ export function openSightingSheet(sighting, cat) {
   const veil = $('#veil');
   releaseUrls();
 
-  const name = cat === null || cat === undefined ? 'Not named yet' : displayName(cat);
+  const name = displayName(cat);
   const ring = ringFor(sighting.catId);
   /* Coat and size describe the animal, so they come off the CAT; petted is the
    * SIGHTING's and rides on the polaroid itself. A sighting still queued for upload has
@@ -82,12 +82,23 @@ export function openSightingSheet(sighting, cat) {
   sheet.style.setProperty('--ring-ink', inkFor(sighting.catId));
   veil.classList.add('open');
   sheet.classList.add('open');
+  /* THE MAP UNDERNEATH GOES INERT. The veil already covers it and should be enough, but
+   * "enough" here depends on the map's panes staying inside the screen's stacking context
+   * and on the veil's containing block being what it looks like — two things that are
+   * true today and are one CSS change away from not being, and the failure mode is a pin
+   * answering a tap meant for the sheet on top of it. A class on <body> does not depend
+   * on either. It also compacts the nav, which a sheet should. */
+  document.body.classList.add('sheet-up');
 }
 
 export function closeSheet() {
   if (unstrip !== null) { unstrip(); unstrip = null; }
   $('#veil').classList.remove('open');
   $('#sheet').classList.remove('open');
+  /* Safe to clear unconditionally: this sheet and the detail layer are never up together
+   * — opening a detail from here calls closeSheet() first, and this one only opens from
+   * the map with nothing over it. */
+  document.body.classList.remove('sheet-up');
   releaseUrls();
 }
 

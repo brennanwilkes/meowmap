@@ -198,6 +198,15 @@ body.capturing .tabs { display: none; }
 .tabs .act.shoot svg { width: 29px; height: 29px; }
 
 /* Under a sheet the actions shrink with everything else, and lose their lift. */
+/* NOTHING ON THE MAP ANSWERS A TAP WHILE A SHEET IS OVER IT. The veil covers it and
+   ought to be sufficient — but that relies on Leaflet's panes staying inside the screen's
+   stacking context and on the veil's containing block being the viewport, both of which
+   are true today and one stray `position` or `z-index` away from not being. The failure
+   mode is a pin answering a tap meant for the sheet on top of it, which is how a pull-up
+   for some other cat ended up over the capture form. This does not depend on stacking at
+   all. */
+body.sheet-up #s-map { pointer-events: none; }
+
 body.sheet-up .tabs .act { width: 40px; height: 40px; box-shadow: var(--cut); }
 body.sheet-up .tabs .act.shoot { width: 44px; height: 44px; }
 body.sheet-up .tabs .act svg { width: 21px; height: 21px; }

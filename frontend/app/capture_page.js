@@ -142,12 +142,7 @@ function draftView() {
  * faces in front of her. Never auto-links.
  */
 function suggestionView(candidates, cats) {
-  if (candidates.length === 0) {
-    return `<div class="pad">
-      <p class="saved-note hand">Saved! They&rsquo;re on the map.</p>
-      <button type="button" class="btn-stick" id="again">Another cat</button>
-    </div>`;
-  }
+  if (candidates.length === 0) throw new Error('suggestionView with nothing to suggest');
   const now = Date.now();
   return `
     <div class="pad">
@@ -166,6 +161,14 @@ function suggestionView(candidates, cats) {
           </button>`;
         }).join('')}
       </div>
+      <div style="height:84px"></div>
+    </div>
+
+    <!-- OUTSIDE .pad. "No, a new cat" is the answer she gives most often — most cats are
+         new — so it cannot be a small button under a row of faces that may itself be
+         taller than the screen. Fixed, full width, and the same bar the draft used, so
+         the way out is in the same place two screens running. -->
+    <div class="save-bar one">
       <button type="button" class="btn-ghost" id="again">No, a new cat</button>
     </div>`;
 }
@@ -436,17 +439,15 @@ async function save() {
   /* She already said which cat this is, so do not ask again. Offering the same question
    * twice in a row is how a simple screen starts to feel like it has a right answer she
    * might have missed. */
-  if (saved.catId !== null) {
-    root.innerHTML = `<div class="pad">
-      <p class="saved-note hand">Saved! They&rsquo;re on the map.</p>
-      <button type="button" class="btn-stick" id="again">Another cat</button>
-    </div>`;
-    $('#again', root).addEventListener('click', leave);
-    return;
-  }
-
   const cats = store.catsWithSightings();
-  const candidates = suggestCats(saved, cats, Date.now());
+  const candidates = saved.catId === null ? suggestCats(saved, cats, Date.now()) : [];
+
+  /* NOTHING TO ASK, SO NOTHING TO SHOW. There was a "Saved! They're on the map." screen
+   * with an "Another cat" button on it, and it is a dead end wearing a button: it says
+   * what just happened, which she watched happen, and then makes her tap to leave a
+   * screen she never asked to be on. The map IS the confirmation — her photo is on it. */
+  if (candidates.length === 0) { leave(); return; }
+
   root.innerHTML = suggestionView(candidates, cats);
   wireSuggestion(saved);
 }

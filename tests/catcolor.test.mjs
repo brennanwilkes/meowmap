@@ -70,11 +70,12 @@ check('text stays legible on every fill', () => {
   }
 });
 
-check('an unnamed cat is labelled honestly, never blank', () => {
-  assert.strictEqual(displayName(null), 'Not named yet');
-  assert.strictEqual(displayName({ name: null }), 'Not named yet');
-  assert.strictEqual(displayName({ name: '' }), 'Not named yet');
-  assert.strictEqual(displayName({ name: '   ' }), 'Not named yet');
+check('an unnamed cat has no name, and says so by saying nothing', () => {
+  // Unnamed is blank, and every caller draws nothing rather than an empty mark.
+  assert.strictEqual(displayName(null), '');
+  assert.strictEqual(displayName({ name: null }), '');
+  assert.strictEqual(displayName({ name: '' }), '');
+  assert.strictEqual(displayName({ name: '   ' }), '');
   assert.strictEqual(displayName({ name: '  Mochi ' }), 'Mochi');
 });
 

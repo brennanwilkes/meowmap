@@ -119,9 +119,19 @@
 .coat-filter::-webkit-scrollbar { display: none; }
 .coat-filter .chip { flex: 0 0 auto; }
 /* Unselected chips sit on the map rather than on paper, so they need their own ground
-   to stay legible over tiles — the flat-on-the-page treatment assumes paper behind it. */
+   to stay legible over tiles — the flat-on-the-page treatment assumes paper behind it.
+
+   `background-color`, NEVER the `background` SHORTHAND. The unselected ring is painted as
+   four background-image gradients (see .chip in sticker.css), and the shorthand resets
+   background-image to none — so this one line was silently deleting the ring on every
+   chip in the filter and leaving a bare cream pill. That is why the map's filter looked
+   flat and characterless next to the same chips anywhere else in the app.
+
+   A soft shadow rather than none: the no-shadow rule for an unselected chip is about it
+   lying flat ON THE PAGE, and over map tiles there is no page for it to lie on. */
 .coat-filter .chip[aria-pressed="false"] {
-  background: rgba(244, 240, 230, .92);
+  background-color: rgba(244, 240, 230, .94);
+  box-shadow: 0 1px 3px rgba(46, 42, 36, .3);
 }
 
 

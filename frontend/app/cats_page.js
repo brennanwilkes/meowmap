@@ -51,7 +51,7 @@ function catCard(cat) {
   return `
     <button type="button" class="cat-card" data-cat="${cat.id}" style="--ring:${esc(colour.hex)}">
       <img class="cat-face" src="${esc(photoUrl(face.photoThumb))}" alt="" crossorigin="anonymous">
-      <span class="nm">${esc(displayName(cat))}</span>
+      ${displayName(cat) === '' ? '' : `<span class="nm">${esc(displayName(cat))}</span>`}
       <span class="caption">
         <span class="stamp round" aria-label="seen ${cat.sightings.length} times">${cat.sightings.length}</span>
         <span class="seen">${esc(lastSeen(face.seenAt))}</span>

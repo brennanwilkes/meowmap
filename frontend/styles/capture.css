@@ -258,14 +258,17 @@
     0 2px 4px -1px rgba(32, 28, 22, .34),
     0 0 0 3px rgba(32, 28, 22, .045);
 }
-/* THE CAT'S COLOUR IS NOW A FELT-TIP UNDERLINE, not the card's edge. Rule 2 of the
-   polaroid is that there is NO outline — a keyline round the card is the single biggest
-   tell that it is a div — so the identity cue had to move onto the white, where a mark
-   made by hand belongs anyway. */
+/* NO COLOURED MARK ON THE CARD AT ALL. The cat's colour used to be the card's keyline;
+   when the cards became polaroids that had to go (rule 2: a keyline round the card is the
+   single biggest tell that it is a div) and it was moved to a felt-tip underline beneath
+   the name. That rendered half-width, because a `<button>` does not stretch its flex
+   children the way a `<div>` does — but the better answer to "why is it half" turned out
+   to be that the board does not need it. The colour is an identity cue for the MAP, where
+   pins and turf have nothing else to tell cats apart by; on a board of faces with their
+   names under them it was decoration competing with the photograph. */
 .cat-card .nm {
   font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
-  margin: 8px 6px 0; padding-bottom: 3px;
-  border-bottom: 3px solid var(--ring, var(--rule));
+  margin-top: 8px;
 }
 .cat-card .why, .loose-card .why {
   font-family: var(--font-hand); font-size: var(--t-sm); color: var(--ink-soft);
@@ -344,6 +347,10 @@
   box-shadow: var(--lift-lg);
   transition: transform var(--turn), opacity var(--turn);
 }
+/* One action, so one full-width track. The two-column default would leave it at its text
+   width in the first `auto` column with dead space beside it. */
+.save-bar.one { grid-template-columns: minmax(0, 1fr); }
+.save-bar.one > * { width: 100%; }
 .group-bar > span { font-family: var(--font-hand); font-size: var(--t-sm); min-width: 0; }
 /* The secondary action keeps its natural width; the primary takes the rest of the row,
    which also makes it the obvious target. Both may shrink their text rather than the
@@ -390,7 +397,9 @@
 .q-acts { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
 
 .btn-ghost.sm { font-size: var(--t-sm); padding: 5px 10px; }
-.btn-ghost.danger { color: #a8324a; border-color: #a8324a; }
+/* --ink-dash, not border-color: the ring is painted, not bordered. See .chip, .btn-ghost
+   in sticker.css. */
+.btn-ghost.danger { color: #a8324a; --ink-dash: #a8324a; }
 
 .print.hero { margin-bottom: 0; }
 

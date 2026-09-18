@@ -139,7 +139,8 @@ header states the two rules that erode silently. In short:
   in Settings, so a betrayal is a one-tap fix rather than a redeploy.
 - **OSM Humanitarian only serves from the `a.`/`b.`/`c.` subdomains** — bare
   `tile.openstreetmap.fr/hot/{z}/{x}/{y}.png` returns 404. Get the `{s}` shard right.
-- **Territory blobs: 2+ sightings earns a "<name>'s turf" zone.** The blob is the support
+- **Territory blobs: 2+ sightings earns a turf zone**, labelled `"<name>'s turf"` — and
+  only when there IS a name. An unnamed cat gets the blob with no label on it. The blob is the support
   function of the points at 44 angles, padded ~70 m, with a deterministic sine wobble;
   connector lines past 4–5 points turn to spaghetti, which is why it is a zone. It was 3+,
   with two sightings drawing a dashed connector instead — but the SECOND sighting is the
@@ -837,6 +838,20 @@ there is exactly one screen in the app where anything can be changed.
   a drag only starts on the grabber or at scrollTop 0 (otherwise a downward flick
   mid-content dismisses instead of scrolling). The grabber is also a tap target: a
   gesture with no fallback strands anyone who does not discover it.
+- **The way out of a screen with a scrolling list on it is a FIXED bar, not a button
+  under the list.** The capture draft (Discard / Save) and the "is this one of these?"
+  suggestion ("No, a new cat") both use `.save-bar`, outside `.pad`. "No, a new cat" is the
+  answer she gives most often — most cats are new — and it was a small ghost button under a
+  row of faces that could itself be taller than the screen. `.save-bar.one` is the
+  single-action variant; the two-column default would leave a lone button at its text width
+  with dead space beside it.
+- **There is NO "saved!" screen. Saving goes straight back to the map.** The suggestion
+  screen appears only when there is actually a cat to suggest — `suggestionView` throws if
+  called with nothing, because reaching it empty is a routing bug, not a state to render.
+  What it replaced said "Saved! They're on the map" over an "Another cat" button: a dead
+  end wearing a button, telling her what she had just watched happen and then making her
+  tap to leave a screen she never asked to be on. **The map is the confirmation** — her
+  photo is on it.
 - **Standalone action buttons are full width.** A lone button at its text width, inset
   from the page edge, reads as floating debris — and a destructive one looked like it
   belonged to whatever happened to sit above it.
@@ -885,6 +900,13 @@ there is exactly one screen in the app where anything can be changed.
   number tied to the old fixed 190px photo height; once photos kept their own aspect ratio
   that number pointed at nothing. It now sits in the print's top-right corner at a steeper
   angle than anything else — the one thing stuck on afterwards rather than laid out.
+- **A PULL-UP MAKES THE MAP INERT** (`body.sheet-up`, set by `openSightingSheet`). The
+  veil already covers the map and ought to be enough — but "enough" depends on Leaflet's
+  panes staying inside the screen's stacking context and on the veil's containing block
+  being the viewport, both true today and one stray `position` or `z-index` away from not
+  being. The failure mode is a pin answering a tap meant for the sheet on top of it. A
+  class on `<body>` does not depend on stacking at all. It also compacts the nav, which a
+  sheet should.
 - **THE SHEET IS A SHELL ELEMENT AND OUTLIVES THE MAP PAGE.** `#sheet` and `#veil` are
   siblings of every screen at z-index 40/41, so an open sheet does not leave when the map
   unmounts — it hangs over whatever comes next. That was the "weird pull-up of an existing
@@ -894,6 +916,13 @@ there is exactly one screen in the app where anything can be changed.
 - **A merge or a split goes BACK, never to the cat that resulted.** Answering "who is
   this" is not a request to go and look at somebody else's page, and landing on one left
   her somewhere she had not asked to be with nothing but a swipe to get out.
+- **An unnamed cat's name is an EMPTY STRING, and every caller draws nothing** rather
+  than an empty sticker, stamp or line. `displayName()` used to return "Not named yet" —
+  a caption about the absence of a thing rather than the thing — printed on the polaroid,
+  under every face on the board, and, worst, in the middle of "Not named yet's turf" on
+  the map. Unnamed is permanent and first-class here and most cats live in it, so it
+  should look like a photo nobody has written on yet. **An unnamed cat still gets its turf
+  blob; it just gets no label on it.**
 - **A cat is "them", never "it".** Only where it means the animal: a photo still has "no
   location saved in it", and the app still "sorts itself out".
 - **`splitToNewCat` is shared** (`identity.js`) between the cat page and the sighting
@@ -911,22 +940,35 @@ there is exactly one screen in the app where anything can be changed.
   is enough when the sheet is already open and not enough while it is animating, which is
   why the territory map loaded "sometimes". Leaflet measures its container once and never
   notices it changing; the observer fires whenever the box actually changes.
-- **The unselected chip's ring is FOUR BACKGROUND GRADIENTS, one per edge** — not a
-  dashed border, and not a dashed outline either. This took three attempts and the first
-  two are worth keeping as a warning. A dashed BORDER is rendered as four independent runs
-  whose dash phase comes from each side's length, so a box whose width lands on a
-  fractional pixel drops a whole side: "did not pet them" lost its left edge, and ONLY
-  while the chip beside it was also unselected — selecting that one changed its width by
-  the 0.5px a solid border adds and nudged this one back onto a whole pixel. (Two rounds
-  of widening the row's slack did nothing first, because it was never clipping.) Moving to
-  `outline` removed the neighbour and any clipping ancestor from the picture, and **the
-  bug simply swapped sides** — same rasteriser, same four segments, same rounding.
+- **EVERY DASHED EDGE IN THE APP IS FOUR BACKGROUND GRADIENTS, one per edge**, from the
+  shared `.chip, .btn-ghost` block in `sticker.css`. It is a MECHANISM, not a look:
+  wherever `border-style: dashed` appears, this bug appears with it, so **any new dashed
+  edge joins that selector list and nothing reaches for `dashed` again.**
+
+  It took four rounds. A dashed BORDER is rendered as four independent runs whose dash
+  phase comes from each side's length, so a box whose width lands on a fractional pixel
+  drops a whole side. "did not pet them" lost its left edge — and ONLY while the chip
+  beside it was also unselected, because selecting that one changed its width by the 0.5px
+  a solid border adds and nudged this one back onto a whole pixel. (Widening the row's
+  slack twice did nothing first: it was never clipping.) Switching to `outline` took the
+  neighbour and every clipping ancestor out of the picture and **the bug swapped sides** —
+  same rasteriser, same four segments, same rounding. Then it surfaced on the Discard
+  button, which is a `.btn-ghost` and was still wearing a real dashed border.
+
   `repeating-linear-gradient` has no dash-phase logic in it at all: each edge is a
   background layer of fixed size at a fixed position, so what gets painted cannot depend
-  on the box's width or which pixel grid it lands on. The border stays 2px transparent to
-  keep the layout box; `--dash`/`--gap` must stay in step with any other dashed element.
-  The row's gap also went 8px → 12px: two flat dashed boxes that close together read as
-  one box with a line through it.
+  on the box's width, its neighbours, or which pixel grid it lands on. The border stays
+  transparent to keep the layout box; the ink colour is `--ink-dash` (so `.btn-ghost.danger`
+  sets that, NOT `border-color`), and `--dash`/`--gap` are shared.
+
+  **NEVER set `background` — the shorthand — on one of these.** It resets `background-image`
+  and silently deletes the ring. One line doing exactly that (`.coat-filter .chip[aria-pressed="false"]`)
+  is why the map's filter looked flat and characterless next to the same chips elsewhere.
+
+  The chip row's gap also went 8px → 12px: two flat dashed boxes that close together read
+  as one box with a line through it. And an unselected chip is now a scrap of PAPER rather
+  than a ghost — flat, but with the page's own cream behind it and the ring stitched in the
+  colour it will become, so the row says something before anything is tapped.
 - **Chips can bleed past their layout box.** They are rotated AND wear a 3.5px die-cut
   paper ring, so the painted box is wider than the layout box on both sides. Flush against
   the left edge of a container that clips (`.pad` is `overflow-x: hidden`, because every

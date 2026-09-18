@@ -70,10 +70,22 @@ export function inkFor(catId) {
  * that is the design working. The photo does the identifying, so the label only has to
  * be honest and stable. It deliberately does NOT invent a trait ("the shy one") or a
  * place we have not geocoded. */
+/**
+ * The cat's name, or AN EMPTY STRING when she has not given them one.
+ *
+ * It used to return "Not named yet", which is a caption about the absence of a thing
+ * rather than the thing — printed on the polaroid, under every face on the board, and
+ * (worst) in the middle of "Not named yet's turf" on the map. Unnamed is a permanent,
+ * first-class state here and most cats will live in it, so it should look like a photo
+ * nobody has written on yet, not like a field with a warning in it.
+ *
+ * EVERY CALLER MUST HANDLE `''` by drawing nothing at all — not by drawing an empty
+ * sticker, an empty stamp or an empty line.
+ */
 export function displayName(cat) {
-  if (cat === null || cat === undefined) return 'Not named yet';
+  if (cat === null || cat === undefined) return '';
   if (typeof cat.name === 'string' && cat.name.trim() !== '') return cat.name.trim();
-  return 'Not named yet';
+  return '';
 }
 
 /** Short stable tag, only for disambiguating several unnamed cats in one list. */

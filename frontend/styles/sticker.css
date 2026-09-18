@@ -20,46 +20,60 @@
 
 /* Unselected chips lie flat on the page; selected ones are stuck on. The state reads
    instantly and it is the most sticker-ish thing on the screen. */
-/* THE UNSELECTED RING IS PAINTED BY HAND, as four background gradients — one per edge.
+/* ── the dashed ring ───────────────────────────────────────────────────────
+   PAINTED BY HAND, as four background gradients — one per edge. Shared by every dashed
+   edge in the app, because it is a MECHANISM and not a look: wherever a `border: Npx
+   dashed` appears, this bug appears with it.
 
-   This is the third attempt and the first that cannot fail. A dashed BORDER is rendered
-   as four independent runs whose dash phase comes from each side's length, so a box whose
-   width lands on a fractional pixel drops a whole side: "did not pet them" lost its left
-   edge, and only while the chip beside it was also unselected, because selecting that one
-   changed its width by the 0.5px a solid border adds and nudged this one back onto a
-   whole pixel. Moving to `outline` removed the neighbour and the clipping from the
-   picture and the bug simply swapped sides — same rasteriser, same four segments, same
-   rounding.
+   A dashed border is rendered as four independent runs whose dash phase comes from each
+   side's length, so a box whose width lands on a fractional pixel drops a whole side.
+   "did not pet them" lost its left edge, and only while the chip beside it was also
+   unselected — selecting that one changed its width by the 0.5px a solid border adds and
+   nudged this one back onto a whole pixel. Widening the row's slack twice did nothing,
+   because it was never clipping. Switching to `outline` took the neighbour and every
+   clipping ancestor out of the picture and THE BUG SWAPPED SIDES: same rasteriser, same
+   four segments, same rounding. Then it turned up on the Discard button, which is a
+   `.btn-ghost` and was still wearing a real dashed border.
 
-   Four `repeating-linear-gradient`s have no dash-phase logic in them at all. Each edge is
-   a background layer of a fixed size at a fixed position, so what gets painted does not
+   `repeating-linear-gradient` has no dash-phase logic in it at all. Each edge is a
+   background layer of a fixed size at a fixed position, so what gets painted cannot
    depend on the box's width, its neighbours, or which pixel grid it lands on. The border
-   stays 2px transparent to keep the layout box identical.
+   stays Npx transparent so the layout box is unchanged.
 
-   Keep --dash and --gap in step with the ring on any other dashed element, or the chips
-   stop matching the ghost buttons. */
-.chip {
-  --dash: 6px; --gap: 5px;
-  font-family: var(--font-stick); font-size: var(--t-sm); font-weight: 700;
-  background-color: transparent; color: var(--ink-faint);
+   ANY NEW DASHED EDGE GOES IN THIS SELECTOR LIST. Do not reach for `border-style: dashed`.
+   And never set `background` (the shorthand) on one of these — it resets background-image
+   and silently deletes the ring, which is exactly what the map's filter bar was doing. */
+.chip, .btn-ghost {
+  --dash: 6px; --gap: 5px; --ink-dash: var(--ink-faint);
+  border: 2px solid transparent; border-radius: var(--r-cut);
   background-image:
-    repeating-linear-gradient(90deg, var(--ink-faint) 0 var(--dash),
+    repeating-linear-gradient(90deg, var(--ink-dash) 0 var(--dash),
       transparent var(--dash) calc(var(--dash) + var(--gap))),
-    repeating-linear-gradient(90deg, var(--ink-faint) 0 var(--dash),
+    repeating-linear-gradient(90deg, var(--ink-dash) 0 var(--dash),
       transparent var(--dash) calc(var(--dash) + var(--gap))),
-    repeating-linear-gradient(180deg, var(--ink-faint) 0 var(--dash),
+    repeating-linear-gradient(180deg, var(--ink-dash) 0 var(--dash),
       transparent var(--dash) calc(var(--dash) + var(--gap))),
-    repeating-linear-gradient(180deg, var(--ink-faint) 0 var(--dash),
+    repeating-linear-gradient(180deg, var(--ink-dash) 0 var(--dash),
       transparent var(--dash) calc(var(--dash) + var(--gap)));
   background-size: 100% 2px, 100% 2px, 2px 100%, 2px 100%;
   background-position: 0 0, 0 100%, 0 0, 100% 0;
   background-repeat: no-repeat;
-  border: 2px solid transparent; border-radius: var(--r-cut);
+}
+
+/* AN UNSELECTED CHIP IS A SCRAP OF PAPER, NOT A GHOST. It was transparent with a grey
+   ring, which is the correct physics — it lies flat on the page — and completely
+   characterless: a row of identical grey outlines saying nothing about what tapping one
+   would do. It keeps the flatness (no tilt, no shadow: those are what "stuck on" means
+   here) and gains the page's own paper plus a ring stitched in the colour it will become,
+   so the row reads as a set of labels waiting to be used. */
+.chip {
+  --ink-dash: var(--fill, var(--ink-faint));
+  font-family: var(--font-stick); font-size: var(--t-sm); font-weight: 700;
+  background-color: var(--paper-hi); color: var(--ink-soft);
   padding: 4px 11px;
   transition: transform var(--up), box-shadow var(--up), background var(--up),
               color var(--up), border-color var(--up);
 }
-/* Selected chips lose the painted ring entirely: they are stuck on, with a real border. */
 .chip[aria-pressed="true"] {
   color: var(--ink); background-image: none; background-color: var(--fill);
   border: 2.5px solid var(--ink);
@@ -80,10 +94,10 @@
   border: 2.5px solid var(--ink); border-radius: var(--r-cut);
   padding: 12px 18px; min-height: 44px;
 }
+/* The ring comes from the shared block above; this only sets type and box. */
 .btn-ghost {
   font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
-  color: var(--ink-soft); background: none;
-  border: 2px dashed var(--ink-faint); border-radius: var(--r-cut);
+  color: var(--ink-soft); background-color: transparent;
   padding: 9px 14px; min-height: 44px;
 }
 
@@ -311,23 +325,24 @@
    already use `transform` for their own press physics, and one of them is a button. */
 .polaroid .scrawl {
   flex: 1 1 auto;
-  display: flex; flex-direction: column; justify-content: space-between;
-  gap: 6px;
-  padding: 9px 0 3%;
-  /* A TAPED LABEL HANGS OVER THE CARD'S BOTTOM EDGE. Something held on by tape is stuck
-     ON the card rather than laid out inside it, and the overhang is the tell that it was
-     added afterwards. `.filmstrip` carries the bottom padding that stops its own
-     `overflow-y: hidden` shearing them off. */
-  margin-bottom: -9px;
+  /* `space-evenly`, NOT `space-between`. Between pins the first and last rows to the top
+     and bottom edges of the chin and piles all the slack into the middle — which is what
+     put the handwriting hard against the photo and the Edit button hard against the
+     card's bottom edge. Evenly makes the margins part of the same distribution, so the
+     gaps above, below and between all come out the same. */
+  display: flex; flex-direction: column; justify-content: space-evenly;
+  gap: 4px;
+  /* THE SIDE INSET IS THE POINT. The card's own 5.5% is the white margin of a polaroid,
+     not somewhere to write — marks flush to it read as having run out of room. This is a
+     second inset INSIDE that, so nothing written on the card ever touches its edge, and
+     it is what makes `space-between` safe to use on a row of two. */
+  padding: 4px 3.5% 6px;
 }
 .polaroid .scrawl .mark-row {
   display: flex; flex-wrap: wrap; align-items: center;
-  justify-content: var(--just, flex-start);
-  gap: 7px 11px;
+  justify-content: var(--just, center);
+  gap: 6px 10px;
 }
-/* An empty row is a spacer: `space-between` uses it to keep every card in a strip
-   distributing its marks over the same height. */
-.polaroid .scrawl .mark-row:empty { min-height: 0; }
 .polaroid .scrawl .mark {
   display: inline-flex; max-width: 100%;
   transform: rotate(var(--rot, 0deg));

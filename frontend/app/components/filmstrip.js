@@ -26,8 +26,9 @@ import { dateText, esc } from '../dom.js';
  * hand-checked arrangements while the labels and the button sat in a fixed row along the
  * bottom — which cannot distribute evenly, because neither half knows how much room the
  * other is using. The result was everything crushed against the bottom edge with a void
- * through the middle. So the chin is now a FLEX COLUMN of rows with `space-between`: the
- * rows spread themselves over whatever height there is, however many marks there are.
+ * through the middle. So the chin is now a FLEX COLUMN of rows with `space-evenly`: the
+ * rows spread themselves over whatever height there is, however many marks there are, and
+ * the space at the top and bottom is part of the same distribution rather than left over.
  *
  * Rows, not free placement, is what makes it safe. Marks cannot overlap because they are
  * in normal flow, so a long name or eight coat tags degrade by wrapping instead of by
@@ -42,15 +43,15 @@ import { dateText, esc } from '../dom.js';
  * twitch, and a photo has to look the same every time she opens it.
  */
 
-/** Where each row sits. Chosen per photo, so two prints of one cat differ. */
-const ROW_ALIGNS = [
-  ['flex-start', 'flex-end', 'center', 'flex-end', 'flex-start'],
-  ['flex-end', 'flex-start', 'flex-end', 'center', 'flex-end'],
-  ['center', 'flex-end', 'flex-start', 'flex-end', 'center'],
-  ['flex-start', 'center', 'flex-end', 'flex-start', 'flex-end'],
-  ['flex-end', 'center', 'center', 'flex-end', 'flex-start'],
-  ['center', 'flex-start', 'flex-end', 'center', 'flex-end'],
-];
+/* A ROW WITH TWO MARKS IN IT SPREADS; A ROW WITH ONE IS PLACED.
+ *
+ * Both used to come from one table of flex-start / center / flex-end, which is what made
+ * the chin look uneven: `flex-start` on a row of two bunched them both against the left
+ * and left the right half of the card empty. Every value here fills the width instead,
+ * and all three inset the marks from the edges rather than pinning them to them. */
+const ROW_SPREADS = ['space-around', 'space-evenly', 'space-between'];
+/** A lone mark has nothing to spread against, so it gets placed. */
+const ROW_ALIGNS = ['flex-start', 'center', 'flex-end'];
 /** Walked from the photo's id so no two marks share an angle. */
 const TILTS = [-2.6, 1.9, -1.4, 2.4, -3.1, 1.2, -1.8, 2.8, -2.2, 1.6];
 
@@ -88,8 +89,9 @@ function canEdit(s) {
  * the same answer, because the petted stamp is per-photo and one card an inch taller than
  * the one beside it reads as a layout bug rather than as a scrapbook.
  */
-function rowCount(s, tags) {
-  const marks = 2
+function rowCount(s, name, tags) {
+  const marks = 1
+    + (name === '' ? 0 : 1)
     + (s.note === null || s.note === undefined || s.note === '' ? 0 : 1)
     + (s.petted === null || s.petted === undefined ? 0 : 1)
     + tags.length;
@@ -109,12 +111,14 @@ function cardRatio(rows) {
 }
 
 /** The marks, in rows. See the header for why this is flow and not absolute placement. */
-function chin(s, name, tags, rows) {
+function chin(s, name, tags) {
   const n = Math.abs(s.id ?? s.seenAt);
-  const marks = [
-    `<span class="nm ${nameStyle(n)}">${esc(name)}</span>`,
-    `<span class="when">${esc(dateText(s.seenAt))}</span>`,
-  ];
+  /* An unnamed cat gets NO name mark, not an empty one — see displayName(). Most cats
+   * live in that state, and a blank sticker or an empty rubber stamp on the white is a
+   * bug with a shape, where nothing at all is just a photo she has not written on. */
+  const marks = [];
+  if (name !== '') marks.push(`<span class="nm ${nameStyle(n)}">${esc(name)}</span>`);
+  marks.push(`<span class="when">${esc(dateText(s.seenAt))}</span>`);
   /* THE NOTE IS ALWAYS HANDWRITTEN — never stamped, never a stuck-on label, whatever
    * treatment the name happens to be wearing on this print. The other marks are facts
    * about the cat and can plausibly have been applied with a stamp or a label; a note is
@@ -133,19 +137,25 @@ function chin(s, name, tags, rows) {
   if (canEdit(s)) {
     grouped.push([`<button type="button" class="btn-stick sm" data-edit="${esc(String(s.id))}">Edit</button>`]);
   }
-  /* Pad to the strip-wide row count with empty rows, so `space-between` spreads every
-   * card's marks over the same height and the strip does not look ragged. */
-  while (grouped.length < rows) grouped.splice(grouped.length - 1, 0, []);
 
-  const aligns = ROW_ALIGNS[n % ROW_ALIGNS.length];
+  /* NO SPACER ROWS. Short cards used to be padded out to the strip-wide row count with
+   * empty ones, which piled the slack into two or three specific gaps. The card's own
+   * ratio is already computed from the strip-wide maximum, so every card is the same
+   * height anyway and `space-evenly` simply opens every gap a little wider on the ones
+   * with less written on them — which is the even fill this is after. */
   let m = 0;
-  return grouped.map((row, r) => `
-    <div class="mark-row" style="--just:${aligns[r % aligns.length]}">
-      ${row.map((html) => {
-        const rot = TILTS[(n + m++) % TILTS.length];
-        return `<span class="mark" style="--rot:${rot}deg">${html}</span>`;
-      }).join('')}
-    </div>`).join('');
+  return grouped.map((row, r) => {
+    const just = row.length > 1
+      ? ROW_SPREADS[(n + r) % ROW_SPREADS.length]
+      : ROW_ALIGNS[(n + r) % ROW_ALIGNS.length];
+    return `
+      <div class="mark-row" style="--just:${just}">
+        ${row.map((html) => {
+          const rot = TILTS[(n + m++) % TILTS.length];
+          return `<span class="mark" style="--rot:${rot}deg">${html}</span>`;
+        }).join('')}
+      </div>`;
+  }).join('');
 }
 
 /**
@@ -167,7 +177,7 @@ export function frame(s, { name, src, tags = [], rows = null, editing = false })
    * `cover` so the clamp crops rather than letterboxing. */
   const raw = s.photoW > 0 && s.photoH > 0 ? s.photoW / s.photoH : 1;
   const ar = Math.min(1.12, Math.max(0.93, raw)).toFixed(3);
-  const lines = rows === null ? rowCount(s, tags) : rows;
+  const lines = rows === null ? rowCount(s, name, tags) : rows;
 
   return `
     <div class="frame">
@@ -175,11 +185,11 @@ export function frame(s, { name, src, tags = [], rows = null, editing = false })
               style="--ar:${esc(ar)};--pr:${esc(cardRatio(lines))}">
         <span class="tape" style="top:-9px;left:50%;margin-left:-44px;transform:rotate(-2deg)"></span>
         <span class="window">
-          <img src="${esc(src(s))}" alt="${esc(name)}" crossorigin="anonymous"
+          <img src="${esc(src(s))}" alt="${esc(name === '' ? 'a cat' : name)}" crossorigin="anonymous"
                width="${esc(String(s.photoW ?? ''))}" height="${esc(String(s.photoH ?? ''))}">
         </span>
         <figcaption class="scrawl">
-          ${editing ? '' : chin(s, name, tags, lines)}
+          ${editing ? '' : chin(s, name, tags)}
         </figcaption>
       </figure>
     </div>`;
@@ -190,7 +200,7 @@ export function filmstrip(sightings, opts) {
   /* ONE HEIGHT FOR THE WHOLE STRIP. The petted stamp is per-photo, so two prints of the
    * same cat can want a different number of rows — and a card an inch taller than the one
    * beside it reads as a layout bug rather than as a scrapbook. */
-  const rows = Math.max(...sightings.map((s) => rowCount(s, opts.tags ?? [])));
+  const rows = Math.max(...sightings.map((s) => rowCount(s, opts.name, opts.tags ?? [])));
   const slides = sightings.map((s) => frame(s, { ...opts, rows })).join('');
 
   /* Dots only when there is somewhere to go. Without them a single visible print gives no
