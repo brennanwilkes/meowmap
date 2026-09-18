@@ -196,9 +196,14 @@
    card stopping looking like a polaroid. `cover`, so there is never a letterbox. */
 .polaroid {
   position: relative; display: flex; flex-direction: column;
-  aspect-ratio: .72;
+  /* .72 was the 88x107mm card. The chin now carries FIVE kinds of mark — the name, the
+     date, the petted stamp, the cat's labels and the way in — so it is deepened to .64
+     and the card reads as a slightly long polaroid rather than as a cramped one. Anything
+     shallower starved the handwriting; anything deeper stops looking like film. */
+  aspect-ratio: .64;
   /* Percentage padding resolves against WIDTH, so all three margins stay optically
-     equal however wide the frame is. */
+     equal however wide the frame is. The bottom margin is on .film-foot instead, so the
+     labels sit ON the white with the same margin as everything else. */
   padding: 5.5% 5.5% 0;
   border-radius: var(--r-film);
   background: linear-gradient(177deg, var(--film) 0%, var(--film) 62%, var(--film-low) 100%);
@@ -210,7 +215,7 @@
      `min()` against 100% means it is width-bound on a tall screen and height-bound on a
      short one, and the aspect ratio holds either way — which `max-height` alone cannot
      do, because it clamps the height and leaves the width at 100%. */
-  width: min(100%, calc(var(--polaroid-h, 50vh) * .72));
+  width: min(100%, calc(var(--polaroid-h, 50vh) * .64));
   margin: 10px auto 0;
 }
 /* The gloss on the card. Overlay so it lifts the white without washing it out. */
@@ -273,8 +278,13 @@
    next, a stuck-on label on the third. Keying it to the CAT instead made every frame of
    a strip identical, which is the one thing a scrapbook never is. */
 .polaroid .scrawl {
-  position: relative; flex: 1 1 auto; min-height: 0;
-  /* Marks are placed against this box, so it must be the chin and nothing else. */
+  position: relative; flex: 1 1 auto;
+  /* Marks are placed against this box, so it must be the HANDWRITTEN part of the chin and
+     nothing else — the labels below are a sibling, not a fourth mark in here. The floor
+     stops a cat with a lot of coat tags from squeezing the handwriting to nothing: past
+     that the card simply grows, which is better than three marks landing on top of each
+     other. */
+  min-height: 84px;
   padding: 0;
 }
 .polaroid .scrawl > * { position: absolute; transform: rotate(var(--rot, 0deg)); }
@@ -373,6 +383,7 @@
   display: flex; flex-direction: column; align-items: flex-start;
   gap: 8px; padding: 12px 2px 2px; min-height: 46px;
 }
+.polaroid.editing .scrawl { min-height: 46px; }
 .polaroid.editing .scrawl > * { position: static; transform: none; }
 
 /* ── the filmstrip ─────────────────────────────────────────────────────────
@@ -388,8 +399,125 @@
   overflow-x: auto; overflow-y: hidden;
   scroll-snap-type: x mandatory;
   scrollbar-width: none; -webkit-overflow-scrolling: touch;
-  /* Room for the die-cut margin and the tilt, which stick out past the layout box. */
-  padding: 2px 0 4px;
+  /* Room for the tilt and for the card's soft shadow, which falls well below it — with
+     overflow-y hidden, anything not paid for here is simply cut off. */
+  padding: 2px 0 16px;
+}
+.filmstrip::-webkit-scrollbar { display: none; }
+.filmstrip .frame {
+  flex: 0 0 86%;
+  scroll-snap-align: start;
+  /* One swipe moves ONE photo, however hard it is flicked. Landing three along is
+     disorienting when each frame is a different cat photo that looks much like the last. */
+  scroll-snap-stop: always;
+  min-width: 0;
+}
+/* Nothing to page through: no peek, no wasted width, and NO SCROLLING AT ALL. With the
+   overflow left auto, a single frame still rubber-banded a few pixels under a sideways
+   drag — a jiggle that promises another photo that does not exist. */
+.filmstrip.solo { overflow-x: hidden; }
+.filmstrip.solo .frame { flex: 0 0 100%; }
+
+.strip-dots {
+  display: flex; justify-content: center; gap: 6px;
+  margin: 14px 0 4px;
+}
+.strip-dots span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ink-faint); opacity: .45;
+  transition: opacity var(--up), background var(--up);
+}
+.strip-dots span.on { background: var(--ink); opacity: 1; }
+
+/* ── what is printed along the bottom of the white ────────────────────────
+   THE CAT'S LABELS AND THE WAY IN SIT ON THE CARD, under the handwriting.
+
+   Four arrangements were tried and the first three all failed differently:
+
+   1. A row beneath the strip, under a rule, holding the tags and one Edit button. It cost
+      a band of height on a sheet trying not to scroll, left an empty stripe under it
+      whenever the content came up short, and made two or three tiny chips huddle at the
+      left of a full-width line.
+   2. Fixed labels pinned over the strip's edges. Lovely standing still and WRONG IN
+      MOTION — the prints slid sideways underneath labels that did not move, so they read
+      as belonging to the sheet rather than to anything on it.
+   3. A row under each card, inside the frame. It moved correctly and still left the
+      object and its labels as two things stacked up.
+   4. On the white. A polaroid's chin is FOR this: the card is the whole object, and
+      everything true of it is written there.
+
+   So the chin holds five kinds of mark now — name, date, petted stamp, labels, Edit — and
+   `.polaroid`'s ratio went .72 → .64 to pay for them. The handwriting keeps the scattered
+   upper area (`.scrawl`); these two sit along the bottom, tilted, so the row reads as
+   things applied by hand rather than as a toolbar that happens to be on a photo.
+
+   IT ALSO DELETES A BUG CLASS. An Edit button outside the strip has to be TOLD which
+   photo is showing, and on the cat page it was told at render time and never after — the
+   scroll handler updated the index but the click closure had already captured the
+   sighting, so swiping to the second photo and tapping Edit reliably opened the first. A
+   button that rides ON the print cannot point at another one.
+
+   A GRID, NOT A FLEX ROW. An overflowing flex line pushes its first item outside the
+   container — that is how "Undo" ended up off the left edge of the save bar through two
+   attempted fixes. Grid tracks clamp their children, so a cat wearing all seven coat tags
+   wraps inside its own column instead of shoving the button off the end. */
+.polaroid .film-foot {
+  flex: 0 0 auto;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 8px 10px;
+  padding: 4px 0 3%;
+  /* THE LABELS HANG OVER THE CARD'S BOTTOM EDGE, because a thing held on by tape is stuck
+     ON the card rather than laid out inside it — the overhang is the tell that it was
+     added afterwards. A negative margin on the last flex child paints past the box
+     without disturbing the aspect ratio; `.filmstrip` carries the bottom padding that
+     stops its own `overflow-y: hidden` shearing them off. */
+  margin-bottom: -9px;
+}
+.polaroid .film-foot .tags { display: flex; flex-wrap: wrap; gap: 7px 9px; min-width: 0; }
+/* Nudged out over the white's left margin, for the same reason. The Edit button is NOT
+   nudged: it is the one thing here that has to be reliably hittable. */
+.polaroid .film-foot .pintag:first-child { margin-left: -6px; }
+.polaroid .film-foot .btn-stick.sm { transform: rotate(-2deg); }
+
+/* A scrap of paper with a name on it, taped to the card — the same vocabulary as the
+   prints themselves. NOT a .chip: a chip is a control, and these only report. Cream on
+   film white, because a label cut from the same white it is stuck to is invisible. */
+.pintag {
+  position: relative;
+  font-family: var(--font-stick); font-size: var(--t-sm); font-weight: 800;
+  color: var(--ink); background: var(--paper-hi);
+  border: 2px solid var(--ink); border-radius: var(--r-cut);
+  padding: 5px 10px;
+  transform: rotate(var(--rot, -3.5deg));
+  box-shadow: var(--lift);
+  white-space: nowrap;
+}
+.pintag::after {
+  content: ''; position: absolute; top: -6px; left: 50%; width: 28px; height: 11px;
+  margin-left: -14px; transform: rotate(-3deg); pointer-events: none;
+  background: linear-gradient(158deg,
+    rgba(255, 254, 250, .82), rgba(250, 248, 240, .55) 42%, rgba(255, 254, 250, .76));
+  box-shadow: 0 1px 2px rgba(46, 42, 36, .28), inset 0 0 0 1px rgba(255, 255, 255, .5);
+  clip-path: polygon(4% 0%, 96% 0%, 90% 28%, 98% 55%, 90% 78%, 96% 100%,
+                     4% 100%, 10% 78%, 2% 55%, 10% 28%);
+}
+
+/* ── the filmstrip ─────────────────────────────────────────────────────────
+   A cat's photos, paged sideways. Native scroll-snap, not a JS carousel: momentum,
+   rubber-banding at the ends and VoiceOver all come free, and there is no gesture of
+   ours to fight the sheet's own drag-to-dismiss.
+
+   THE NEXT PRINT PEEKS, deliberately. Full-width frames give no hint that anything is
+   beside them; an edge of the next one showing is the affordance, and it reads as a
+   stack of prints rather than as a widget. Dots underneath say how many. */
+.filmstrip {
+  display: flex; gap: 12px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  /* Room for the tilt and for the card's soft shadow, which falls well below it — with
+     overflow-y hidden, anything not paid for here is simply cut off. */
+  padding: 2px 0 16px;
 }
 .filmstrip::-webkit-scrollbar { display: none; }
 .filmstrip .frame {
@@ -436,12 +564,6 @@
    container — that is how "Undo" ended up off the left edge of the save bar through two
    attempted fixes. Grid tracks clamp their children, so a cat wearing all seven coat tags
    wraps inside its own column instead of shoving the button off the end. */
-.frame-foot {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center; gap: 10px;
-  margin-top: 14px; padding: 0 2px;
-}
-.frame-foot .tags { display: flex; flex-wrap: wrap; gap: 10px 12px; min-width: 0; }
 
 /* A scrap of paper with a name on it, stuck down with tape — the same vocabulary as the
    prints themselves, so it reads as part of the scrapbook rather than as a filter chip.

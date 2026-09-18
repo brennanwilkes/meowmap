@@ -48,14 +48,16 @@ function pettedStamp(petted) {
 }
 
 /**
- * What sits under each print: the cat's labels, and the way in to edit THIS photo.
+ * What sits at the BOTTOM OF THE WHITE, under the handwriting: the cat's labels, and the
+ * way in to edit this photo.
  *
- * DUPLICATED PER FRAME, deliberately. They were one fixed set pinned over the strip,
- * which looked lovely standing still and wrong in motion — the prints slid sideways
- * underneath labels that did not move, so the labels read as belonging to the sheet
- * rather than to anything on it. Riding in the frame costs a copy per slide and buys
- * back the thing that matters: everything you can see belongs to the print you are
- * looking at.
+ * DUPLICATED PER PRINT, deliberately, and ON the card rather than beneath it. They were
+ * first one fixed set pinned over the strip, which looked lovely standing still and wrong
+ * in motion — the prints slid sideways underneath labels that did not move, so the labels
+ * read as belonging to the sheet rather than to anything on it. Then a row under each
+ * card, which moved correctly but left the object and its labels as two separate things
+ * stacked up. On the white they are part of the photograph, which is what a polaroid's
+ * chin is FOR: the card is the whole object and everything true of it is written there.
  *
  * IT ALSO DELETES A BUG CLASS. The Edit button used to live outside the strip and open
  * whatever index a scroll handler had last recorded — so on the cat page it opened the
@@ -63,12 +65,12 @@ function pettedStamp(petted) {
  * click closure had already captured. A button that rides ON the print cannot point at
  * a different one; there is nothing left to keep in sync.
  */
-function frameFoot(s, tags) {
+function filmFoot(s, tags) {
   // IDs can be 0, and a queued upload has none at all until the Worker answers.
   const canEdit = s.id !== null && s.id !== undefined;
   if (tags.length === 0 && !canEdit) return '';
   return `
-    <div class="frame-foot">
+    <div class="film-foot">
       <div class="tags">
         ${tags.map((label, i) => `<span class="pintag" style="--rot:${i % 2 === 0 ? '-3.5' : '2.5'}deg">${esc(label)}</span>`).join('')}
       </div>
@@ -111,8 +113,8 @@ export function frame(s, { name, src, tags = [], editing = false }) {
             <span class="when">${esc(dateText(s.seenAt))}</span>
             ${pettedStamp(s.petted)}`}
         </figcaption>
+        ${editing ? '' : filmFoot(s, tags)}
       </figure>
-      ${editing ? '' : frameFoot(s, tags)}
     </div>`;
 }
 

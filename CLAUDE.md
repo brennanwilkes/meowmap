@@ -652,21 +652,38 @@ no-scroll sheet possible.
 The sighting editor is the one place a name is not on a photo (there it is the link to the
 cat), and it uses the same treatment for that cat via the exported `nameStyle(catId)`.
 
-**THE CAT'S LABELS AND THE WAY IN RIDE WITH THE PRINT**, one copy per frame, in
-`.frame-foot` inside each `.frame`. Three arrangements were tried and the first two both
-failed in ways worth keeping:
+**THE CAT'S LABELS AND THE WAY IN ARE PRINTED ON THE WHITE**, one copy per card, in
+`.film-foot` inside each `.polaroid`. Four arrangements were tried and the first three all
+failed differently:
 
-1. A bottom row under a rule holding the tags and an Edit button. It cost a band of height
-   on a sheet trying not to scroll, left an empty stripe under it whenever the content
-   came up short, and made two or three tiny chips huddle at the left of a full-width
-   line.
+1. A bottom row under the strip, under a rule, holding the tags and one Edit button. It
+   cost a band of height on a sheet trying not to scroll, left an empty stripe under it
+   whenever the content came up short, and made two or three tiny chips huddle at the left
+   of a full-width line.
 2. The labels as fixed siblings of `.filmstrip`, pinned over the strip's edges. Lovely
    standing still and **wrong in motion** — the prints slid sideways underneath labels
    that did not move, so the labels read as belonging to the sheet rather than to anything
    on it.
-3. Inside the frame, scrolling with the photograph they describe. Costs a copy per slide;
-   buys back the thing that matters, which is that everything visible belongs to the print
-   in front of you.
+3. A row under each card, inside the frame. Moved correctly, and still left the object and
+   its labels as two things stacked up.
+4. On the white. **A polaroid's chin is FOR this**: the card is the whole object and
+   everything true of it is written there.
+
+So the chin carries FIVE kinds of mark now — name, date, petted stamp, labels, Edit — and
+`.polaroid`'s ratio went **.72 → .64** to pay for them (anything shallower starved the
+handwriting, anything deeper stops looking like film). The handwriting keeps the scattered
+upper area, `.scrawl`, which has a `min-height` floor: past it the card simply grows,
+which is better than three marks landing on each other. The labels and the button sit
+along the bottom, both tilted, so the row reads as things applied by hand rather than as a
+toolbar that happens to be on a photograph.
+
+**A taped label hangs over the card's bottom edge** (`margin-bottom: -9px` on the row, and
+a small negative left margin on the first label). Something held on by tape is stuck ON
+the card rather than laid out inside it, and the overhang is the tell that it was added
+afterwards — which means `.filmstrip` must carry enough bottom padding that its own
+`overflow-y: hidden` does not shear them off, along with the card's soft shadow. **The
+Edit button is never nudged**: it is the one thing in that row that has to be reliably
+hittable.
 
 **It also deletes a bug class.** An Edit button outside the strip has to be TOLD which
 photo is showing, and on the cat page it was told at render time and never after — the
@@ -675,12 +692,13 @@ so swiping to the second photo and tapping Edit reliably opened the first. A but
 rides ON the print cannot point at another one; `wireFilmstrip`'s `onChange` is optional
 now and the sheet passes none at all.
 
-`.frame-foot` is a GRID (`minmax(0, 1fr) auto`), not a flex row, for the same reason the
+`.film-foot` is a GRID (`minmax(0, 1fr) auto`), not a flex row, for the same reason the
 action bars are: an overflowing flex line pushes its first item outside the container, so
 a cat wearing all seven coat tags would shove the button off the end. A `.pintag` is a
-scrap of paper with tape over it, not a `.chip` — a chip is a control and these are not
-tappable. The sheet's ground is ruled paper (`background-attachment: local`, same rule as
-`.pad`).
+scrap of cream paper with tape over it, not a `.chip` — a chip is a control and these only
+report, and it is cream rather than white because a label cut from the same white it is
+stuck to is invisible. The sheet's ground is ruled paper (`background-attachment: local`,
+same rule as `.pad`).
 
 **A glance must not scroll.** She taps a pin to look at a cat; finding the tags below the
 fold turns a look into a task. The sheet is `max-height: 92%`, the polaroid is sized from
