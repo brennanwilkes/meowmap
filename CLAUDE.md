@@ -934,6 +934,32 @@ there is exactly one screen in the app where anything can be changed.
   being. The failure mode is a pin answering a tap meant for the sheet on top of it. A
   class on `<body>` does not depend on stacking at all. It also compacts the nav, which a
   sheet should.
+- **A CLOSED SHEET MUST OCCUPY NO SPACE, not merely sit out of sight.** `.sheet` is
+  `display: none` until `.up` is added a frame before `.open`, and `.up` comes back off
+  (with `innerHTML = ''`) 320 ms after `.open` goes — the same shape `closeDetail` has
+  always used for the detail layer, which is why that one never had this bug.
+
+  It was laid out at `bottom: 0` and merely pushed past the bottom edge by
+  `translateY(102%)`, and **a transform still contributes to its container's scrollable
+  overflow.** `html, body { overflow: hidden }` does not save you: hidden is still
+  *programmatically* scrollable, and iOS scrolls a focused input into view through
+  exactly that path. So tapping the note field on the sighting editor slid the whole app
+  up and revealed the closed sheet sitting below the fold — holding whichever cat she had
+  last tapped on the map, read-only, looking like a pull-up that had appeared from
+  nowhere while she was typing. Clearing the content matters as much as hiding the box:
+  the shell was permanently holding the last cat's filmstrip, and `releaseUrls()` ran on
+  close, so a pending photo in there was already a broken image.
+
+  This is the SAME REPORT as "a weird pull-up of an existing cat whose photos don't
+  render" that `closeSheet()` in `map_page.unmount()` was meant to fix. That fix was
+  real but it was not this: closing the sheet removed `.open` and left the box, the
+  markup and the overflow exactly where they were.
+- **The sheet is laid out BEFORE `wireFilmstrip` runs**, because the strip measures the
+  track to jump to the photo she tapped and bails on a zero-width element — which is
+  what a `display: none` sheet is.
+- **`[data-edit]` on the sheet is delegated ONCE at module load.** It used to be added
+  inside `openSightingSheet`, so the shell accumulated another copy per pin she tapped
+  and every copy fired.
 - **THE SHEET IS A SHELL ELEMENT AND OUTLIVES THE MAP PAGE.** `#sheet` and `#veil` are
   siblings of every screen at z-index 40/41, so an open sheet does not leave when the map
   unmounts — it hangs over whatever comes next. That was the "weird pull-up of an existing

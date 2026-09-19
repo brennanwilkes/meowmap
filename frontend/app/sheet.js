@@ -15,6 +15,12 @@ import { tagLabels } from './components/chips.js';
 
 let objectUrls = new Set();
 let unstrip = null;
+/** Pending `.up` removal, so a reopen mid-slide cancels the teardown. */
+let hideTimer = null;
+/* --turn is 280ms; this is that plus a frame. It has to outlast the slide-down, because
+ * the sheet still has to be on screen while it plays. A CSS token cannot be read
+ * reliably before first paint, so this is the one place the number is duplicated. */
+const SHEET_HIDE_MS = 320;
 
 function releaseUrls() {
   for (const u of objectUrls) URL.revokeObjectURL(u);
@@ -63,18 +69,18 @@ export function openSightingSheet(sighting, cat) {
     ${pendingNote}
     ${filmstrip(shots, { name, src: photoFor, tags: tagLabels(tagged) })}`;
 
+  /* `.up` BEFORE the strip is wired. A closed sheet is display:none (see sheet.css), and
+   * wireFilmstrip has to measure the track to jump to the photo she tapped — it bails on
+   * a zero-width element, which is exactly what it would be measuring otherwise. The
+   * forced reflow commits the off-screen position so the browser has something to
+   * transition FROM; without it the display change and the transform land in one style
+   * pass and the sheet appears instantly instead of sliding. */
+  if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null; }
+  sheet.classList.add('up');
+  void sheet.offsetHeight;
+
   if (unstrip !== null) { unstrip(); unstrip = null; }
   unstrip = wireFilmstrip($('.filmstrip', sheet), startIndex);
-
-  /* Every print carries its own Edit button, so there is nothing to keep in step with the
-   * swipe — the button she can see is the one on the photo she can see. A queued upload
-   * has no server id yet and renders none. */
-  sheet.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-edit]');
-    if (btn === null) return;
-    closeSheet();
-    navigate(`#/sighting/${btn.dataset.edit}`);
-  });
 
   // --ring is read by the sheet's own sticker styling.
   sheet.style.setProperty('--ring', ring);
@@ -92,15 +98,43 @@ export function openSightingSheet(sighting, cat) {
 }
 
 export function closeSheet() {
+  const sheet = $('#sheet');
+  if (!sheet.classList.contains('up')) return;   // already closed; nothing to tear down
   if (unstrip !== null) { unstrip(); unstrip = null; }
   $('#veil').classList.remove('open');
-  $('#sheet').classList.remove('open');
+  sheet.classList.remove('open');
   /* Safe to clear unconditionally: this sheet and the detail layer are never up together
    * — opening a detail from here calls closeSheet() first, and this one only opens from
    * the map with nothing over it. */
   document.body.classList.remove('sheet-up');
-  releaseUrls();
+
+  /* THE CONTENT GOES TOO, once the slide-down has played. Leaving it meant the shell
+   * permanently held the last cat she tapped — which is what actually showed up under
+   * the sighting editor — and it kept a filmstrip of images alive for a sheet nobody
+   * could see. Revoking the object URLs waits for the same moment, or a pending photo
+   * goes blank halfway down. Guarded on `.open` so reopening mid-slide cancels it. */
+  if (hideTimer !== null) clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => {
+    hideTimer = null;
+    if (sheet.classList.contains('open')) return;
+    sheet.classList.remove('up');
+    sheet.innerHTML = '';
+    releaseUrls();
+  }, SHEET_HIDE_MS);
 }
+
+/* Every print carries its own Edit button, so there is nothing to keep in step with the
+ * swipe — the button she can see is the one on the photo she can see. A queued upload
+ * has no server id yet and renders none.
+ *
+ * DELEGATED ONCE AT MODULE LOAD. This used to be added inside openSightingSheet, so the
+ * shell accumulated one more copy of it per pin she tapped — and every copy fired. */
+document.getElementById('sheet').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-edit]');
+  if (btn === null) return;
+  closeSheet();
+  navigate(`#/sighting/${btn.dataset.edit}`);
+});
 
 // Wired once at module load; the veil and sheet are permanent shell elements, so this
 // never needs tearing down with a page.

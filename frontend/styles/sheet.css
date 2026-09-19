@@ -10,7 +10,19 @@
 
 /* Slides UP, unlike a page turn, so hierarchy never looks like lateral movement.
    102% rather than 100% so the top border does not peek during the transition. */
+/* DISPLAY:NONE WHEN CLOSED, and that is a bug fix, not tidiness.
+   A closed sheet was still laid out at `bottom: 0` and merely pushed past the bottom
+   edge by `translateY(102%)` — and a transform still contributes to its container's
+   SCROLLABLE OVERFLOW. `html, body { overflow: hidden }` does not save you: hidden is
+   still *programmatically* scrollable, and focusing a text input on iOS scrolls the
+   input into view through exactly that path. So tapping the note field on the sighting
+   editor slid the whole app up and revealed the closed sheet sitting below it — holding
+   whichever cat was last tapped on the map, read-only, looking like a pull-up that had
+   appeared from nowhere. A closed sheet has to occupy NO SPACE, not merely sit out of
+   sight. `.up` is added a frame before `.open` and removed after the slide-down, so the
+   transition still plays both ways; see closeSheet() in sheet.js. */
 .sheet {
+  display: none;
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 41;
   /* Ruled paper, so the prints read as objects lying ON a page rather than as content
      inside a panel. `local` so the ruling scrolls with the content, the same rule .pad
@@ -33,6 +45,7 @@
   max-height: 92%; overflow-y: auto; -webkit-overflow-scrolling: touch;
   --polaroid-h: 70vh;
 }
+.sheet.up { display: block; }
 .sheet.open { transform: translateY(0); }
 
 /* Padded well beyond the visible pill so it is a real drag handle on a thumb, and
