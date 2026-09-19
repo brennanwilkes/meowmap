@@ -20,15 +20,25 @@ import { startLocating } from './geolocate.js';
  *
  * Render load is bounded by LAYER COUNT, not point count — that is the lesson from
  * vessel-tracker, where one long trail emitted ~750 polylines. Here every cat costs at
- * most one polygon plus one label plus its pins, so the budget is comfortable, but
- * markers are still diffed by key rather than cleared and rebuilt. */
+ * most one polygon plus one label plus its pins, so the budget is comfortable.
+ *
+ * BUT LAYER COUNT IS ONLY HALF OF IT: what matters as much is how often a layer is
+ * REBUILT. `redraw` runs on every store emit — boot, `online`, each visibility change,
+ * each mutation — and the first version tore down every turf blob and called `setIcon`
+ * on every pin each time, whether anything had moved or not. `setIcon` discards the
+ * divIcon's element and builds a new one, so each pass re-ran the background-image on
+ * every print on the map; the cost scaled with the number of photos and bought nothing.
+ * Both registries are therefore keyed AND SIGNED: a redraw that changes nothing must
+ * touch no DOM at all. */
 
 let map = null;
 let unsubscribe = null;
 let tileLayer = null;
 /** Marker/layer registries, keyed so a refresh reuses rather than recreates. */
 const markers = new Map();
-let turfLayers = [];
+/** cat id → { sig, layers }. Keyed and signed so a redraw that changes nothing
+ *  touches no layers at all. */
+const turfByCat = new Map();
 /** Every object URL we mint, revoked on unmount. Leaking these OOMs an iPhone. */
 const objectUrls = new Set();
 /* The coat filter. Module state rather than a pref ON PURPOSE — see filter.js: a
@@ -87,12 +97,22 @@ function applyTileSource() {
   }).addTo(map);
 }
 
+/* Keyed by clientId, NOT minted per call. `thumbSrc` runs from `pinIcon`, which runs
+ * from every redraw, so an uncached createObjectURL leaked one blob URL per pending
+ * photo per store emit — and the store emits twice per refresh, on every visibility
+ * change. A stuck outbox plus a day of tab switching is how a phone runs out of
+ * memory. Revoked in unmount() with everything else in `objectUrls`. */
+const pendingUrls = new Map();
+
 function thumbSrc(s) {
   if (s.pending === true) {
     // A queued sighting renders from its local bytes so it appears on the map the
     // instant it is taken, long before it uploads.
+    const hit = pendingUrls.get(s.clientId);
+    if (hit !== undefined) return hit;
     const url = URL.createObjectURL(new Blob([s.thumbBytes], { type: 'image/jpeg' }));
     objectUrls.add(url);
+    pendingUrls.set(s.clientId, url);
     return url;
   }
   return photoUrl(s.photoThumb);
@@ -150,46 +170,64 @@ function collapse(sightings) {
   return groups;
 }
 
-function clearTurf() {
-  for (const l of turfLayers) map.removeLayer(l);
-  turfLayers = [];
-}
-
 function drawTurf(state) {
-  clearTurf();
+  const seen = new Set();
   // Filtered here as well as in drawPins: a turf blob computed from points that are not
   // drawn is a shaded zone with nothing inside it.
   for (const cat of filterCats(store.catsWithSightings(state), active)) {
     const pts = cat.sightings.map((s) => [s.lat, s.lon]);
-    const ring = ringFor(cat.id);
 
     // A lone sighting is just a pin; from the second onwards it earns a territory.
     if (!shouldDrawTurf(pts.length)) continue;
+    seen.add(cat.id);
 
+    /* Everything the drawn shape depends on, and nothing else. A blob is a 44-point
+     * polygon plus a marker, and rebuilding it is the expensive half of a redraw —
+     * so it is rebuilt only when one of these actually moved. */
+    const sig = `${displayName(cat)}|${pts.map((p) => `${p[0]},${p[1]}`).join(';')}`;
+    const held = turfByCat.get(cat.id);
+    if (held !== undefined && held.sig === sig) continue;
+    if (held !== undefined) for (const l of held.layers) map.removeLayer(l);
+
+    const ring = ringFor(cat.id);
     const { ring: poly, centre } = turfRing(pts);
-    turfLayers.push(L.polygon(poly, {
+    const layers = [L.polygon(poly, {
       color: ring, weight: 2.5, dashArray: '7 7', opacity: .9,
       fillColor: ring, fillOpacity: 0.17, interactive: false, smoothFactor: 1,
-    }).addTo(map));
+    }).addTo(map)];
 
     /* NO LABEL ON AN UNNAMED CAT. The blob still draws — that is her territory either
      * way — but there is nothing to write on it, and the label used to read "'s turf"
      * with a blank where the name should be. */
-    if (displayName(cat) === '') continue;
-    turfLayers.push(
-      L.marker(centre, {
-        // Its own pane, because both labels and pins are markers and markerPane sorts
-        // by LATITUDE — a zIndexOffset fight would work by accident and break the
-        // moment a pin drifted north of the label.
-        pane: 'turf',
-        keyboard: false,
-        icon: L.divIcon({
-          className: 'turf-label',
-          html: `<span>${esc(displayName(cat))}&rsquo;s turf</span>`,
-          iconSize: [140, 22], iconAnchor: [70, 11],
+    if (displayName(cat) !== '') {
+      layers.push(
+        L.marker(centre, {
+          // Its own pane, because both labels and pins are markers and markerPane sorts
+          // by LATITUDE — a zIndexOffset fight would work by accident and break the
+          // moment a pin drifted north of the label.
+          pane: 'turf',
+          keyboard: false,
+          icon: L.divIcon({
+            className: 'turf-label',
+            html: `<span>${esc(displayName(cat))}&rsquo;s turf</span>`,
+            iconSize: [140, 22], iconAnchor: [70, 11],
+          }),
+          // Read from the live store on tap rather than closing over this render's cat,
+          // which would otherwise pin a whole sightings array in memory per redraw.
+        }).addTo(map).on('click', () => {
+          const c = store.catsWithSightings().find((x) => x.id === cat.id) ?? null;
+          if (c === null || c.sightings.length === 0) return;
+          openSightingSheet(c.sightings[0], c);
         }),
-      }).addTo(map).on('click', () => openSightingSheet(cat.sightings[0], cat)),
-    );
+      );
+    }
+    turfByCat.set(cat.id, { sig, layers });
+  }
+
+  for (const [id, held] of turfByCat) {
+    if (seen.has(id)) continue;
+    for (const l of held.layers) map.removeLayer(l);
+    turfByCat.delete(id);
   }
   updateTurfLabels();
 }
@@ -211,6 +249,17 @@ function catFor(s, state) {
   return store.catsWithSightings(state).find((c) => c.id === s.catId) ?? null;
 }
 
+/* WHAT THE PIN ACTUALLY LOOKS LIKE, as a string. `setIcon` on a divIcon throws the
+ * element away and builds a new one, which re-runs the background-image on every print,
+ * so calling it unconditionally meant every store emit rebuilt every pin on the map —
+ * and the store emits twice per refresh, on boot, on `online`, and on every return to
+ * the app. That is what made twenty photos feel like treacle: the work scaled with the
+ * pin count and happened for no reason. Only a genuine change to this string is allowed
+ * to touch the DOM. */
+function pinSig(head, ring, count) {
+  return `${ring}|${count}|${head.pending === true}|${head.catId}|${head.id}|${thumbSrc(head)}`;
+}
+
 function drawPins(state) {
   const catsById = new Map(state.cats.map((c) => [c.id, c]));
   const groups = collapse(filterSightings(store.renderableSightings(state), catsById, active));
@@ -226,24 +275,30 @@ function drawPins(state) {
     const ring = head.pending === true
       ? 'var(--marigold)'
       : ringFor(head.catId, head.id ?? null);
-    const icon = pinIcon(head, ring, g.members.length);
+    const sig = pinSig(head, ring, g.members.length);
 
     const existing = markers.get(key);
     if (existing !== undefined) {
-      existing.setLatLng([g.lat, g.lon]);
-      existing.setIcon(icon);
-      existing.off('click');
-      existing.on('click', () => openSightingSheet(head, catFor(head, state)));
+      /* The handler is attached ONCE and reads `entry.head`, rather than being detached
+       * and re-attached every redraw around this render's closure. Rebinding a listener
+       * per pin per emit is its own cost, and the old one captured `state` — so every
+       * marker held a whole snapshot of the store alive. */
+      existing.head = head;
+      if (existing.sig !== sig) {
+        existing.m.setIcon(pinIcon(head, ring, g.members.length));
+        existing.sig = sig;
+      }
+      const ll = existing.m.getLatLng();
+      if (ll.lat !== g.lat || ll.lng !== g.lon) existing.m.setLatLng([g.lat, g.lon]);
       continue;
     }
-    const m = L.marker([g.lat, g.lon], { icon })
-      .addTo(map)
-      .on('click', () => openSightingSheet(head, catFor(head, state)));
-    markers.set(key, m);
+    const entry = { m: L.marker([g.lat, g.lon], { icon: pinIcon(head, ring, g.members.length) }), sig, head };
+    entry.m.addTo(map).on('click', () => openSightingSheet(entry.head, catFor(entry.head, store.get())));
+    markers.set(key, entry);
   }
 
-  for (const [key, m] of markers) {
-    if (!seen.has(key)) { map.removeLayer(m); markers.delete(key); }
+  for (const [key, entry] of markers) {
+    if (!seen.has(key)) { map.removeLayer(entry.m); markers.delete(key); }
   }
 }
 
@@ -473,7 +528,8 @@ export function unmount() {
   for (const url of objectUrls) URL.revokeObjectURL(url);
   objectUrls.clear();
   markers.clear();
-  turfLayers = [];
+  turfByCat.clear();
+  pendingUrls.clear();
   tileLayer = null;
   if (map !== null) { map.remove(); map = null; }
 }

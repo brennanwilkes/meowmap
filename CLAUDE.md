@@ -119,7 +119,13 @@ header states the two rules that erode silently. In short:
 - Leaflet from CDN, `preferCanvas: true`. Render load is bounded by **layer count**, not
   point count.
 - **No `L.popup` / `L.tooltip`** anywhere — a custom bottom sheet, sibling to the map div.
-- Tint `.leaflet-tile-pane`, never the marker pane.
+- **Tint `.leaflet-tile`, never `.leaflet-tile-pane` and never the marker pane.** Per-tile
+  and per-pane look identical and cost wildly differently: the PANE is the element Leaflet
+  translates to pan, so a filter on it made the browser re-rasterise and re-filter the
+  whole basemap every frame of every drag, with the cost growing the further she had
+  panned. Filtered per tile, each 256px image is filtered once and cached as its own
+  composited texture that panning merely moves. This was the biggest single cause of "the
+  map is slow on the phone".
 - **There is no attribution on the map at all**, and `.leaflet-control-attribution` is
   `display: none` so a map that forgets `attributionControl: false` cannot put it back.
   It was first moved behind an (i) button; Brennan judged that still clutter and asked
@@ -148,6 +154,27 @@ header states the two rules that erode silently. In short:
   whole point of the map, and holding that back until the third made the app look like it
   had not noticed. The support function of two points is a stadium, which is a perfectly
   good territory. Both dashed-line branches went with it.
+- **LAYER COUNT IS ONLY HALF THE BUDGET; HOW OFTEN A LAYER IS REBUILT IS THE OTHER.**
+  `redraw` runs on every store emit — boot, `online`, each visibility change, each
+  mutation — and it used to tear down every turf blob and call `setIcon` on every pin
+  each time, unconditionally. `setIcon` DISCARDS a divIcon's element and builds a new
+  one, so each pass re-ran the background-image on every print on the map; the work
+  scaled with the number of photos and bought nothing, which is why the map got laggy at
+  around twenty of them. Both registries are now keyed AND SIGNED (`pinSig`, and the turf
+  blob's name-plus-points string), so a redraw that changes nothing touches no DOM at
+  all. **Any new map layer joins that discipline** — the rule is not "diff by key", it is
+  "diff by what the drawn thing actually depends on".
+- **A marker's click handler is attached ONCE and reads a mutable `entry.head`**, never
+  detached and re-bound per redraw around that render's closure. Rebinding per pin per
+  emit is its own cost, and the old closure captured `state`, so every marker on the map
+  held a whole store snapshot alive.
+- **`store.refresh()` sets `loading` WITHOUT emitting.** Nothing renders it, and refresh
+  fires on every visibility change, so emitting there woke every subscriber to redraw an
+  unchanged map twice per refresh.
+- **`thumbSrc` caches its object URL per `clientId`.** It is called from `pinIcon`, which
+  runs from every redraw, so minting one per call leaked a blob URL per pending photo per
+  store emit — a stuck outbox plus a day of tab switching is how a phone runs out of
+  memory.
 - **`fitBounds` before the container has laid out is the "map opens zoomed right out"
   bug.** It computes a zoom for the viewport Leaflet last measured, and against a
   zero-height box that zoom is wildly wrong; it is intermittent because whether layout has

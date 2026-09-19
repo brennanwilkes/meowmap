@@ -3,11 +3,18 @@
 #map { position: absolute; inset: 0; }
 .leaflet-container { background: var(--paper); font-family: var(--font-body); }
 
-/* Tint the TILE pane only. Tinting the marker pane would drag the pins toward the
-   paper and destroy the contrast they need to stay legible over cartography. This is
-   also what lets a tile provider be swapped without the map ceasing to look like part
-   of the scrapbook. */
-.leaflet-tile-pane { filter: var(--tile-filter); }
+/* Tint the TILES, never the marker pane — tinting the markers would drag the pins
+   toward the paper and destroy the contrast they need over cartography. This is also
+   what lets a tile provider be swapped without the map ceasing to look like a scrapbook.
+
+   ON EACH TILE, NOT ON THE PANE. Identical output, very different cost: a filter on
+   `.leaflet-tile-pane` is one filter over a surface the size of the whole map, and the
+   pane is the element Leaflet TRANSLATES to pan — so the browser re-rasterised and
+   re-filtered the entire basemap every frame of every drag, and the cost grew with how
+   far she had panned. Per tile, each 256px image is filtered once and cached as its own
+   composited texture that panning merely moves. This was the single biggest cause of the
+   map feeling laggy on the phone. */
+.leaflet-tile { filter: var(--tile-filter); }
 
 /* Belt and braces: every map already passes attributionControl:false, and this makes
    sure one that forgets cannot put the control back on screen. */

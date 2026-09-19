@@ -48,7 +48,10 @@ export function subscribe(fn) {
  */
 export async function refresh() {
   if (state.loading) return;
-  set({ loading: true });
+  /* Assigned WITHOUT emitting. Nothing renders `loading`, and this runs on every
+   * visibility change, every `online` event and every mutation — so emitting here woke
+   * every subscriber to redraw a map that had not changed, twice per refresh. */
+  state = { ...state, loading: true };
   try {
     const res = await api.getAll(state.etag);
     if (res.changed) {
