@@ -126,14 +126,36 @@ header states the two rules that erode silently. In short:
   panned. Filtered per tile, each 256px image is filtered once and cached as its own
   composited texture that panning merely moves. This was the biggest single cause of "the
   map is slow on the phone".
+- **A zoom animates by SCALING; scaling without `will-change: transform` re-rasterises.**
+  Panning only translates cached textures (cheap, fixed by the per-tile tint), but a zoom
+  scales the zoom-animated layers — tile containers, the preferCanvas renderer, every
+  marker — for the quarter-second animation (and every pinch frame), and Leaflet's own
+  CSS only ships the `will-change: transform` hint for `svg.leaflet-zoom-animated`, which
+  a canvas map has none of. Without it the browser re-rasterises each tile every frame:
+  the tile-pane-tint bug, attached to zoom instead of pan. `.leaflet-zoom-animated {
+  will-change: transform; }` is permanent — NOT scoped to `.leaflet-zoom-anim`, because a
+  pinch zoom runs `map._move` without ever adding that class.
 - **There is no attribution on the map at all**, and `.leaflet-control-attribution` is
   `display: none` so a map that forgets `attributionControl: false` cannot put it back.
   It was first moved behind an (i) button; Brennan judged that still clutter and asked
   for it gone, which is his call to make for a private two-person app. Recorded as a
   DELIBERATE DECISION rather than an oversight: OSM's ODbL does ask for credit, so if
   MeowMap is ever made public, the credits go back.
-- **No recentre button.** The blue "you are here" dot stays and is dropped once on mount
-  without moving the view; `locateMe()` takes no argument and has one caller.
+- **No recentre button.** The blue "you are here" dot stays, without moving the view
+  (`locateMe()` takes no argument and has one caller).
+- **The dot is a LIVE watch now, not a one-shot.** It used to be a single converged fix
+  placed once per mount, so it showed where she was at launch and then lied about it for
+  the whole walk. Two sources, one dot: the CONVERGED first fix still places it (the
+  opening reading is a 1-3 km cell estimate with the good fix 3-10 s later, and a dot
+  that appears blocks away then leaps is worse than one that is a second late — the live
+  watch ignores its own first reading for the same reason), then `watchLocation()` keeps
+  it moving. Live fixes apply only past a movement threshold (`GEO_TRACK_MIN_MOVE_M`,
+  15 m ≈ the GPS noise floor; a walker crosses it in ~10 s) and an accuracy-ring delta
+  (`GEO_TRACK_ACCURACY_GAIN_M`, 5 m) — fixes arrive ~once a second and a dot that redrew
+  for each one would jitter standing still, even though iOS's static fixes happen to be
+  byte-identical right now. Both handles are cancelled in `unmount()`; a tab switch must
+  not leave GPS on under an unmounted map. `startLocating()` is unchanged and the capture
+  flow still owns it.
 - **Switching the tile provider fires `TILE_CHANGED` on `window`.** The map tab stays
   mounted underneath the Settings sheet — deliberately, so closing a detail never re-runs
   a map build — so it never re-read the preference and the switcher appeared to do nothing

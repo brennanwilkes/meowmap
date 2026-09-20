@@ -16,6 +16,16 @@
    map feeling laggy on the phone. */
 .leaflet-tile { filter: var(--tile-filter); }
 
+/* Make the zoom animation compose instead of re-rasterising.
+   A zoom SCALES the zoom-animated layers (tile containers, the canvas renderer, every
+   marker) for a quarter second; a pan only TRANSLATES them. Translating an existing
+   raster is cheap; scaling one without will-change:transform makes the browser re-raster
+   and re-filter the whole layer on every frame of the gesture — the tile-pane tint bug
+   above, attached to zoom instead of pan. Leaflet's own CSS ships this hint for
+   `svg.leaflet-zoom-animated` only, and a preferCanvas map has no svg at all. will-change
+   keeps one raster and lets the compositor do the scaling. */
+.leaflet-zoom-animated { will-change: transform; }
+
 /* Belt and braces: every map already passes attributionControl:false, and this makes
    sure one that forgets cannot put the control back on screen. */
 .leaflet-control-attribution { display: none; }

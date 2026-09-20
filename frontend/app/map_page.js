@@ -1,6 +1,6 @@
 import {
-  COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, LS, PETTED_VALUES, SIZE_TAGS,
-  TILE_CHANGED, TILE_SOURCES,
+  COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, GEO_TRACK_ACCURACY_GAIN_M,
+  GEO_TRACK_MIN_MOVE_M, LS, PETTED_VALUES, SIZE_TAGS, TILE_CHANGED, TILE_SOURCES,
 } from '../config.js';
 import { esc } from './dom.js';
 import { getJsonPref, getPref, setJsonPref } from './device.js';
@@ -8,11 +8,12 @@ import { photoUrl } from './api.js';
 import * as pwa from './pwa.js';
 import * as store from './store.js';
 import { ringFor } from './catcolor.js';
+import { distanceM } from './suggest.js';
 import { TURF_MIN_ZOOM, shouldDrawTurf, turfRing } from './turf.js';
 import { displayName } from './catcolor.js';
 import { closeSheet, openSightingSheet } from './sheet.js';
 import { emptyFilter, filterCats, filterSightings, isActive, toggle } from './filter.js';
-import { startLocating } from './geolocate.js';
+import { startLocating, watchLocation } from './geolocate.js';
 
 /* The map.
  *
@@ -56,7 +57,12 @@ let lastTap = null;
 /** The "you are here" dot and its accuracy ring. */
 let meMarker = null;
 let meCircle = null;
+/** The one-shot converged first fix, and the live watch that follows it. */
 let locating = null;
+let liveWatch = null;
+/** The position and accuracy last APPLIED to the dot, for the movement threshold. */
+let mePos = null;
+let meAccuracy = null;
 
 /* One scrollable strip holding every tag group, separated by a hairline so "orange |
  * chonk" reads as two decisions rather than one long list. Each group keeps its own fill
@@ -466,18 +472,30 @@ export function mount(el) {
 }
 
 /**
- * Put a "you are here" dot on the map.
+ * Put a "you are here" dot on the map and KEEP IT THERE.
  *
- * A one-shot converged fix rather than a live watchPosition: the dot only has to answer
- * "am I near that pin", and holding the GPS on for the whole session to keep it perfect
- * costs battery on the device she is out walking with.
+ * Two sources, one dot:
+ *  1. The first fix CONVERGES exactly as capture's does — the initial reading is often
+ *     a 1-3 km cell estimate with the good GPS fix landing 3-10 s later, and a dot that
+ *     appears a block off and then leaps is worse than a dot that is a second late. The
+ *     converged fix drops the dot, without moving the view.
+ *  2. A live watch then keeps it moving as she walks. It does not apply its own first
+ *     reading — that is the same cell estimate the convergence exists to filter — and it
+ *     holds applications behind a movement threshold, because fixes arrive ~once a second
+ *     and carry 10-20 m of GPS noise, so redrawing for each one makes a standing dot
+ *     jitter. The dot is the one piece of position data on the map that has no reason to
+ *     wait for a store refresh.
+ *
+ * The watch lives for the whole mount and is cancelled on unmount: switching tabs must
+ * not leave the GPS on under an unmounted map.
  */
 function locateMe() {
-  if (locating !== null) locating.cancel();
-  locating = startLocating();
-  locating.result.then((fix) => {
+  stopLocating();
+  mePos = null;
+  meAccuracy = null;
+
+  const place = (at, accuracyM) => {
     if (map === null) return;
-    const at = [fix.lat, fix.lon];
 
     if (meMarker === null) {
       meMarker = L.marker(at, {
@@ -487,15 +505,48 @@ function locateMe() {
         zIndexOffset: 1000,
         icon: L.divIcon({ className: 'me-dot', html: '<i></i>', iconSize: [18, 18], iconAnchor: [9, 9] }),
       }).addTo(map);
-      meCircle = L.circle(at, { radius: fix.accuracyM, interactive: false, className: 'me-ring' }).addTo(map);
+      meCircle = L.circle(at, { radius: accuracyM, interactive: false, className: 'me-ring' }).addTo(map);
     } else {
       meMarker.setLatLng(at);
-      meCircle.setLatLng(at).setRadius(fix.accuracyM);
+      meCircle.setLatLng(at).setRadius(accuracyM);
     }
+  };
+
+  const first = startLocating();
+  locating = first;
+  first.result.then((fix) => {
+    mePos = [fix.lat, fix.lon];
+    meAccuracy = fix.accuracyM;
+    place(mePos, meAccuracy);
   }).catch((err) => {
     // Denied or unavailable is not an error state for the map — it just has no dot.
     console.warn('[map] location unavailable:', err.message);
   });
+
+  liveWatch = watchLocation(
+    (fix) => {
+      // Gated on the first placement: the watch's opening reading can be the cell
+      // estimate the convergence was added to filter.
+      if (mePos === null || map === null) return;
+      const movedM = distanceM(mePos[0], mePos[1], fix.lat, fix.lon);
+      const ringChanged = meAccuracy !== null
+        && Math.abs(fix.accuracyM - meAccuracy) >= GEO_TRACK_ACCURACY_GAIN_M;
+      if (movedM < GEO_TRACK_MIN_MOVE_M && !ringChanged) return;
+      mePos = [fix.lat, fix.lon];
+      meAccuracy = fix.accuracyM;
+      place(mePos, meAccuracy);
+    },
+    (err) => {
+      // A transient error while walking is not a failure: keep the last fix on screen
+      // and keep listening. Only the pre-dot denial earns the console.
+      if (mePos === null) console.warn('[map] location unavailable:', err.message);
+    },
+  );
+}
+
+function stopLocating() {
+  if (liveWatch !== null) { liveWatch.cancel(); liveWatch = null; }
+  if (locating !== null) { locating.cancel(); locating = null; }
 }
 
 function redraw(state) {
@@ -521,7 +572,9 @@ export function unmount() {
   if (mapSizer !== null) { mapSizer.disconnect(); mapSizer = null; }
   lastTap = null;
   if (unsubscribe !== null) { unsubscribe(); unsubscribe = null; }
-  if (locating !== null) { locating.cancel(); locating = null; }
+  stopLocating();
+  mePos = null;
+  meAccuracy = null;
   meMarker = null;
   meCircle = null;
   for (const g of Object.values(active)) g.clear();

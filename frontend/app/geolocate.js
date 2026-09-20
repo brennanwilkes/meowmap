@@ -108,3 +108,47 @@ export function startLocating() {
     },
   };
 }
+
+/**
+ * Live position tracking for the map's "you are here" dot.
+ *
+ * Unlike startLocating, this DOES NOT settle: the watch stays on until cancel(),
+ * forwarding every reading, so the dot can keep up with a walking cat-sighter.
+ *
+ * It is deliberately raw — no convergence, no minimum-accuracy holdout. The caller
+ * decides what is worth applying (see map_page's movement threshold), and the first
+ * reading can be the same 1-3 km cell estimate the capture flow's convergence exists to
+ * filter: the map gates live fixes behind its converged first placement, so the dot is
+ * never that block-off-then-leap.
+ *
+ * There is no promise, so nothing is handed back to await: errors go to onError for the
+ * caller to decide whether they matter (a transient error after a dot already exists is
+ * not a reason to delete it).
+ */
+export function watchLocation(onFix, onError) {
+  if (navigator.geolocation === undefined) {
+    onError(new GeolocationFailure(
+      GEO_ERROR.unsupported,
+      'This browser cannot provide a location. Tap the map to place the pin instead.',
+    ));
+    return { cancel() {} };
+  }
+
+  let watchId = null;
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => onFix({
+      lat: pos.coords.latitude,
+      lon: pos.coords.longitude,
+      accuracyM: pos.coords.accuracy,
+      at: pos.timestamp,
+    }),
+    (err) => onError(describe(err.code)),
+    GEO_OPTIONS,
+  );
+
+  return {
+    cancel() {
+      if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    },
+  };
+}

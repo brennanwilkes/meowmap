@@ -75,6 +75,17 @@ export const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 20_000, maximumA
 /** Above this, pre-open the pin-correction step instead of quietly accepting the fix. */
 export const GEO_POOR_ACCURACY_M = 100;
 
+/* The map dot is a LIVE watch now, not a one-shot: she walks while the app is open, and
+ * a dot that only moves when the next photo uploads is lying about where she is. But
+ * fixes arrive roughly once a second and carry 10-20 m of GPS noise, so a dot that
+ * redrew for every fix would jitter even standing still — iOS's static fixes happen to
+ * be byte-identical right now, which is not a contract to bet against. */
+/** Metres a fix must move the dot before it is rewritten. 15 m ≈ the GPS noise floor,
+ *  so a walking person crosses it in ~10 s and a standing one never does. */
+export const GEO_TRACK_MIN_MOVE_M = 15;
+/** The accuracy ring is a "this fuzzy" statement, so a redraw for ±5 m is garbage. */
+export const GEO_TRACK_ACCURACY_GAIN_M = 5;
+
 /* ── photos ────────────────────────────────────────────────────────────────
  * Budgets are enforced by a bounded quality search, not a fixed quality — a busy
  * cat-in-a-bush and a flat sleeping cat compress very differently. */
