@@ -11,6 +11,7 @@ import { LOCATION_SOURCE, processPhoto, resolveLocation, resolveSeenAt } from '.
 import { distanceM, reasonText, suggestCats } from './suggest.js';
 import { chipRows, pettedRow, wireChips } from './components/chips.js';
 import * as flush from './flush.js';
+import * as idb from './idb.js';
 import { keepSized } from './minimap.js';
 import { navigate } from './nav.js';
 import * as store from './store.js';
@@ -460,7 +461,14 @@ async function save() {
 
 async function link(clientId, catId) {
   if (await flush.linkWhenUploaded(clientId, catId)) return;
-  const uploaded = store.get().sightings.find((x) => x.clientId === clientId);
+  // Uploaded already. The store usually has it, but there is a window between markSent
+  // (which writes the server row to IndexedDB in the SAME transaction) and the
+  // store.refresh() at the end of the flush pass — tapping in that window misses both
+  // the outbox row AND the in-memory store. The idb sightings store is the reliable
+  // copy; it is written when the upload lands, so if it is not there, it is not a
+  // sighting we can link.
+  const uploaded = store.get().sightings.find((x) => x.clientId === clientId)
+    ?? (await idb.getAllByIndex('sightings', 'by_clientId', clientId))[0];
   if (uploaded === undefined) throw new Error('That sighting could not be found');
   await patchSighting(uploaded.id, { catId });
   await store.refresh();

@@ -212,6 +212,19 @@ header states the two rules that erode silently. In short:
   pins are markers and `markerPane` sorts by latitude, so a `zIndexOffset` fight works by
   accident and breaks when a pin drifts north of the label.
 - Turf labels hide below zoom 16 and are tappable.
+- **Below `PIN_MIN_ZOOM` (16, line 63 `config.js`), every pin becomes a DOT, not a
+  photograph.** Zoomed-out time is the lag case: a photo cannot be read at city scale, and
+  each pin was a composited layer carrying a decoded photo texture, a hand-stuck tilt and
+  a shadow — dozens of them recomposited every pan frame. The dot is a flat true circle in
+  the same cat's colour (`--ring`, so pending stays amber and loose stays its own colour):
+  no texture, no tilt, no shadow, no press rotation, same tap target. The polaroid-photo
+  branch (`pinIcon`) is never rebuilt below the threshold, and `pinSig` bakes the mode in
+  (`p|` vs `d|`) so crossing the line rebuilds every icon exactly once — while `thumbSrc`
+  is skipped in dot mode entirely, so zoomed-out redraws do not even mint blob URLs. The
+  threshold shares the turf-label rationale (a detail that cannot be read is pure waste)
+  and the same number (`TURF_MIN_ZOOM`), so "detail starts here" is one idea; the redraw
+  lives in the existing `zoomend` handler, since crossing the line never emits the store.
+  The default Victoria view (~zoom 13) now opens as dots until she zooms into 16.
 - **The map filter (`filter.js`) covers coat, size and petted: OR within a group, AND
   across groups.** Within-group OR keeps each chip monotone (it can only reveal more);
   across-group AND is the only thing that makes a second group worth having. It is
@@ -490,6 +503,19 @@ cat and the next tap selected it, which is a mode you can be in without noticing
 rule for this app — the user is not a power user and must never be able to mess it up:
 one tap, on a face, answering a question. No sequences, no confirmations for reversible
 things, no "right way".
+
+**The post-upload link had a RACE — the suggestion card appears exactly while the flush is
+running.** `sendOne` acted on the row snapshot the pass started with, and a "this is that
+cat" tap during a slow upload wrote a NEWER `catId` into the outbox than the snapshot
+carried. `linkWhenUploaded` returned true (the row still existed), so nobody patched the
+server row later — the stale catId minted an unnamed cat and her explicit link vanished.
+`sendOne` therefore re-reads the row (`outbox.get`) to build the insert, and re-reads AGAIN
+after the createSighting round-trip: a link landing mid-insert PATCHes the server row, and
+the patched row is what `markSent` caches. A tap after `markSent` but before
+`store.refresh()` has the opposite problem — the store misses the row it just got — so
+`capture_page.link()` falls back to the idb `sightings` `by_clientId` index, which `markSent`
+writes in the same transaction that removes the queue row. The accepted residual is a
+sub-millisecond gap between the post-insert re-read and the delete in `markSent`.
 
 ## Coat and size belong to the CAT; petted belongs to the SIGHTING
 

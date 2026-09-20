@@ -36,14 +36,29 @@ async function publish() {
  * map can show a real thumbnail long before the full image lands. Each photo POST is
  * independently retryable, and both are content-addressed, so a partial upload costs
  * two cheap HEADs on the retry rather than re-sending everything.
+ *
+ * THE LINK RACE. `row` is a snapshot taken when the pass started, and the suggestion
+ * card she is looking at appears RIGHT THEN — a "this is that cat" tap during a slow
+ * upload writes a NEWER catId into the outbox than this snapshot carries. linkWhenUploaded
+ * returns true (the row still existed), so the caller will NOT patch the server row later;
+ * if we sent the stale catId the server mints an unnamed cat and her explicit link is
+ * silently dropped. So the insert is built from the CURRENT row, and then the outbox is
+ * read AGAIN: a link landing during the createSighting round-trip needs a server PATCH,
+ * and the patched row is what must be cached in markSent.
  */
 async function sendOne(row) {
+  const current = await outbox.get(row.clientId);
+
   const thumb = await api.uploadPhoto('thumb', new Blob([row.thumbBytes], { type: 'image/jpeg' }));
   const full = await api.uploadPhoto('full', new Blob([row.fullBytes], { type: 'image/jpeg' }));
 
+  // `current` is the freshest copy of the row the snapshot `row` came from. It can be
+  // undefined only if the row was discarded between the pass reading it and now — fall
+  // back to the snapshot so a catId set at save time is not lost in that rare case.
+  const catId = (current ?? row).catId ?? null;
   const { sighting } = await api.createSighting({
     clientId: row.clientId,
-    catId: row.catId ?? null,
+    catId,
     // Names the cat the Worker mints for this sighting. Ignored when catId is set, so
     // linking at save time can never rename the cat she picked.
     catName: row.name ?? null,
@@ -62,10 +77,17 @@ async function sendOne(row) {
     photoH: row.fullH,
   });
 
+  // Second window: the link landed DURING the insert. The outbox row still exists (we
+  // have not marked it sent yet), so patch the server row to match it.
+  const after = await outbox.get(row.clientId);
+  const patched = (after !== undefined && (after.catId ?? null) !== catId)
+    ? (await api.patchSighting(sighting.id, { catId: after.catId ?? null })).sighting
+    : sighting;
+
   // Server row in, queue row out, one transaction. A crash between them would lose
   // both copies of a photo that exists nowhere else.
-  await outbox.markSent(row.clientId, sighting);
-  return sighting;
+  await outbox.markSent(row.clientId, patched);
+  return patched;
 }
 
 async function pass() {

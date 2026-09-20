@@ -1,6 +1,7 @@
 import {
   COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, GEO_TRACK_ACCURACY_GAIN_M,
-  GEO_TRACK_MIN_MOVE_M, LS, PETTED_VALUES, SIZE_TAGS, TILE_CHANGED, TILE_SOURCES,
+  GEO_TRACK_MIN_MOVE_M, LS, PETTED_VALUES, PIN_MIN_ZOOM, SIZE_TAGS, TILE_CHANGED,
+  TILE_SOURCES,
 } from '../config.js';
 import { esc } from './dom.js';
 import { getJsonPref, getPref, setJsonPref } from './device.js';
@@ -124,7 +125,26 @@ function thumbSrc(s) {
   return photoUrl(s.photoThumb);
 }
 
-function pinIcon(s, ring, count) {
+/* Zoomed out (below PIN_MIN_ZOOM) a pin is a DOT, not a photograph. The photo cannot be
+ * read at city scale, and loading a decoded texture per pin is exactly what drags the
+ * map with many on screen — a flat circle of the cat's colour costs almost nothing per
+ * frame. Same tap target, same ring colour, same pending-amber. The tilt is what makes a
+ * polaroid read as stuck on, and a dot is not that. */
+function dotPinIcon(s, ring, count) {
+  const cls = ['pin', 'dot'];
+  if (s.pending === true) cls.push('pending');
+  const badge = count > 1 ? `<b class="stamp round">&times;${count}</b>` : '';
+  return L.divIcon({
+    className: cls.join(' '),
+    html: `<i style="--ring:${esc(ring)}"></i>${badge}`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+}
+
+function pinIcon(s, ring, count, detail) {
+  if (!detail) return dotPinIcon(s, ring, count);
+
   const cls = ['pin'];
   if (s.pending === true) cls.push('pending');
   else if (s.catId === null || s.catId === undefined) cls.push('loose');
@@ -262,11 +282,16 @@ function catFor(s, state) {
  * the app. That is what made twenty photos feel like treacle: the work scaled with the
  * pin count and happened for no reason. Only a genuine change to this string is allowed
  * to touch the DOM. */
-function pinSig(head, ring, count) {
-  return `${ring}|${count}|${head.pending === true}|${head.catId}|${head.id}|${thumbSrc(head)}`;
+function pinSig(head, ring, count, detail) {
+  /* `detail` is the zoom-mode gate: crossing PIN_MIN_ZOOM must rebuild every pin exactly
+   * once, and it must NOT touch thumbSrc while zoomed out — a blob URL minted for a pin
+   * that renders as a dot would be work done for nothing. (Mints are cached, not leaked;
+   * the point is not minting at all.) */
+  return `${detail ? 'p' : 'd'}|${ring}|${count}|${head.pending === true}|${head.catId}|${head.id}|${detail ? thumbSrc(head) : ''}`;
 }
 
 function drawPins(state) {
+  const detail = map.getZoom() >= PIN_MIN_ZOOM;
   const catsById = new Map(state.cats.map((c) => [c.id, c]));
   const groups = collapse(filterSightings(store.renderableSightings(state), catsById, active));
   const seen = new Set();
@@ -281,7 +306,7 @@ function drawPins(state) {
     const ring = head.pending === true
       ? 'var(--marigold)'
       : ringFor(head.catId, head.id ?? null);
-    const sig = pinSig(head, ring, g.members.length);
+    const sig = pinSig(head, ring, g.members.length, detail);
 
     const existing = markers.get(key);
     if (existing !== undefined) {
@@ -291,14 +316,14 @@ function drawPins(state) {
        * marker held a whole snapshot of the store alive. */
       existing.head = head;
       if (existing.sig !== sig) {
-        existing.m.setIcon(pinIcon(head, ring, g.members.length));
+        existing.m.setIcon(pinIcon(head, ring, g.members.length, detail));
         existing.sig = sig;
       }
       const ll = existing.m.getLatLng();
       if (ll.lat !== g.lat || ll.lng !== g.lon) existing.m.setLatLng([g.lat, g.lon]);
       continue;
     }
-    const entry = { m: L.marker([g.lat, g.lon], { icon: pinIcon(head, ring, g.members.length) }), sig, head };
+    const entry = { m: L.marker([g.lat, g.lon], { icon: pinIcon(head, ring, g.members.length, detail) }), sig, head };
     entry.m.addTo(map).on('click', () => openSightingSheet(entry.head, catFor(entry.head, store.get())));
     markers.set(key, entry);
   }
@@ -442,7 +467,15 @@ export function mount(el) {
     lastTap = { t: now, p };
   });
 
-  map.on('zoomend', updateTurfLabels);
+  /* The turf labels already gate on zoom (updateTurfLabels). The PINS gate too now
+   * (PIN_MIN_ZOOM: details that cannot be read at city scale get replaced by dots), so a
+   * crossing needs a redraw even though the store did not emit. Cheap when nothing
+   * crossed: every pinSig carries the mode, so unchanged pins are left alone, and turf
+   * labels early-exit on the same gate. */
+  map.on('zoomend', () => {
+    updateTurfLabels();
+    drawPins(store.get());
+  });
   map.on('moveend', () => {
     const c = map.getCenter();
     setJsonPref(LS.lastView, { lat: c.lat, lon: c.lng, zoom: map.getZoom() });

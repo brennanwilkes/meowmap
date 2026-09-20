@@ -72,7 +72,7 @@ function queueView(rows) {
       <span class="q-acts">
         <button type="button" class="btn-ghost sm" data-act="save">Save to phone</button>
         <button type="button" class="btn-ghost sm" data-act="retry">Retry</button>
-        ${r.state === outbox.STATE.failed
+        ${r.state === outbox.STATE.failed || r.attempts > 0
           ? '<button type="button" class="btn-ghost sm danger" data-act="discard">Discard</button>'
           : ''}
       </span>

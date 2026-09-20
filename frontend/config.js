@@ -60,6 +60,16 @@ export const DEFAULT_BOUNDS = {
   ne: { lat: 48.4620, lon: -123.3120 },
 };
 
+/* Below this zoom, a pin stops being a photograph and becomes a coloured dot.
+ *
+ * MEASURED-BY-DESIGN: every pin is a DOM layer with a decoded photo texture and a blurred
+ * box-shadow, so panning with dozens of them on screen composites all of it every frame —
+ * and zoomed out, half of them are illegible before the cost is even paid. The same
+ * reasoning TURF_MIN_ZOOM already uses: at city zoom the detail cannot be read, so
+ * rendering it is pure waste. One threshold for "detail starts here", shared so pins and
+ * turf labels cannot disagree about when they are supposed to appear. */
+export const PIN_MIN_ZOOM = 16;
+
 /* ── geolocation ───────────────────────────────────────────────────────────
  * She is WALKING, so a cached fix from five minutes ago is a block away —
  * maximumAge must stay 0. The first iOS fix is typically a 1–3 km cell estimate with

@@ -138,6 +138,14 @@ export const all = () => idb.getAll('outbox');
 export const remove = (clientId) => idb.del('outbox', clientId);
 
 /**
+ * Read one queued row. Callers that act on a row that was read at some earlier point
+ * must re-read it here first: the flush loop hands `sendOne` a snapshot taken when the
+ * pass started, and a link tapped mid-upload writes a NEWER catId into the store that
+ * the snapshot does not contain. Re-reading is how that newer intent gets found.
+ */
+export const get = (clientId) => idb.get('outbox', clientId);
+
+/**
  * iOS terminates backgrounded standalone apps aggressively and may cancel an in-flight
  * fetch, so a row can be left marked `inflight` forever with nothing driving it.
  * `inflight` is therefore NOT durable state — reset it on every boot and let
@@ -178,7 +186,7 @@ export function markSent(clientId, serverSighting) {
  * already uploaded, this returns null and the caller must PATCH instead.
  */
 export async function setCatId(clientId, catId) {
-  const row = await idb.get('outbox', clientId);
+  const row = await get(clientId);
   if (row === undefined) return null;
   const next = { ...row, catId };
   await idb.put('outbox', next);
@@ -188,7 +196,7 @@ export async function setCatId(clientId, catId) {
 /** A manual retry clears the backoff AND the attempt count: the user pressing the
  *  button is new information, not another automatic attempt. */
 export async function retryNow(clientId) {
-  const row = await idb.get('outbox', clientId);
+  const row = await get(clientId);
   if (row === undefined) return null;
   const next = { ...row, state: STATE.pending, attempts: 0, nextAttemptAt: Date.now(), lastError: null };
   await idb.put('outbox', next);
