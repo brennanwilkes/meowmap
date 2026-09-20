@@ -1,7 +1,7 @@
 import {
+  CLUSTER_MAX_RADIUS_M, CLUSTER_MIN_RADIUS_M, CLUSTER_RADIUS_AT_ZOOM,
   COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, GEO_TRACK_ACCURACY_GAIN_M,
-  GEO_TRACK_MIN_MOVE_M, LS, PETTED_VALUES, PIN_MIN_ZOOM, SIZE_TAGS, TILE_CHANGED,
-  TILE_SOURCES,
+  GEO_TRACK_MIN_MOVE_M, LS, PETTED_VALUES, SIZE_TAGS, TILE_CHANGED, TILE_SOURCES,
 } from '../config.js';
 import { esc } from './dom.js';
 import { getJsonPref, getPref, setJsonPref } from './device.js';
@@ -125,26 +125,11 @@ function thumbSrc(s) {
   return photoUrl(s.photoThumb);
 }
 
-/* Zoomed out (below PIN_MIN_ZOOM) a pin is a DOT, not a photograph. The photo cannot be
- * read at city scale, and loading a decoded texture per pin is exactly what drags the
- * map with many on screen — a flat circle of the cat's colour costs almost nothing per
- * frame. Same tap target, same ring colour, same pending-amber. The tilt is what makes a
- * polaroid read as stuck on, and a dot is not that. */
-function dotPinIcon(s, ring, count) {
-  const cls = ['pin', 'dot'];
-  if (s.pending === true) cls.push('pending');
-  const badge = count > 1 ? `<b class="stamp round">&times;${count}</b>` : '';
-  return L.divIcon({
-    className: cls.join(' '),
-    html: `<i style="--ring:${esc(ring)}"></i>${badge}`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
-}
-
-function pinIcon(s, ring, count, detail) {
-  if (!detail) return dotPinIcon(s, ring, count);
-
+/* A pin is always the little polaroid, whatever the zoom — cluster collapse (see
+ * `collapse` below) is what keeps the layer count down, not replacing the photo with a
+ * dot. `count` is every print in the pile, `other` the number of OTHER cats beyond the
+ * one shown (0 for a single cat's pile). */
+function pinIcon(s, ring, count, other) {
   const cls = ['pin'];
   if (s.pending === true) cls.push('pending');
   else if (s.catId === null || s.catId === undefined) cls.push('loose');
@@ -154,11 +139,14 @@ function pinIcon(s, ring, count, detail) {
 
   /* A stack of prints, not one print wearing a number: the count is the stamp on top and
    * <s> is the corner of the print underneath showing past it. Several photos collapsed
-   * into one pin should LOOK like several photos before the number is read. */
+   * into one pin should LOOK like several photos before the number is read. A pile that
+   * spans cats stamps the cats beyond the visible one (+N); a single cat's pile stamps
+   * every print in it (×N). */
   const under = count > 1 ? '<s></s>' : '';
-  const badge = count > 1
-    ? `<b class="stamp round">&times;${count}</b>`
-    : (s.pending === true ? '<b class="stamp round">!</b>' : '');
+  let badge = '';
+  if (other > 0) badge = `<b class="stamp round">+${other}</b>`;
+  else if (count > 1) badge = `<b class="stamp round">&times;${count}</b>`;
+  else if (s.pending === true) badge = '<b class="stamp round">!</b>';
   return L.divIcon({
     className: cls.join(' '),
     // The photo is its own element inside the print, so the mount and the chin below it
@@ -170,28 +158,30 @@ function pinIcon(s, ring, count, detail) {
 }
 
 /**
- * Collapse sightings of the SAME cat within ~40 m into one pin with a count.
+ * Collapse sightings within `radiusM` into one pin, ACROSS cats. A 52 px pin at zoom 17
+ * is ~40 m of ground; the same 52 px covers twice that at zoom 16, so the radius doubles
+ * per level down (see CLUSTER_* in config.js) — merged exactly when the pins would
+ * overlap on screen, which is what bounds the DOM layer count on a pan.
  *
- * Deliberately not generic marker clustering: a cat photographed on the same fence
- * eight times should be one pin, but two different cats on one doorstep must stay two
- * pins. Clustering by screen proximity gets that backwards, and it would need a plugin.
- *
- * 40 m, not the 15 m it started at. A pin is 52 px wide and at zoom 17 a metre is about
- * a pixel, so two prints 15-30 m apart overlap on screen while still counting as two
- * pins — she could see there were two and could not tap either of them. The radius has
- * to exceed the pin's own footprint, not merely "the same fence".
+ * Two prints of one cat on a fence collapse; so do two cats on the same block. The pile
+ * keeps every member, the pin wears the TOP print's photo, and `other` is how many cats
+ * beyond it the pile hides — "+1" instead of "×2" when the pile is not all one cat.
  */
-function collapse(sightings) {
+function collapse(sightings, radiusM) {
   const groups = [];
-  const MERGE_DEG = 40 / 111_320;   // ~40 m
   for (const s of sightings) {
-    const key = s.catId === null || s.catId === undefined ? `loose:${s.id ?? s.clientId}` : `cat:${s.catId}`;
-    const hit = groups.find((g) =>
-      g.key === key &&
-      Math.abs(g.lat - s.lat) < MERGE_DEG &&
-      Math.abs(g.lon - s.lon) < MERGE_DEG);
-    if (hit === undefined) groups.push({ key, lat: s.lat, lon: s.lon, members: [s] });
+    const hit = groups.find((g) => distanceM(g.lat, g.lon, s.lat, s.lon) < radiusM);
+    if (hit === undefined) groups.push({ lat: s.lat, lon: s.lon, members: [s] });
     else hit.members.push(s);
+  }
+  for (const g of groups) {
+    const cats = new Set(g.members.map((m) => (
+      m.catId === null || m.catId === undefined ? `loose:${m.id ?? m.clientId}` : `cat:${m.catId}`
+    )));
+    g.other = cats.size - 1;
+    /* The print ON TOP of the pile is the newest — a stack, not a queue — and its cat is
+     * what the pin shows and what a tap opens. */
+    g.head = g.members.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
   }
   return groups;
 }
@@ -282,23 +272,31 @@ function catFor(s, state) {
  * the app. That is what made twenty photos feel like treacle: the work scaled with the
  * pin count and happened for no reason. Only a genuine change to this string is allowed
  * to touch the DOM. */
-function pinSig(head, ring, count, detail) {
-  /* `detail` is the zoom-mode gate: crossing PIN_MIN_ZOOM must rebuild every pin exactly
-   * once, and it must NOT touch thumbSrc while zoomed out — a blob URL minted for a pin
-   * that renders as a dot would be work done for nothing. (Mints are cached, not leaked;
-   * the point is not minting at all.) */
-  return `${detail ? 'p' : 'd'}|${ring}|${count}|${head.pending === true}|${head.catId}|${head.id}|${detail ? thumbSrc(head) : ''}`;
+function pinSig(head, ring, count, other) {
+  return `p|${ring}|${count}|${other}|${head.pending === true}|${head.catId}|${head.id}|${thumbSrc(head)}`;
 }
 
 function drawPins(state) {
-  const detail = map.getZoom() >= PIN_MIN_ZOOM;
+  /* Cluster radius is a property of the ZOOM, not the data: a 52 px pin covers ~40 m of
+   * ground at zoom 17 and twice that at 16, so the radius doubles per level down — the
+   * exact point where the pins would start overlapping. NO floor: at zoom 18 the pin
+   * covers only ~20 m, so two cats 25 m apart are already tappable separately and must
+   * NOT stay merged behind a +1. Only the cap matters (see CLUSTER_* in config.js). */
+  const radiusM = Math.min(CLUSTER_MAX_RADIUS_M,
+    CLUSTER_MIN_RADIUS_M * 2 ** (CLUSTER_RADIUS_AT_ZOOM - map.getZoom()));
   const catsById = new Map(state.cats.map((c) => [c.id, c]));
-  const groups = collapse(filterSightings(store.renderableSightings(state), catsById, active));
+  const groups = collapse(filterSightings(store.renderableSightings(state), catsById, active), radiusM);
   const seen = new Set();
 
   for (const g of groups) {
-    const head = g.members[0];
-    const key = `${g.key}@${g.lat.toFixed(5)},${g.lon.toFixed(5)}`;
+    const head = g.head;
+    /* The registry key is the pile's MEMBERS, not a position: a cross-cat pile has no one
+     * cat to key on, and the same set must resolve to the same key on any redraw or
+     * setIcon fires for nothing. A pile that gains or loses a sighting is a different
+     * pile and may rebuild — that is a real content change. */
+    const key = `pile:${g.members
+      .map((m) => (m.pending === true ? `p:${m.clientId}` : `s:${m.id}`))
+      .sort().join(',')}`;
     seen.add(key);
 
     // A queued upload keeps the amber treatment; everything else gets its cat's colour,
@@ -306,7 +304,8 @@ function drawPins(state) {
     const ring = head.pending === true
       ? 'var(--marigold)'
       : ringFor(head.catId, head.id ?? null);
-    const sig = pinSig(head, ring, g.members.length, detail);
+    const count = g.members.length;
+    const sig = pinSig(head, ring, count, g.other);
 
     const existing = markers.get(key);
     if (existing !== undefined) {
@@ -316,14 +315,14 @@ function drawPins(state) {
        * marker held a whole snapshot of the store alive. */
       existing.head = head;
       if (existing.sig !== sig) {
-        existing.m.setIcon(pinIcon(head, ring, g.members.length, detail));
+        existing.m.setIcon(pinIcon(head, ring, count, g.other));
         existing.sig = sig;
       }
       const ll = existing.m.getLatLng();
       if (ll.lat !== g.lat || ll.lng !== g.lon) existing.m.setLatLng([g.lat, g.lon]);
       continue;
     }
-    const entry = { m: L.marker([g.lat, g.lon], { icon: pinIcon(head, ring, g.members.length, detail) }), sig, head };
+    const entry = { m: L.marker([g.lat, g.lon], { icon: pinIcon(head, ring, count, g.other) }), sig, head };
     entry.m.addTo(map).on('click', () => openSightingSheet(entry.head, catFor(entry.head, store.get())));
     markers.set(key, entry);
   }
@@ -467,11 +466,10 @@ export function mount(el) {
     lastTap = { t: now, p };
   });
 
-  /* The turf labels already gate on zoom (updateTurfLabels). The PINS gate too now
-   * (PIN_MIN_ZOOM: details that cannot be read at city scale get replaced by dots), so a
-   * crossing needs a redraw even though the store did not emit. Cheap when nothing
-   * crossed: every pinSig carries the mode, so unchanged pins are left alone, and turf
-   * labels early-exit on the same gate. */
+  /* The cluster radius is a function of ZOOM (see drawPins), so crossing a zoom level
+   * needs a recluster even though the store did not emit. Cheap when nothing changed:
+   * pinSig carries the pile's content, so unchanged pins are left alone, and turf labels
+   * early-exit on their own gate. */
   map.on('zoomend', () => {
     updateTurfLabels();
     drawPins(store.get());

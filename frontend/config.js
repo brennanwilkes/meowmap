@@ -60,15 +60,18 @@ export const DEFAULT_BOUNDS = {
   ne: { lat: 48.4620, lon: -123.3120 },
 };
 
-/* Below this zoom, a pin stops being a photograph and becomes a coloured dot.
- *
- * MEASURED-BY-DESIGN: every pin is a DOM layer with a decoded photo texture and a blurred
- * box-shadow, so panning with dozens of them on screen composites all of it every frame —
- * and zoomed out, half of them are illegible before the cost is even paid. The same
- * reasoning TURF_MIN_ZOOM already uses: at city zoom the detail cannot be read, so
- * rendering it is pure waste. One threshold for "detail starts here", shared so pins and
- * turf labels cannot disagree about when they are supposed to appear. */
-export const PIN_MIN_ZOOM = 16;
+/* Pins collapse into a shared pile beyond a zoom-scaled radius, ACROSS cats. The pin is
+ * 52 px wide; at zoom 17 that is ~40 m of ground. The same 52 px covers twice the ground
+ * at zoom 16, so the radius doubles per level down — which keeps "merge what the pin
+ * footprint would cover" true at every zoom: a pair is merged exactly when its pins would
+ * start overlapping (there is deliberately NO floor, or two cats wouldn't un-merge at
+ * zoom 18). That is the lever that bounds the DOM layer count on a pan (the lag cause),
+ * and no readable photo is ever replaced by a dot. The cap stops a whole city from
+ * becoming a single pile. */
+export const CLUSTER_MIN_RADIUS_M = 40;
+export const CLUSTER_MAX_RADIUS_M = 2000;
+/** Zoom at which the radius equals CLUSTER_MIN_RADIUS_M. */
+export const CLUSTER_RADIUS_AT_ZOOM = 17;
 
 /* ── geolocation ───────────────────────────────────────────────────────────
  * She is WALKING, so a cached fix from five minutes ago is a block away —

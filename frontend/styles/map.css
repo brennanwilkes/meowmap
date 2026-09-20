@@ -91,32 +91,6 @@
 /* Pending upload. She must never wonder whether a photo was saved. */
 .pin.pending i { box-shadow: 0 0 0 2.5px var(--marigold), var(--lift); }
 
-/* The dot, what every pin becomes below PIN_MIN_ZOOM. `--ring` is set inline like the
- * polaroid's, so a dot IS the same cat's colour at any zoom. A flat true circle: no
- * photo texture, no tilt, no press rotation, no blurred shadow — which is what a stamp
- * meets the polaroid for at city scale. The paper ring (box-shadow) keeps it from
- * dissolving into the tiles under it. */
-.pin.dot i {
-  display: block; width: 14px; height: 14px;
-  padding: 0;
-  border-radius: 50%;
-  border: 1.5px solid var(--paper-hi);
-  background: var(--ring);
-  box-shadow: 0 0 0 1.5px var(--ring);
-  transform: none;
-  transition: none;
-}
-/* A dot has no mount to fall off, so the press is a squish rather than a slide. */
-.pin.dot:active i { transform: scale(.8); transition: transform var(--down); }
-.pin.dot::after { content: none; }
-/* A polaroid's count stamp is 27px round — larger than a 14px dot. Scale it down to a
- * seal rather than a thing beside it. */
-.pin.dot b {
-  right: -12px; top: -10px;
-  width: 18px; height: 18px;
-  font-size: var(--t-xs);
-}
-
 /* Hand-lettered territory label. Lives in its own pane above the pins and is tappable. */
 .turf-label { background: none; border: 0; cursor: pointer; }
 .turf-label span {

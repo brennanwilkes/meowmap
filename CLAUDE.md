@@ -212,19 +212,25 @@ header states the two rules that erode silently. In short:
   pins are markers and `markerPane` sorts by latitude, so a `zIndexOffset` fight works by
   accident and breaks when a pin drifts north of the label.
 - Turf labels hide below zoom 16 and are tappable.
-- **Below `PIN_MIN_ZOOM` (16, line 63 `config.js`), every pin becomes a DOT, not a
-  photograph.** Zoomed-out time is the lag case: a photo cannot be read at city scale, and
-  each pin was a composited layer carrying a decoded photo texture, a hand-stuck tilt and
-  a shadow — dozens of them recomposited every pan frame. The dot is a flat true circle in
-  the same cat's colour (`--ring`, so pending stays amber and loose stays its own colour):
-  no texture, no tilt, no shadow, no press rotation, same tap target. The polaroid-photo
-  branch (`pinIcon`) is never rebuilt below the threshold, and `pinSig` bakes the mode in
-  (`p|` vs `d|`) so crossing the line rebuilds every icon exactly once — while `thumbSrc`
-  is skipped in dot mode entirely, so zoomed-out redraws do not even mint blob URLs. The
-  threshold shares the turf-label rationale (a detail that cannot be read is pure waste)
-  and the same number (`TURF_MIN_ZOOM`), so "detail starts here" is one idea; the redraw
-  lives in the existing `zoomend` handler, since crossing the line never emits the store.
-  The default Victoria view (~zoom 13) now opens as dots until she zooms into 16.
+- **Pins collapse, ACROSS cats, into a pile beyond a zoom-scaled radius; the photo is
+  never replaced by a dot.** The pin is a 52px little polaroid whose merge radius doubles
+  per zoom level down (`CLUSTER_MIN_RADIUS_M` 40 m at `CLUSTER_RADIUS_AT_ZOOM` 17 → the
+  radius is 2× at 16, 4× at 15… cap `CLUSTER_MAX_RADIUS_M` 2000), with DELIBERATELY no
+  floor: at zoom 18 the pin covers only ~20 m, so a 25 m pair is already tappable
+  separately and must be free to un-merge. That scaling keeps
+  "merge what the pin footprint would cover on screen" true at every zoom, and collapsing
+  by screen footprint is exactly what bounds the DOM layer count on a pan — the measured
+  lag cause. The dots that preceded this bounded the same cost and were rejected by
+  Brennan on look: city-scale photographs can't be read anyway, so the answer is fewer
+  prints, not non-photos. The pile wears the TOP print — the most recent `seenAt` — and
+  a pile spanning more than one cat stamps `+N` (cats beyond the visible one), a single
+  cat's pile stamps `×N` (every print in it); the `+` makes a mixed pile read as hiding
+  something rather than as one fat stack. The registry key is the pile's MEMBER SET
+  (`pile:<sorted ids>`), not a position: a cross-cat pile has no one cat to key on, and a
+  pile that gains or loses a sighting is genuinely a different pile and may rebuild. The
+  recluster lives in the existing `zoomend` handler, since crossing a radius boundary
+  never emits the store. Ordering is deterministic (server order + idb pending order), so
+  unchanged data re-renders identical piles with no `setIcon`.
 - **The map filter (`filter.js`) covers coat, size and petted: OR within a group, AND
   across groups.** Within-group OR keeps each chip monotone (it can only reveal more);
   across-group AND is the only thing that makes a second group worth having. It is
