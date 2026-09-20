@@ -80,6 +80,11 @@
   background: var(--paper-hi);
   transform: rotate(9deg);
 }
+/* A pile that hides OTHER cats is a different thing from a pile that hides more of the
+   same one — one is "there's another cat here", the other is "a lot of this cat". So the
+   +N stamp is inked in blue (a stamp pad colour like the rose and amber afterwards),
+   while ×N stays the default rose. */
+.pin b.cross { --stamp-ink: #2f62a8; }
 .pin.pending b { --stamp-ink: #a06a12; }
 /* Unidentified is a permanent, first-class state — dashed and desaturated says "not
    named yet", not "broken". */

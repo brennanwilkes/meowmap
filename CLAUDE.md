@@ -225,7 +225,8 @@ header states the two rules that erode silently. In short:
   prints, not non-photos. The pile wears the TOP print — the most recent `seenAt` — and
   a pile spanning more than one cat stamps `+N` (cats beyond the visible one), a single
   cat's pile stamps `×N` (every print in it); the `+` makes a mixed pile read as hiding
-  something rather than as one fat stack. The registry key is the pile's MEMBER SET
+  something rather than as one fat stack — and it is inked in BLUE while `×N` stays the
+  default rose, so a stamp says "another cat under here" even read diagonally. The registry key is the pile's MEMBER SET
   (`pile:<sorted ids>`), not a position: a cross-cat pile has no one cat to key on, and a
   pile that gains or loses a sighting is genuinely a different pile and may rebuild. The
   recluster lives in the existing `zoomend` handler, since crossing a radius boundary

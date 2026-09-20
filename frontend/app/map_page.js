@@ -144,7 +144,7 @@ function pinIcon(s, ring, count, other) {
    * every print in it (×N). */
   const under = count > 1 ? '<s></s>' : '';
   let badge = '';
-  if (other > 0) badge = `<b class="stamp round">+${other}</b>`;
+  if (other > 0) badge = `<b class="stamp round cross">+${other}</b>`;
   else if (count > 1) badge = `<b class="stamp round">&times;${count}</b>`;
   else if (s.pending === true) badge = '<b class="stamp round">!</b>';
   return L.divIcon({
