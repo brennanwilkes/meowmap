@@ -464,3 +464,25 @@
 }
 .grouped .nm { font-family: var(--font-stick); font-size: var(--t-lg); font-weight: 800; }
 .grouped .why { font-family: var(--font-hand); font-size: var(--t-sm); }
+
+/* ── the error bar ─────────────────────────────────────────────────────── */
+
+/* TOP, not bottom. The bottom edge already belongs to the save bar and the update bar,
+   and this one most often appears BECAUSE she just pressed a button down there — a
+   message that lands under her own thumb is a message she does not read. Coral rather
+   than marigold: the update bar is an offer, this is a refusal. */
+.err-bar {
+  position: fixed; left: 12px; right: 12px; z-index: 95;
+  top: calc(12px + var(--safe-t));
+  font-family: var(--font-stick); font-size: var(--t-md); font-weight: 700;
+  text-align: left;
+  background: var(--coral); color: var(--on-coral);
+  border: 2.5px solid var(--ink); border-radius: var(--r-cut);
+  padding: 12px 14px;
+  box-shadow: var(--cut), var(--lift-lg);
+  transform: rotate(.6deg);
+}
+.err-bar:active {
+  transform: translate(var(--lift-x), var(--lift-y)) rotate(0deg);
+  box-shadow: var(--cut), 0 0 0 rgba(46, 42, 36, 0);
+}

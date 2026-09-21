@@ -67,6 +67,18 @@
 }
 .screen.detail.set-up { transform: translateY(100%); transition: none; }
 .screen.detail.down   { transform: translateY(100%); }
+/* A CLOSED DETAIL LAYER MUST OCCUPY NO SPACE, and this selector needs the extra class to
+   say so: `.screen.hide { display: none }` above is the SAME specificity as
+   `.screen.detail { display: flex }`, which comes later and therefore won, so `.hide` has
+   never hidden this element. It was only ever pushed out of sight by translateY(100%) —
+   and A TRANSFORM STILL CONTRIBUTES TO ITS CONTAINER'S SCROLLABLE OVERFLOW. `.stage` is
+   `overflow: hidden`, but hidden is still *programmatically* scrollable: any
+   scrollIntoView() on a page (the capture form scrolls to its mini-map) scrolls .stage
+   too and slides this empty white panel up from the bottom edge — a blank, broken-looking
+   pull-up with nothing on it and no way to dismiss it. This is the exact bug .sheet was
+   fixed for; the detail layer had it too and nothing caught it, because `.hide` was
+   sitting right there in the markup looking like it worked. */
+.screen.detail.hide   { display: none; }
 
 /* min-height: 0 is load-bearing. Without it this flex child refuses to shrink below its
    content and the inner .pad never scrolls — the same class of bug that collapsed the

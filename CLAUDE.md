@@ -411,6 +411,23 @@ undo. That bar lives OUTSIDE `.pad` for the same reason the sighting editor's do
 form has a mini-map in the middle of it, so the buttons scrolled away exactly when she had
 finished filling it in.
 
+**NOTHING MAY FAIL SILENTLY, and `notice.js` is where a failure becomes visible.**
+`showError()` puts one coral bar at the TOP of the app (the bottom edge belongs to the
+save bar and the update bar, and a message under her own thumb is a message she does not
+read), last-one-wins, self-dismissing. `main.js` wires `unhandledrejection` and `error`
+to it, which is the backstop that matters here: half this app's work happens in async
+handlers nobody awaits, so a throw used to reach the console and nothing else.
+
+**The save button appeared to do nothing, and it was two faults of its own on top of
+that.** The no-location guard's only feedback was a line of text in the middle of a
+scrolling form — and the same tap then `scrollIntoView`d the mini-map, pushing that
+sentence off screen. Everything after it ran with no try/catch, so a throw from the
+Turnstile exchange, IndexedDB or the store left the button disabled and the screen
+unchanged. `save()` now catches, says which step failed, and RE-ENABLES the button
+without touching the draft, the mini-map or the object URL — the photo is still there and
+a retry costs nothing. `destroyMiniMap()` therefore happens AFTER the queue write, not
+before: she may need to move the pin.
+
 **`ingest()` is async and nothing awaits it**, so anything it throws lands in an unhandled
 rejection and the screen simply stays blank. That is how a missing `busyView` — deleted as
 collateral with `idleView` when the Snap tab became two glyphs — produced "photo upload
@@ -479,6 +496,20 @@ keepHash)` exists for one reason: a cold load straight onto a detail URL must mo
 tab beneath *without* writing the hash, or it navigates away before the detail opens.
 
 `nav.js` holds `back()`/`navigate()` so pages do not import the router that imports them.
+
+**`.hide` NEVER HID THE DETAIL LAYER, and that is the second "blank broken pull-up".**
+`.screen.hide { display: none }` and `.screen.detail { display: flex }` have the SAME
+specificity and the detail rule comes later, so it won — `#s-detail` has always been laid
+out, merely pushed off by `translateY(100%)`. **A transform still contributes to its
+container's scrollable overflow**, and `.stage`'s `overflow: hidden` is still
+*programmatically* scrollable, so any `scrollIntoView()` on a page (the capture form
+scrolls to its mini-map) scrolls `.stage` too and slides an empty white panel up from the
+bottom edge with nothing on it. It is the exact bug `.sheet` was fixed for; the detail
+layer had it too and nothing caught it, because `.hide` was sitting in the markup looking
+like it worked. Fixed with `.screen.detail.hide { display: none }` — and `closeDetail()`
+now clears `#s-detail-body` on the same 320 ms timer, so the shell stops permanently
+holding the last cat she opened. **A closed layer occupies no space and holds no
+content**; that rule is now true of both of them.
 
 ## Cat identity — there is no wrong way to do it
 

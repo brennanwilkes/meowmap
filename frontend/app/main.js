@@ -1,5 +1,6 @@
 import { $ } from './dom.js';
 import { back } from './nav.js';
+import { showError } from './notice.js';
 import * as store from './store.js';
 import * as mapPage from './map_page.js';
 import * as capturePage from './capture_page.js';
@@ -141,13 +142,17 @@ function closeDetail() {
   }
   detail = null;
   el.style.transform = '';
-  // Restore the tab's own title: the detail layer borrowed the topbar, it does not own it.
-  if (current !== null) {
-      }
   el.classList.add('down');
   $('#detail-veil').classList.remove('on');
   document.body.classList.remove('sheet-up');
-  setTimeout(() => { if (detail === null) el.classList.add('hide'); }, 320);
+  /* THE CONTENT GOES WITH IT, once the slide-down has played — the same rule closeSheet()
+   * follows. Leaving it meant the shell permanently held the last cat she opened, ready
+   * to be revealed by anything that made this layer visible again. */
+  setTimeout(() => {
+    if (detail !== null) return;
+    el.classList.add('hide');
+    $('#s-detail-body').innerHTML = '';
+  }, 320);
 }
 
 /* ── routing ───────────────────────────────────────────────────────────── */
@@ -189,6 +194,24 @@ $('#tabs').addEventListener('click', (e) => {
 });
 
 window.addEventListener('hashchange', route);
+
+/* THE LAST RESORT, AND THE REASON THE SAVE BUTTON COULD APPEAR TO DO NOTHING.
+ *
+ * Half the app's work happens in async handlers that nobody awaits — a click handler on
+ * `save`, `ingest()` from a picker, the flush loop. A throw in one of those lands in an
+ * unhandled rejection: the console has it, the screen does not, and a disabled button
+ * stays disabled. She cannot read a console. Whatever else a failure does, it says
+ * something here first. */
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[app] unhandled rejection:', e.reason);
+  showError(e.reason?.message ?? String(e.reason));
+});
+window.addEventListener('error', (e) => {
+  // A failed <img> or <script> fires this too and is not worth a bar over the app.
+  if (e.error === undefined || e.error === null) return;
+  console.error('[app] uncaught:', e.error);
+  showError(e.error.message ?? String(e.error));
+});
 
 /* Settings over an already-open detail SWAPS it rather than stacking on it — see
  * navigate() in nav.js. Otherwise closing Settings dropped her back onto the cat page she

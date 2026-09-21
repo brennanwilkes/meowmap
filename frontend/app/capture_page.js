@@ -14,6 +14,7 @@ import * as flush from './flush.js';
 import * as idb from './idb.js';
 import { keepSized } from './minimap.js';
 import { navigate } from './nav.js';
+import { showError } from './notice.js';
 import * as store from './store.js';
 import * as turnstile from './turnstile.js';
 
@@ -422,8 +423,23 @@ function regroup(catId) {
   wireDraft();
 }
 
+/**
+ * SAVING CANNOT FAIL QUIETLY. This button spent a day appearing to do nothing at all,
+ * and both halves of that were this function's doing:
+ *
+ *   - The no-location guard's only feedback was a line of text in the middle of a
+ *     scrolling form, and then it SCROLLED THE FORM — so the one sentence explaining
+ *     why nothing happened was pushed off screen by the same tap that wrote it.
+ *   - Everything after it was an unawaited async click handler with no try/catch, so a
+ *     throw from the Turnstile exchange, IndexedDB or the store landed in an unhandled
+ *     rejection with the button already disabled. Console: yes. Screen: nothing.
+ *
+ * The photo is still in the draft either way — nothing here discards it — so the button
+ * goes back to being tappable and a retry costs her nothing.
+ */
 async function save() {
   if (draft.lat === null) {
+    showError('This photo has no location yet — tap the map to place the pin.');
     $('#loc-line', root).textContent = 'Tap the map to place this cat first';
     $('#mini-map', root).scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
@@ -432,14 +448,21 @@ async function save() {
   btn.disabled = true;
 
   const saved = draft;
+
+  try {
+    // The pass is fetched BEFORE queueing so the challenge appears while she is still
+    // looking at this photo, rather than minutes later from a background flush. A failure
+    // is not fatal: the row queues anyway and flush.js retries the exchange.
+    await turnstile.ensurePass().catch((err) => console.warn('[capture] pass:', err.message));
+    await flush.enqueue(saved);
+  } catch (err) {
+    console.error('[capture] save failed:', err);
+    showError(`That photo could not be saved: ${err.message}`);
+    btn.disabled = false;
+    return;   // the draft, the mini-map and the object URL all stay exactly as they were
+  }
+
   destroyMiniMap();
-
-  // The pass is fetched BEFORE queueing so the challenge appears while she is still
-  // looking at this photo, rather than minutes later from a background flush. A failure
-  // is not fatal: the row queues anyway and flush.js retries the exchange.
-  await turnstile.ensurePass().catch((err) => console.warn('[capture] pass:', err.message));
-  await flush.enqueue(saved);
-
   releasePhoto();
   draft = null;
 
@@ -483,7 +506,12 @@ function wireSuggestion(saved) {
       // silently dropping a link she explicitly made would be the worse failure.
       link(saved.clientId, Number(btn.dataset.cat))
         .then(leave)
-        .catch((err) => console.error('[capture] link failed:', err));
+        .catch((err) => {
+          console.error('[capture] link failed:', err);
+          // The photo is saved; only the grouping failed. Say which, or "nothing
+          // happened" reads as the whole upload having been lost.
+          showError(`Saved, but could not group them: ${err.message}`);
+        });
     });
   }
 }
