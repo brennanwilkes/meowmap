@@ -360,3 +360,74 @@ export async function catExists(env: Env, id: number): Promise<boolean> {
     .first<{ ok: number }>();
   return row !== null;
 }
+
+export async function getCatName(env: Env, id: number): Promise<string | null> {
+  const row = await env.MEOWMAP_DB
+    .prepare('SELECT name FROM cats WHERE id = ?1')
+    .bind(id)
+    .first<{ name: string | null }>();
+  if (row === null) throw new Error(`cat ${id} vanished`);
+  return row.name;
+}
+
+/* ── push subscriptions ────────────────────────────────────────────────────── */
+
+export interface PushSubscriptionRow {
+  id: number;
+  device_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+export interface PushKeys {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+/** None of these bump data_version: subscriptions are not part of /sightings, and a
+ *  bump would turn every phone's next cheap 304 into a full table scan. */
+export function upsertPushSubscription(
+  env: Env, deviceId: string, k: PushKeys, now: number,
+): D1PreparedStatement {
+  return env.MEOWMAP_DB
+    .prepare(
+      `INSERT INTO push_subscriptions (device_id, endpoint, p256dh, auth, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?5)
+       ON CONFLICT(device_id) DO UPDATE SET
+         endpoint = excluded.endpoint, p256dh = excluded.p256dh,
+         auth = excluded.auth, updated_at = excluded.updated_at`,
+    )
+    .bind(deviceId, k.endpoint, k.p256dh, k.auth, now);
+}
+
+export async function countOtherPushSubscriptions(env: Env, deviceId: string): Promise<number> {
+  const row = await env.MEOWMAP_DB
+    .prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE device_id != ?1')
+    .bind(deviceId)
+    .first<{ n: number }>();
+  if (row === null) throw new Error('COUNT returned no row');
+  return row.n;
+}
+
+export async function listPushSubscriptions(env: Env): Promise<PushSubscriptionRow[]> {
+  const { results } = await env.MEOWMAP_DB
+    .prepare('SELECT id, device_id, endpoint, p256dh, auth FROM push_subscriptions')
+    .all<PushSubscriptionRow>();
+  return results;
+}
+
+export function deletePushSubscriptionForDevice(env: Env, deviceId: string): D1PreparedStatement {
+  return env.MEOWMAP_DB
+    .prepare('DELETE FROM push_subscriptions WHERE device_id = ?1')
+    .bind(deviceId);
+}
+
+/** Matched on the endpoint as well as the id: the phone may have re-subscribed between
+ *  the send that got a 410 and this delete, and its fresh endpoint must survive. */
+export function deleteDeadPushSubscription(env: Env, id: number, endpoint: string): D1PreparedStatement {
+  return env.MEOWMAP_DB
+    .prepare('DELETE FROM push_subscriptions WHERE id = ?1 AND endpoint = ?2')
+    .bind(id, endpoint);
+}

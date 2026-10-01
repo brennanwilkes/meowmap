@@ -195,12 +195,21 @@ export const OUTBOX_NAG_AFTER_MS = 6 * 3_600_000;
  * than settings_page importing map_page: pages here do not import each other. */
 export const TILE_CHANGED = 'meowmap:tile-changed';
 
+/* ── push notifications ────────────────────────────────────────────────────
+ * The VAPID public key a phone subscribes with. Declared in worker/src/constants.ts as
+ * well (no bundler to share one declaration); tests/vocab.test.mjs asserts they agree.
+ * Not served from /config because that response is edge-cached for a day, which would
+ * leave the toggle broken for a day after any key change. */
+export const VAPID_PUBLIC_KEY = 'BPYSsg5Wa5HLSV9h2Cv8nqt7JAiGi1SG8BcsUvNMZlgVpEtGDw7EiKudpLanLvUEKwpwEsn12Ee5uUj-8ixVzfA';
+
 export const LS = {
   deviceId: 'meowmap:device-id',
   pass: 'meowmap:upload-pass',
   tileSource: 'meowmap:tile-source',
   lastView: 'meowmap:last-view',
   installHintSeen: 'meowmap:install-hint-seen',
+  /** The push endpoint last sent to the Worker, so a launch only re-sends a changed one. */
+  pushEndpoint: 'meowmap:push-endpoint',
 };
 
 /* `meowmap:location-nag-seen` was reserved for the "turn on Options -> Location in the

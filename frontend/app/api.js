@@ -185,3 +185,20 @@ export async function patchCat(id, patch) {
 export async function deleteCat(id) {
   await request(`/cats/${id}`, { method: 'DELETE', auth: true });
 }
+
+/* ── push notifications ────────────────────────────────────────────────── */
+
+/** @param subscription the result of `PushSubscription.toJSON()`. Replaces whatever this
+ *  device had registered before, so re-sending a rotated endpoint is the same call. */
+export async function savePushSubscription(subscription) {
+  await request('/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(subscription),
+    auth: true,
+  });
+}
+
+export async function deletePushSubscription() {
+  await request('/push', { method: 'DELETE', auth: true });
+}

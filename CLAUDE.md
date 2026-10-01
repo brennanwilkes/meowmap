@@ -22,10 +22,23 @@ tests/      Plain .mjs run with bare `node`, importing real app modules
 | Email | `brennan@codexwilkes.com` |
 | Account ID | `a53d0d3cb40662b52e001ffd082d2f1f` |
 
-`brennan@textgroove.com` (work) is also authed on this machine. **Never change Cloudflare
-auth.** If `wrangler whoami` shows anything else, or a command returns
-`Authentication error [code: 10000]`, stop and ask Brennan to re-auth. Do not run
-`wrangler login`/`logout`, do not switch accounts, do not edit `~/.wrangler/config/default.toml`.
+`brennan@textgroove.com` (work) is the machine's DEFAULT wrangler login. This repo gets the
+right account from a **wrangler auth profile bound to the directory**: profile
+`codexwilkes` (`~/.wrangler/config/codexwilkes.toml`) is activated for `/home/brennan/meowmap`,
+and the binding covers every subdirectory. `~/vessel-tracker` and `~/spirit-tracker-api`
+are bound to the same profile. `wrangler whoami` prints `Active profile: codexwilkes` when
+it is in effect.
+
+- **Profiles need wrangler >= 4.131.** An older wrangler ignores the binding and silently
+  uses the default (work) login — no error. Do not downgrade `worker/`'s wrangler.
+- **Wrangler only exists in `worker/`.** `npx wrangler` from the repo root downloads a fresh
+  copy instead, and the npx cache here is broken (`ENOTEMPTY`).
+- **Re-auth is `wrangler auth create codexwilkes`, NOT `wrangler login`** — inside a bound
+  directory, `login` updates the default (work) profile.
+
+**Never change Cloudflare auth.** If `wrangler whoami` shows anything else, or a command
+returns `Authentication error [code: 10000]`, stop and ask Brennan to re-auth. Do not run
+`wrangler login`/`logout`/`auth`, do not switch accounts, do not edit `~/.wrangler/config/`.
 Wrong-account writes land in someone else's production.
 
 ## Cost safety — the one rule that outranks features
@@ -623,6 +636,45 @@ a photo to an existing cat from the capture form would silently rename that cat.
 
 `outbox.newRow` spreads the whole draft, so the name survives an offline queue for free —
 only the request body needed the field.
+
+## Push notifications
+
+When anyone uploads a photo, every OTHER subscribed phone gets "Isabelle spotted Baby"
+(or "a new cat" / "a cat"; "Someone" for an unknown device). One notification per photo,
+deliberately not collapsed. Tapping one opens `#/cat/<id>`.
+
+- **iOS only delivers Web Push to the Home Screen app**, and only prompts from inside a
+  tap. A Safari tab has no `PushManager`. The Settings toggle says which state it is in
+  rather than offering a button that cannot work. `push.enable()` calls
+  `Notification.requestPermission()` before its first await for that reason.
+- **Every push MUST show a notification.** iOS revokes permission from a web app that
+  receives a push and shows nothing, so `sw.js` shows a generic line for an unreadable
+  payload instead of failing silently. The one deliberate fallback in the app.
+- **Hand-rolled, zero deps** (`worker/src/push.ts`): RFC 8291 aes128gcm + RFC 8292 VAPID
+  on WebCrypto. `push.test.ts` pins encryption to the RFC's §5 example byte for byte.
+  Take vectors from the RAW RFC text (`curl` the .txt) — a summarised fetch of the page
+  silently dropped a character from the ciphertext.
+- **The VAPID public key is a two-file constant** (`config.js` + `constants.ts`, asserted
+  by `vocab.test.mjs`), NOT served from `/config`: that is edge-cached for a day
+  (`s-maxage=86400`). The private `d` is the `VAPID_PRIVATE_KEY` GitHub secret, pushed by
+  CI with `printf` (a trailing newline breaks the JWK). Rotating the pair orphans every
+  subscription.
+- **`DEVICE_OWNERS` in `constants.ts`** maps upload-pass device UUIDs to people. It names
+  the sender and stops a person being notified about their own photo from another of
+  their devices. UUIDs come from `sightings.device_id` or the bottom of Settings, and
+  CHANGE when a device's storage is cleared or the app is reinstalled, so an unknown
+  device is a normal state ("Someone"), not an error.
+- **`push_subscriptions` is keyed on `device_id`**, hard-deleted, and never bumps
+  `data_version`. A 404/410 from the push service deletes the row (matched on endpoint
+  too, so a re-subscribe in between survives). `MAX_PUSH_SUBSCRIPTIONS` (10) bounds the
+  per-upload fan-out against the free plan's 50 subrequests and 10 ms CPU.
+- **Endpoints are allowlisted** (`PUSH_HOSTS`): the Worker POSTs to whatever URL a
+  subscription names, so an open field would let any pass-holder aim it anywhere.
+- **Sending is in `waitUntil` after the upload is answered**, and a duplicate (retried
+  offline) insert sends nothing. A push failure is logged with Apple's reason from the
+  body, never thrown into the upload.
+- `push.resync()` runs once per launch and re-sends only a CHANGED endpoint, so a normal
+  launch costs no request and no D1 write.
 
 ## Migrations
 

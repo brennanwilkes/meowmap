@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
-  coatTags, int, lat, lon, num, optId, optStr, seenAt, str, uuid, validators,
+  coatTags, int, lat, lon, num, optId, optStr, pushSubscription, seenAt, str, uuid, validators,
 } from '../src/validate.ts';
 import { HttpError } from '../src/types.ts';
 import { assertHash, slugify } from '../src/storage.ts';
@@ -119,4 +119,45 @@ test('numeric bounds are inclusive and reject non-finite values', () => {
   assert.throws(() => num(11, 'n', 0, 10), HttpError);
   assert.throws(() => int(1.5, 'n', 0, 10), HttpError);
   assert.throws(() => num(NaN, 'n', 0, 10), HttpError);
+});
+
+test('a push subscription must point at a known push service over HTTPS', () => {
+  // The Worker POSTs to this URL on every upload, so an open endpoint would let anyone
+  // with a pass aim it at any address on the internet.
+  const keys = {
+    p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4',
+    auth: 'BTBZMqHH6r4Tts7J_aSIgg',
+  };
+  const ok = pushSubscription({ endpoint: 'https://web.push.apple.com/QGuQyavXutnMH', keys });
+  assert.strictEqual(ok.auth, keys.auth);
+  pushSubscription({ endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys });
+  pushSubscription({ endpoint: 'https://wns2-bl2p.notify.windows.com/w/?token=x', keys });
+
+  for (const endpoint of [
+    'http://web.push.apple.com/x',
+    'https://evil.example/x',
+    'https://web.push.apple.com.evil.example/x',
+    'https://notify.windows.com.evil.example/x',
+    'not a url',
+  ]) {
+    assert.throws(() => pushSubscription({ endpoint, keys }), HttpError, endpoint);
+  }
+});
+
+test('push keys must decode to the exact lengths encryption needs', () => {
+  const endpoint = 'https://web.push.apple.com/x';
+  const p256dh = 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4';
+  // Padded base64url is still base64url.
+  assert.strictEqual(pushSubscription({ endpoint, keys: { p256dh, auth: 'BTBZMqHH6r4Tts7J_aSIgg==' } }).auth,
+    'BTBZMqHH6r4Tts7J_aSIgg');
+  for (const keys of [
+    { p256dh, auth: 'BTBZMqHH6r4Tts7J' },                       // 12 bytes, not 16
+    { p256dh: p256dh.slice(0, 40), auth: 'BTBZMqHH6r4Tts7J_aSIgg' },
+    { p256dh: `A${p256dh.slice(1)}`, auth: 'BTBZMqHH6r4Tts7J_aSIgg' },   // not 0x04
+    { p256dh, auth: 'BTBZMqHH6r4Tts7J_aSIg' },                  // a length atob rejects
+    { p256dh, auth: 'BTBZMqHH6r4Tts7J+aSIgg' },                 // plain base64, not url-safe
+    null,
+  ]) {
+    assert.throws(() => pushSubscription({ endpoint, keys }), HttpError, JSON.stringify(keys));
+  }
 });

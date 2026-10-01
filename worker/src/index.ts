@@ -2,7 +2,8 @@ import type { Env, PhotoVariant } from './types.ts';
 import { HttpError } from './types.ts';
 import {
   BULK_CACHE_CONTROL, CONFIG_CACHE_CONTROL, FULL_LONG_EDGE, FULL_MAX_BYTES,
-  JPEG_CT, MAX_NAME_LEN, MAX_PHOTO_BYTES, PHOTO_CACHE_CONTROL, THUMB_LONG_EDGE, THUMB_MAX_BYTES,
+  JPEG_CT, MAX_NAME_LEN, MAX_PHOTO_BYTES, MAX_PUSH_SUBSCRIPTIONS, PHOTO_CACHE_CONTROL,
+  THUMB_LONG_EDGE, THUMB_MAX_BYTES,
 } from './constants.ts';
 import { corsHeaders, handleOptions } from './cors.ts';
 import { errorJson, json, noContent, notModified } from './http.ts';
@@ -11,8 +12,10 @@ import { verifyTurnstile } from './turnstile.ts';
 import { auditStatement, type AuditFields } from './audit.ts';
 import * as budget from './budget.ts';
 import * as db from './storage.ts';
+import { notifySighting } from './push.ts';
 import {
-  coatTags, int, lat, lon, optId, optStr, photoDim, readJson, seenAt, uuid, validators,
+  coatTags, int, lat, lon, optId, optStr, photoDim, pushSubscription, readJson, seenAt, uuid,
+  validators,
 } from './validate.ts';
 
 /* Routes only. No business logic here, no Response constructed here (see http.ts), no
@@ -190,7 +193,15 @@ async function route(
     return await uploadPhoto(req, env, now, pass.sub, extra, audits);
   }
   if (path === '/sightings' && req.method === 'POST') {
-    return await createSighting(req, env, now, pass.sub, extra, audits);
+    return await createSighting(req, env, ctx, now, pass.sub, extra, audits);
+  }
+  if (path === '/push' && req.method === 'POST') {
+    return await subscribePush(req, env, now, pass.sub, extra, audits);
+  }
+  if (path === '/push' && req.method === 'DELETE') {
+    await env.MEOWMAP_DB.batch([db.deletePushSubscriptionForDevice(env, pass.sub)]);
+    audits.push({ method: 'DELETE', path: '/push', status: 204, outcome: 'ok', deviceId: pass.sub });
+    return noContent(req, env);
   }
 
   const sMatch = path.match(ROUTE_SIGHTING);
@@ -292,7 +303,7 @@ function bumpFor(env: Env, now: number, bytes: number): D1PreparedStatement {
 }
 
 async function createSighting(
-  req: Request, env: Env, now: number, deviceId: string,
+  req: Request, env: Env, ctx: ExecutionContext, now: number, deviceId: string,
   extra: Record<string, string>, audits: AuditFields[],
 ): Promise<Response> {
   const b = await readJson(req);
@@ -334,6 +345,7 @@ async function createSighting(
    * Linking now means MERGING two cats, which is the operation she was really doing all
    * along. Cost is one extra row written per upload (4 -> 5 against the 100k/day cap),
    * which buys every sighting an identity from the moment it lands. */
+  const newCat = s.catId === null;
   if (s.catId === null) {
     /* Coat and size ride the create into the NEW cat. When she instead answered "already
      * seen this cat" and sent a catId, they are ignored: that cat already has its own
@@ -364,6 +376,18 @@ async function createSighting(
   // treats this identically to a fresh 201, which is what makes the queue safe to retry.
   const duplicate = (insert.meta?.changes ?? 0) === 0;
 
+  /* A retried offline upload already notified when it first landed, so only a genuinely
+   * new row tells anyone. The send happens after the response, and a failure is logged
+   * rather than thrown: a push service being down must never fail her upload. */
+  if (!duplicate) {
+    const catId = existing.cat_id;
+    if (catId === null) throw new Error('a sighting was inserted with no cat');
+    ctx.waitUntil(
+      notifySighting(env, { deviceId, catId, newCat, note: s.note }, now)
+        .catch((e) => console.error('[push] notify failed:', e)),
+    );
+  }
+
   audits.push({
     method: 'POST', path: '/sightings', status: duplicate ? 200 : 201, outcome: 'ok',
     deviceId, targetId: existing.id, detail: duplicate ? 'duplicate' : null,
@@ -371,6 +395,24 @@ async function createSighting(
   return json(req, env, duplicate ? 200 : 201, {
     sighting: db.toSightingDto(existing), duplicate,
   }, extra);
+}
+
+async function subscribePush(
+  req: Request, env: Env, now: number, deviceId: string,
+  extra: Record<string, string>, audits: AuditFields[],
+): Promise<Response> {
+  const k = pushSubscription(await readJson(req));
+  // Re-subscribing a phone that already has a row replaces it, so only OTHER phones
+  // count toward the cap — otherwise the tenth phone could never refresh its own.
+  if (await db.countOtherPushSubscriptions(env, deviceId) >= MAX_PUSH_SUBSCRIPTIONS) {
+    throw new HttpError(409, 'Too many phones already get notifications.');
+  }
+  await env.MEOWMAP_DB.batch([db.upsertPushSubscription(env, deviceId, k, now)]);
+  audits.push({
+    method: 'POST', path: '/push', status: 200, outcome: 'ok',
+    deviceId, detail: new URL(k.endpoint).hostname,
+  });
+  return json(req, env, 200, { ok: true }, extra);
 }
 
 async function updateSighting(

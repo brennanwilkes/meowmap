@@ -11,6 +11,7 @@ import * as settingsPage from './settings_page.js';
 import * as turnstile from './turnstile.js';
 import * as flush from './flush.js';
 import * as pwa from './pwa.js';
+import * as push from './push.js';
 
 /* Router and app-shell lifecycle.
  *
@@ -221,6 +222,19 @@ $('#cog').addEventListener('click', () => {
   location.hash = '#/settings';
 });
 
+/* A notification tapped while the app is already open: sw.js cannot change the page's
+ * hash itself, so it posts it here. Swaps an open detail rather than stacking on it, the
+ * same rule as the cog above. */
+if (navigator.serviceWorker !== undefined) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data === null || typeof e.data !== 'object' || e.data.type !== 'open') return;
+    if (detail !== null) location.replace(e.data.hash);
+    else location.hash = e.data.hash;
+  });
+  // addEventListener, unlike `onmessage =`, does not start delivery on its own.
+  navigator.serviceWorker.startMessages();
+}
+
 /* ── swipe the detail sheet back down ──────────────────────────────────── */
 
 /* There is no Back button on a detail page: the gesture IS the affordance, which is why
@@ -413,6 +427,12 @@ store.refresh();
 flush.onNeedsPass(turnstile.renewPass);
 
 pwa.register();
+push.resync().catch((err) => {
+  // Offline at launch is normal and the next launch tries again. Anything else means
+  // this phone may have quietly stopped getting notifications, which she should know.
+  if (err.retryable === true) { console.warn('[push] resync deferred:', err.message); return; }
+  showError(`Notifications may have stopped working: ${err.message}`);
+});
 // Ask every boot: persist() legitimately flips to granted once installed to the home
 // screen, and the outbox is the only copy of an in-app camera photo.
 pwa.ensurePersisted().then((s) => {

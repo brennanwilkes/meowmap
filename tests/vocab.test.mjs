@@ -9,7 +9,7 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
-  COAT_TAGS, MAX_NAME_LEN, MAX_NOTE_LEN, PETTED_VALUES, SIZE_TAGS,
+  COAT_TAGS, MAX_NAME_LEN, MAX_NOTE_LEN, PETTED_VALUES, SIZE_TAGS, VAPID_PUBLIC_KEY,
 } from '../frontend/config.js';
 
 let pass = 0;
@@ -49,6 +49,14 @@ check('the text length caps match the Worker', () => {
   // A client cap looser than the server's turns a typed-out note into a 400.
   assert.strictEqual(MAX_NOTE_LEN, workerNumber('MAX_NOTE_LEN'));
   assert.strictEqual(MAX_NAME_LEN, workerNumber('MAX_NAME_LEN'));
+});
+
+check('the VAPID public key matches the Worker', () => {
+  // A mismatch subscribes every phone to a key the Worker cannot sign for: the toggle
+  // turns on, and every push is rejected by Apple with nothing on screen to say so.
+  const m = src.match(/export const VAPID_PUBLIC_KEY = '([^']+)'/);
+  assert.notStrictEqual(m, null, 'VAPID_PUBLIC_KEY not found in worker/src/constants.ts');
+  assert.strictEqual(VAPID_PUBLIC_KEY, m[1]);
 });
 
 console.log(`vocab: ${pass} checks passed`);

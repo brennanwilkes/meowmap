@@ -9,7 +9,7 @@
  * frontend change or the shell cache never rotates.
  */
 
-const BUILD = '2026-10-01a';
+const BUILD = '2026-10-01b';
 
 const SHELL = `shell-${BUILD}`;
 const API = 'api-v1';
@@ -58,6 +58,7 @@ const FILES = [
   './app/notice.js',
   './app/outbox.js',
   './app/pipeline.js',
+  './app/push.js',
   './app/pwa.js',
   './app/resize.js',
   './app/settings_page.js',
@@ -95,6 +96,47 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('message', (e) => {
   if (e.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
+/* ── push notifications ─────────────────────────────────────────────────
+ * The Worker sends { title, body, hash } after someone else uploads a photo.
+ *
+ * EVERY PUSH SHOWS A NOTIFICATION, even one whose payload cannot be read. iOS revokes
+ * push permission from a web app that receives a push and displays nothing, so a bad
+ * payload falling through to silence would switch notifications off for good on that
+ * phone. A generic line is the lesser harm; the console says what went wrong. */
+self.addEventListener('push', (e) => {
+  let msg;
+  try {
+    msg = e.data.json();
+    if (typeof msg.title !== 'string' || typeof msg.hash !== 'string') throw new Error('bad shape');
+  } catch (err) {
+    console.error('[sw] unreadable push:', err);
+    msg = { title: 'Something new on MeowMap', body: '', hash: '#/map' };
+  }
+  e.waitUntil(self.registration.showNotification(msg.title, {
+    body: msg.body,
+    icon: './icons/icon-192.png',
+    data: { hash: msg.hash },
+  }));
+});
+
+/* An open app is told where to go rather than having a second copy opened beside it;
+ * the page routes the hash itself (see main.js). Only a closed app is launched, straight
+ * onto the cat. */
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const { hash } = e.notification.data;
+  e.waitUntil((async () => {
+    const open = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (open.length > 0) {
+      // Message first: if focus() is refused, she still lands on the cat once she is back.
+      open[0].postMessage({ type: 'open', hash });
+      await open[0].focus();
+      return;
+    }
+    await self.clients.openWindow(new URL(`./${hash}`, self.registration.scope).href);
+  })());
 });
 
 async function trim(cacheName, cap) {

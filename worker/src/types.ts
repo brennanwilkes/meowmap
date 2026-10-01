@@ -20,6 +20,8 @@ export interface Env {
   // secrets, pushed by CI
   TURNSTILE_SECRET_KEY: string;
   PASS_SIGNING_SECRET: string;
+  /** The `d` of the VAPID P-256 key, base64url. Its public half is VAPID_PUBLIC_KEY. */
+  VAPID_PRIVATE_KEY: string;
 }
 
 /* 'fled' was a third option, cut after device testing. The validator has rejected it

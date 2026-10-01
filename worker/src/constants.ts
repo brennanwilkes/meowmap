@@ -88,3 +88,37 @@ export const FULL_LONG_EDGE = 2048;
 export const THUMB_LONG_EDGE = 480;
 export const FULL_MAX_BYTES = 550_000;
 export const THUMB_MAX_BYTES = 45_000;
+
+/* ── push notifications ────────────────────────────────────────────────────── */
+/** VAPID public key: public by design, it is how a phone knows a push came from us.
+ *  Declared in frontend/config.js as well; tests/vocab.test.mjs asserts they agree. The
+ *  private half is the VAPID_PRIVATE_KEY secret, pushed by CI. Rotating the pair silently
+ *  orphans every subscription, so each phone has to turn notifications on again. */
+export const VAPID_PUBLIC_KEY = 'BPYSsg5Wa5HLSV9h2Cv8nqt7JAiGi1SG8BcsUvNMZlgVpEtGDw7EiKudpLanLvUEKwpwEsn12Ee5uUj-8ixVzfA';
+/** The contact Apple and Google see on every push. The app's own URL rather than an
+ *  email address, so no personal address is sent to a third party. */
+export const VAPID_SUBJECT = 'https://brennanwilkes.github.io/meowmap/';
+/** Push services we will POST to. The Worker fetches whatever endpoint a phone hands it,
+ *  so without this a subscription could aim it at any URL on the internet. */
+export const PUSH_HOSTS = ['web.push.apple.com', 'fcm.googleapis.com', 'updates.push.services.mozilla.com'];
+export const PUSH_HOST_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
+/** Every upload sends one request per subscription, and the free plan allows 50
+ *  subrequests per invocation. Two people need two; this caps what a stranger who opts
+ *  in can add. */
+export const MAX_PUSH_SUBSCRIPTIONS = 10;
+/** How long a push service holds a notification for a phone that is off. A day-old "a
+ *  cat was spotted" is still worth seeing; a week-old one is noise. */
+export const PUSH_TTL_S = 86_400;
+
+/** Who a device belongs to, by the upload pass's device UUID (shown at the bottom of
+ *  Settings). Two jobs: naming the sender ("Isabelle spotted Baby"), and not notifying
+ *  a person about their own photo from another of their devices. A device missing from
+ *  here still works: its uploads just say "Someone", and only that one device is skipped.
+ *  Read from sightings.device_id on 2026-10-01. A device's id changes if its storage is cleared or
+ *  the app is reinstalled. */
+export const DEVICE_OWNERS: Record<string, string> = {
+  'dbbe5d7b-f598-49a8-845d-14a1e08801d8': 'Isabelle',
+  '94022a6a-fb8c-4a30-a04b-0ae077973087': 'Brennan',
+  '150169f0-affb-48b8-992a-fcd39b65858a': 'Brennan',
+  '663ce59c-7ce6-4301-9642-4582da9b0de5': 'Brennan',
+};

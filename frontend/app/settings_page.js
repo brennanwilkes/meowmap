@@ -3,7 +3,9 @@ import { getHealth } from './api.js';
 import { deviceId, getPref, setPref } from './device.js';
 import { $, esc, whenText } from './dom.js';
 import * as flush from './flush.js';
+import { showError } from './notice.js';
 import * as outbox from './outbox.js';
+import * as push from './push.js';
 import * as store from './store.js';
 
 /* Settings, and more usefully: the diagnostics page.
@@ -44,6 +46,10 @@ function render(state) {
       </div>
 
       <hr class="rule">
+      <h2 class="sec">Notifications</h2>
+      <div id="push"><p class="empty">checking…</p></div>
+
+      <hr class="rule">
       <h2 class="sec">Waiting to upload</h2>
       <div id="queue">${queueView(queued)}</div>
 
@@ -57,6 +63,38 @@ function render(state) {
 
   wire();
   loadHealth();
+  loadPush();
+}
+
+/* Only the on/off states get a control. The other three are things a tap here cannot
+ * change, so each says what will. */
+const PUSH_BLOCKED = {
+  'needs-install': 'iPhones only send notifications to apps on the Home Screen. Tap Share, then Add to Home Screen, and turn this on from there.',
+  unsupported: 'This browser cannot get notifications.',
+  denied: 'Notifications are switched off for MeowMap. Turn them back on in the iPhone’s Settings app, under Notifications.',
+};
+
+function pushView(state) {
+  if (Object.hasOwn(PUSH_BLOCKED, state)) return `<p class="empty">${esc(PUSH_BLOCKED[state])}</p>`;
+  const on = state === 'on';
+  return `
+    <div class="chiprow">
+      <button type="button" class="chip" data-push="on" aria-pressed="${on}"
+              style="--fill:var(--peri);--tilt:-2deg">tell me</button>
+      <button type="button" class="chip" data-push="off" aria-pressed="${!on}"
+              style="--fill:var(--peri);--tilt:1.5deg">don’t</button>
+    </div>
+    <p class="fineprint">When someone else adds a photo, this phone gets a notification. Your own photos never notify you.</p>`;
+}
+
+async function loadPush() {
+  const el = $('#push', root);
+  try {
+    const state = await push.status();
+    if (el.isConnected) el.innerHTML = pushView(state);
+  } catch (err) {
+    if (el.isConnected) el.innerHTML = `<p class="empty">${esc(err.message)}</p>`;
+  }
 }
 
 function queueView(rows) {
@@ -89,6 +127,18 @@ function wire() {
     for (const sib of root.querySelectorAll('[data-tile]')) {
       sib.setAttribute('aria-pressed', String(sib.dataset.tile === btn.dataset.tile));
     }
+  });
+
+  $('#push', root).addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-push]');
+    if (btn === null || btn.getAttribute('aria-pressed') === 'true') return;
+    const on = btn.dataset.push === 'on';
+    for (const b of root.querySelectorAll('[data-push]')) b.disabled = true;
+    // enable() is called synchronously here, inside the tap: iOS refuses a permission
+    // prompt that is not.
+    (on ? push.enable() : push.disable())
+      .catch((err) => showError(`Could not turn notifications ${on ? 'on' : 'off'}: ${err.message}`))
+      .finally(() => { if (root !== null) loadPush(); });
   });
 
   $('#queue', root).addEventListener('click', (e) => {

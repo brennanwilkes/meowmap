@@ -1,8 +1,9 @@
 import { HttpError } from './types.ts';
 import {
   COAT_TAGS, LOCATION_SOURCES, MAX_NAME_LEN, MAX_NOTE_LEN, MAX_PHOTO_DIM,
-  PETTED_VALUES, SIZE_TAGS,
+  PETTED_VALUES, PUSH_HOST_SUFFIXES, PUSH_HOSTS, SIZE_TAGS,
 } from './constants.ts';
+import { b64UrlToBytes } from './base64url.ts';
 
 /* Every value here arrives from a public, unauthenticated-by-password endpoint. Anything
  * that fails validation THROWS — no coercion, no defaults. A silently-clamped coordinate
@@ -108,6 +109,51 @@ export function seenAt(v: unknown, now: number): number {
 
 export function photoDim(v: unknown, field: string): number {
   return int(v, field, 1, MAX_PHOTO_DIM);
+}
+
+const B64URL = /^[A-Za-z0-9_-]+$/;
+function b64UrlKey(v: unknown, field: string, length: number): string {
+  if (typeof v !== 'string') throw new HttpError(400, `${field} must be a string`);
+  // Browsers emit these unpadded, but padding is legal base64url and costs nothing to allow.
+  const t = v.replace(/=+$/, '');
+  const bad = new HttpError(400, `${field} must be ${length} bytes of base64url`);
+  if (!B64URL.test(t)) throw bad;
+  let bytes: Uint8Array;
+  try {
+    bytes = b64UrlToBytes(t);
+  } catch {
+    throw bad;   // atob rejects a length that no byte string could encode to
+  }
+  if (bytes.length !== length) throw bad;
+  return t;
+}
+
+/** The shape of `PushSubscription.toJSON()`. The endpoint is a URL the Worker will later
+ *  POST to, so it must be HTTPS and on a known push service — see PUSH_HOSTS. */
+export function pushSubscription(b: Record<string, unknown>): {
+  endpoint: string; p256dh: string; auth: string;
+} {
+  const endpoint = str(b.endpoint, 'endpoint', 1024);
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new HttpError(400, 'endpoint must be a URL');
+  }
+  const known = PUSH_HOSTS.includes(url.hostname)
+    || PUSH_HOST_SUFFIXES.some((suffix) => url.hostname.endsWith(suffix));
+  if (url.protocol !== 'https:' || !known) {
+    throw new HttpError(400, 'endpoint is not a known push service');
+  }
+  const keys = b.keys;
+  if (typeof keys !== 'object' || keys === null || Array.isArray(keys)) {
+    throw new HttpError(400, 'keys must be an object');
+  }
+  const k = keys as Record<string, unknown>;
+  const p256dh = b64UrlKey(k.p256dh, 'keys.p256dh', 65);
+  // An uncompressed P-256 point always starts 0x04; anything else cannot be encrypted to.
+  if (b64UrlToBytes(p256dh)[0] !== 4) throw new HttpError(400, 'keys.p256dh must be an uncompressed P-256 point');
+  return { endpoint, p256dh, auth: b64UrlKey(k.auth, 'keys.auth', 16) };
 }
 
 export const validators = {

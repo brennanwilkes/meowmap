@@ -73,6 +73,12 @@ jobs:
       - name: Set PASS_SIGNING_SECRET
         run: echo "${{ secrets.PASS_SIGNING_SECRET }}" | npx wrangler secret put PASS_SIGNING_SECRET
 
+      # The private half of VAPID_PUBLIC_KEY in constants.ts. Without it uploads still
+      # work; every push fails in waitUntil and is logged. printf, not echo: this one is
+      # parsed as a JWK `d`, where a trailing newline is an invalid key, not a harmless byte.
+      - name: Set VAPID_PRIVATE_KEY
+        run: printf '%s' "${{ secrets.VAPID_PRIVATE_KEY }}" | npx wrangler secret put VAPID_PRIVATE_KEY
+
       # Catches the two ways this stack fails silently: a secret that never got pushed,
       # and a stale D1 binding id. Retries, because each `wrangler secret put` above
       # creates a new Worker version and a request fired into a rollout can 500 — see
