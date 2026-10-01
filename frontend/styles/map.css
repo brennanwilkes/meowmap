@@ -64,6 +64,9 @@
   content: ''; position: absolute; left: 50%; bottom: -8px;
   width: 3px; height: 9px; background: var(--ink); transform: translateX(-50%);
 }
+/* A fanned print has been dealt sideways off its spot (see `fan` in map_page.js), so its
+   needle would point at the wrong place. The stack as a whole marks the spot. */
+.pin.fanned::after { display: none; }
 /* The print UNDERNEATH. Painted before <i> in document order, so the top print covers
    it and only a corner shows — which says "there is more than one of these" before the
    count is read at all. */

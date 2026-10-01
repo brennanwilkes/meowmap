@@ -72,6 +72,16 @@ export const CLUSTER_MIN_RADIUS_M = 40;
 export const CLUSTER_MAX_RADIUS_M = 2000;
 /** Zoom at which the radius equals CLUSTER_MIN_RADIUS_M. */
 export const CLUSTER_RADIUS_AT_ZOOM = 17;
+/* The last this-many zoom levels (18 and 19 on every current tile source) NEVER pile two
+ * cats together. Two cats photographed a few metres apart were otherwise a +1 at every
+ * zoom there is — the radius halves per level but GPS error does not, so there was no
+ * way to reach the second cat. Same-cat piles still form; their tap opens the whole
+ * filmstrip anyway. */
+export const CLUSTER_SPLIT_LEVELS = 2;
+/* Prints that still overlap at those zooms are dealt out sideways by this much each.
+ * 34 px of a 52 px print left showing is a comfortable thumb target, and less step than
+ * the full width keeps them reading as one stack rather than a row of separate pins. */
+export const FAN_STEP_PX = 34;
 
 /* ── geolocation ───────────────────────────────────────────────────────────
  * She is WALKING, so a cached fix from five minutes ago is a block away —

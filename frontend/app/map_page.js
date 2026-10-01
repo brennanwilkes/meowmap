@@ -1,6 +1,6 @@
 import {
-  CLUSTER_MAX_RADIUS_M, CLUSTER_MIN_RADIUS_M, CLUSTER_RADIUS_AT_ZOOM,
-  COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, GEO_TRACK_ACCURACY_GAIN_M,
+  CLUSTER_MAX_RADIUS_M, CLUSTER_MIN_RADIUS_M, CLUSTER_RADIUS_AT_ZOOM, CLUSTER_SPLIT_LEVELS,
+  COAT_TAGS, DEFAULT_BOUNDS, DEFAULT_TILE_ID, FAN_STEP_PX, GEO_TRACK_ACCURACY_GAIN_M,
   GEO_TRACK_MIN_MOVE_M, LS, PETTED_VALUES, SIZE_TAGS, TILE_CHANGED, TILE_SOURCES,
 } from '../config.js';
 import { esc } from './dom.js';
@@ -128,9 +128,10 @@ function thumbSrc(s) {
 /* A pin is always the little polaroid, whatever the zoom — cluster collapse (see
  * `collapse` below) is what keeps the layer count down, not replacing the photo with a
  * dot. `count` is every print in the pile, `other` the number of OTHER cats beyond the
- * one shown (0 for a single cat's pile). */
-function pinIcon(s, ring, count, other) {
+ * one shown (0 for a single cat's pile). `shift` is where `fan` dealt it, or null. */
+function pinIcon(s, ring, count, other, shift) {
   const cls = ['pin'];
+  if (shift !== null) cls.push('fanned');
   if (s.pending === true) cls.push('pending');
   else if (s.catId === null || s.catId === undefined) cls.push('loose');
   if (s.id % 2 === 1) cls.push('alt');
@@ -153,7 +154,9 @@ function pinIcon(s, ring, count, other) {
     // stay paper rather than being covered by the image.
     html: `${under}<i style="--ring:${esc(ring)}"><u style="background-image:url(${esc(thumbSrc(s))})"></u></i>${badge}`,
     iconSize: [52, 60],
-    iconAnchor: [26, 69],
+    // The marker stays on the true spot and only the drawing moves, so a fanned print
+    // re-gathers on its own the moment the fan is not needed.
+    iconAnchor: shift === null ? [26, 69] : [26 - shift.x, 69 - shift.y],
   });
 }
 
@@ -166,24 +169,75 @@ function pinIcon(s, ring, count, other) {
  * Two prints of one cat on a fence collapse; so do two cats on the same block. The pile
  * keeps every member, the pin wears the TOP print's photo, and `other` is how many cats
  * beyond it the pile hides — "+1" instead of "×2" when the pile is not all one cat.
+ *
+ * With `acrossCats` false (the last CLUSTER_SPLIT_LEVELS zooms) only one cat's prints
+ * pile up, so a +N always comes apart if she zooms in far enough.
  */
-function collapse(sightings, radiusM) {
+function collapse(sightings, radiusM, acrossCats) {
+  const catKey = (m) => (
+    m.catId === null || m.catId === undefined ? `loose:${m.id ?? m.clientId}` : `cat:${m.catId}`
+  );
   const groups = [];
   for (const s of sightings) {
-    const hit = groups.find((g) => distanceM(g.lat, g.lon, s.lat, s.lon) < radiusM);
-    if (hit === undefined) groups.push({ lat: s.lat, lon: s.lon, members: [s] });
+    const cat = catKey(s);
+    const hit = groups.find((g) => (acrossCats || g.cat === cat)
+      && distanceM(g.lat, g.lon, s.lat, s.lon) < radiusM);
+    if (hit === undefined) groups.push({ lat: s.lat, lon: s.lon, cat, members: [s], shift: null });
     else hit.members.push(s);
   }
   for (const g of groups) {
-    const cats = new Set(g.members.map((m) => (
-      m.catId === null || m.catId === undefined ? `loose:${m.id ?? m.clientId}` : `cat:${m.catId}`
-    )));
-    g.other = cats.size - 1;
+    g.other = new Set(g.members.map(catKey)).size - 1;
     /* The print ON TOP of the pile is the newest — a stack, not a queue — and its cat is
      * what the pin shows and what a tap opens. */
     g.head = g.members.reduce((a, b) => (b.seenAt > a.seenAt ? b : a));
   }
   return groups;
+}
+
+/**
+ * Deal overlapping prints out sideways so every one of them can be tapped.
+ *
+ * Only runs at the split zooms: below them `collapse` already merges anything whose
+ * prints would overlap. Up there two cats a few metres apart are two pins on one spot,
+ * and with GPS error that close is common — so each run of overlapping pins is laid out
+ * as a stack, FAN_STEP_PX apart and centred on where they actually are, rightmost on
+ * top. Positions come from `project` at the current zoom, never the container, so a pan
+ * produces the identical fan and pinSig leaves every pin alone.
+ */
+function fan(groups) {
+  const zoom = map.getZoom();
+  const pts = groups.map((g) => map.project([g.lat, g.lon], zoom));
+  const parent = groups.map((_, i) => i);
+  const root = (i) => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      // The pin's iconSize: boxes that intersect at all are a print hiding another.
+      if (Math.abs(pts[i].x - pts[j].x) < 52 && Math.abs(pts[i].y - pts[j].y) < 60) {
+        parent[root(j)] = root(i);
+      }
+    }
+  }
+  const stacks = new Map();
+  groups.forEach((_, i) => {
+    const r = root(i);
+    if (!stacks.has(r)) stacks.set(r, []);
+    stacks.get(r).push(i);
+  });
+  for (const idx of stacks.values()) {
+    if (idx.length === 1) continue;
+    // Stable sort over a deterministic input order, so identical spots fan identically.
+    idx.sort((a, b) => pts[a].x - pts[b].x || pts[a].y - pts[b].y);
+    const cx = idx.reduce((t, i) => t + pts[i].x, 0) / idx.length;
+    const cy = idx.reduce((t, i) => t + pts[i].y, 0) / idx.length;
+    idx.forEach((gi, n) => {
+      groups[gi].shift = {
+        x: Math.round(cx + (n - (idx.length - 1) / 2) * FAN_STEP_PX - pts[gi].x),
+        // Every other print sits a little higher: a dealt stack, not a ruled row.
+        y: Math.round(cy - (n % 2) * 6 - pts[gi].y),
+        z: n + 1,
+      };
+    });
+  }
 }
 
 function drawTurf(state) {
@@ -272,8 +326,9 @@ function catFor(s, state) {
  * the app. That is what made twenty photos feel like treacle: the work scaled with the
  * pin count and happened for no reason. Only a genuine change to this string is allowed
  * to touch the DOM. */
-function pinSig(head, ring, count, other) {
-  return `p|${ring}|${count}|${other}|${head.pending === true}|${head.catId}|${head.id}|${thumbSrc(head)}`;
+function pinSig(head, ring, count, other, shift) {
+  const dealt = shift === null ? '' : `${shift.x},${shift.y},${shift.z}`;
+  return `p|${ring}|${count}|${other}|${dealt}|${head.pending === true}|${head.catId}|${head.id}|${thumbSrc(head)}`;
 }
 
 function drawPins(state) {
@@ -284,8 +339,12 @@ function drawPins(state) {
    * NOT stay merged behind a +1. Only the cap matters (see CLUSTER_* in config.js). */
   const radiusM = Math.min(CLUSTER_MAX_RADIUS_M,
     CLUSTER_MIN_RADIUS_M * 2 ** (CLUSTER_RADIUS_AT_ZOOM - map.getZoom()));
+  const maxZoom = map.getMaxZoom();
+  if (!Number.isFinite(maxZoom)) throw new Error('map has no max zoom; the tile layer is missing');
+  const split = map.getZoom() > maxZoom - CLUSTER_SPLIT_LEVELS;
   const catsById = new Map(state.cats.map((c) => [c.id, c]));
-  const groups = collapse(filterSightings(store.renderableSightings(state), catsById, active), radiusM);
+  const groups = collapse(filterSightings(store.renderableSightings(state), catsById, active), radiusM, !split);
+  if (split) fan(groups);
   const seen = new Set();
 
   for (const g of groups) {
@@ -305,7 +364,10 @@ function drawPins(state) {
       ? 'var(--marigold)'
       : ringFor(head.catId, head.id ?? null);
     const count = g.members.length;
-    const sig = pinSig(head, ring, count, g.other);
+    const sig = pinSig(head, ring, count, g.other, g.shift);
+    /* markerPane orders by latitude, which within a fan is noise; the offset outweighs
+     * the few pixels of latitude between members so the stack overlaps left to right. */
+    const z = g.shift === null ? 0 : g.shift.z * 100;
 
     const existing = markers.get(key);
     if (existing !== undefined) {
@@ -315,14 +377,18 @@ function drawPins(state) {
        * marker held a whole snapshot of the store alive. */
       existing.head = head;
       if (existing.sig !== sig) {
-        existing.m.setIcon(pinIcon(head, ring, count, g.other));
+        existing.m.setIcon(pinIcon(head, ring, count, g.other, g.shift));
         existing.sig = sig;
       }
+      if (existing.z !== z) { existing.m.setZIndexOffset(z); existing.z = z; }
       const ll = existing.m.getLatLng();
       if (ll.lat !== g.lat || ll.lng !== g.lon) existing.m.setLatLng([g.lat, g.lon]);
       continue;
     }
-    const entry = { m: L.marker([g.lat, g.lon], { icon: pinIcon(head, ring, count, g.other) }), sig, head };
+    const entry = {
+      m: L.marker([g.lat, g.lon], { icon: pinIcon(head, ring, count, g.other, g.shift), zIndexOffset: z }),
+      sig, head, z,
+    };
     entry.m.addTo(map).on('click', () => openSightingSheet(entry.head, catFor(entry.head, store.get())));
     markers.set(key, entry);
   }

@@ -232,6 +232,15 @@ header states the two rules that erode silently. In short:
   recluster lives in the existing `zoomend` handler, since crossing a radius boundary
   never emits the store. Ordering is deterministic (server order + idb pending order), so
   unchanged data re-renders identical piles with no `setIcon`.
+- **The last `CLUSTER_SPLIT_LEVELS` (2) zooms never pile two cats together**, so every
+  blue `+N` comes apart if she zooms in far enough. Before this, two cats a few metres
+  apart stayed a `+1` at every zoom: the radius halves per level but GPS error does not.
+  Prints that still overlap up there are DEALT OUT sideways (`fan`, `FAN_STEP_PX` 34 px
+  apart, centred on the spot, rightmost on top) so each can be tapped. Only the icon
+  anchor moves — the marker stays on the true spot — and a fanned print hides its needle.
+  Positions come from `map.project` at the current zoom, so a pan yields an identical fan
+  and `pinSig` (which carries the shift) touches nothing. Stack order is `zIndexOffset`,
+  because `markerPane` orders by latitude and that is noise within a fan.
 - **The map filter (`filter.js`) covers coat, size and petted: OR within a group, AND
   across groups.** Within-group OR keeps each chip monotone (it can only reveal more);
   across-group AND is the only thing that makes a second group worth having. It is
