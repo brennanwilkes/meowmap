@@ -46,26 +46,36 @@ export function subscribe(fn) {
  * Never clears existing data on failure: offline is the normal case for this app, and
  * blanking the map because a fetch failed would be worse than showing stale pins.
  */
-export async function refresh() {
-  if (state.loading) return;
+/* The request in flight, so a caller that needs FRESH data can wait for it. Returning
+ * early used to resolve immediately with whatever the store already held — so a
+ * notification tapped mid-refresh opened a cat the store had not heard of yet. */
+let inflight = null;
+
+export function refresh() {
+  if (inflight !== null) return inflight;
   /* Assigned WITHOUT emitting. Nothing renders `loading`, and this runs on every
    * visibility change, every `online` event and every mutation — so emitting here woke
    * every subscriber to redraw a map that had not changed, twice per refresh. */
   state = { ...state, loading: true };
-  try {
-    const res = await api.getAll(state.etag);
-    if (res.changed) {
-      set({
-        loaded: true, loading: false, error: null,
-        etag: res.etag, version: res.version,
-        cats: res.cats, sightings: res.sightings,
-      });
-    } else {
-      set({ loaded: true, loading: false, error: null });
+  inflight = (async () => {
+    try {
+      const res = await api.getAll(state.etag);
+      if (res.changed) {
+        set({
+          loaded: true, loading: false, error: null,
+          etag: res.etag, version: res.version,
+          cats: res.cats, sightings: res.sightings,
+        });
+      } else {
+        set({ loaded: true, loading: false, error: null });
+      }
+    } catch (err) {
+      set({ loading: false, error: err.message ?? 'Could not reach the server' });
+    } finally {
+      inflight = null;
     }
-  } catch (err) {
-    set({ loading: false, error: err.message ?? 'Could not reach the server' });
-  }
+  })();
+  return inflight;
 }
 
 /** Called by the outbox so queued sightings appear on the map before they upload. */

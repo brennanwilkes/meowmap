@@ -224,10 +224,17 @@ $('#cog').addEventListener('click', () => {
 
 /* A notification tapped while the app is already open: sw.js cannot change the page's
  * hash itself, so it posts it here. Swaps an open detail rather than stacking on it, the
- * same rule as the cog above. */
+ * same rule as the cog above.
+ *
+ * REFRESH FIRST. The cat being announced was uploaded from the OTHER phone, so this
+ * page's store has never seen it — and tapping a banner while the app is in the
+ * foreground fires no visibilitychange, so nothing else would ever fetch it. The cat
+ * page rendered "not here any more" over an otherwise blank sheet and stayed that way.
+ * refresh() never rejects; offline it simply opens on what the store has. */
 if (navigator.serviceWorker !== undefined) {
-  navigator.serviceWorker.addEventListener('message', (e) => {
+  navigator.serviceWorker.addEventListener('message', async (e) => {
     if (e.data === null || typeof e.data !== 'object' || e.data.type !== 'open') return;
+    await store.refresh();
     if (detail !== null) location.replace(e.data.hash);
     else location.hash = e.data.hash;
   });

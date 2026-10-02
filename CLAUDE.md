@@ -673,6 +673,11 @@ deliberately not collapsed. Tapping one opens `#/cat/<id>`.
 - **Sending is in `waitUntil` after the upload is answered**, and a duplicate (retried
   offline) insert sends nothing. A push failure is logged with Apple's reason from the
   body, never thrown into the upload.
+- **A tap on a notification while the app is open awaits `store.refresh()` BEFORE routing.**
+  The cat came from the other phone, so the store has never seen it, and tapping a banner
+  over a foregrounded app fires no `visibilitychange` — the cat page opened on "not here
+  any more" and never recovered. `refresh()` returns the in-flight promise rather than
+  resolving early, so a refresh already running is waited for, not skipped.
 - `push.resync()` runs once per launch and re-sends only a CHANGED endpoint, so a normal
   launch costs no request and no D1 write.
 
