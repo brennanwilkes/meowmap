@@ -281,10 +281,6 @@ export function softDeleteSighting(env: Env, id: number, now: number): D1Prepare
     .bind(id, now);
 }
 
-export function slugify(name: string): string {
-  return name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
 /** What a cat actually holds. Every field optional so the same shape serves the insert
  *  (absent = not given) and the patch (absent = leave alone). */
 export interface CatFields {
@@ -305,13 +301,10 @@ export function insertCat(env: Env, c: CatFields, now: number): D1PreparedStatem
   const name = c.name ?? null;
   return env.MEOWMAP_DB
     .prepare(
-      `INSERT INTO cats (name, slug, notes, coat, size, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?6)`,
+      `INSERT INTO cats (name, notes, coat, size, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?5)`,
     )
-    .bind(
-      name, name === null ? null : slugify(name), c.notes ?? null,
-      coatColumn(c.coat), c.size ?? null, now,
-    );
+    .bind(name, c.notes ?? null, coatColumn(c.coat), c.size ?? null, now);
 }
 
 export function patchCat(env: Env, id: number, c: CatFields, now: number): D1PreparedStatement {
@@ -320,16 +313,14 @@ export function patchCat(env: Env, id: number, c: CatFields, now: number): D1Pre
     .prepare(
       `UPDATE cats SET
          name       = CASE WHEN ?2 = 1 THEN ?3 ELSE name END,
-         slug       = CASE WHEN ?2 = 1 THEN ?4 ELSE slug END,
-         notes      = COALESCE(?5, notes),
-         coat       = CASE WHEN ?6 = 1 THEN ?7 ELSE coat END,
-         size       = CASE WHEN ?8 = 1 THEN ?9 ELSE size END,
-         updated_at = ?10
+         notes      = COALESCE(?4, notes),
+         coat       = CASE WHEN ?5 = 1 THEN ?6 ELSE coat END,
+         size       = CASE WHEN ?7 = 1 THEN ?8 ELSE size END,
+         updated_at = ?9
        WHERE id = ?1 AND deleted_at IS NULL`,
     )
     .bind(
       id, name === undefined ? 0 : 1, name ?? null,
-      name === undefined || name === null ? null : slugify(name),
       c.notes ?? null,
       /* Clearing every chip is a real edit, so these need the present/absent flag rather
        * than COALESCE — which cannot tell "not sent" from "set to nothing" and would make

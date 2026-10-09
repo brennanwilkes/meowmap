@@ -8,6 +8,7 @@ import { frame } from './components/filmstrip.js';
 import { getPref } from './device.js';
 import { $, distanceText, esc } from './dom.js';
 import { back } from './nav.js';
+import { showError } from './notice.js';
 import { LOCATION_SOURCE } from './pipeline.js';
 import { distanceM } from './suggest.js';
 import { mergeCats, splitToNewCat } from './identity.js';
@@ -176,7 +177,6 @@ function render(state) {
       ${cat === null || cat.sightings.length < 2 ? '' : `
         <button type="button" class="btn-ghost wide" id="split">This photo is a different cat</button>`}
       <button type="button" class="btn-ghost wide danger" id="del">Delete this photo</button>
-      <div class="map-note" id="edit-err" style="position:static"></div>
       <div style="height:80px"></div>
     </div>
 
@@ -201,8 +201,7 @@ function markDirty() {
 
 function fail(err, what) {
   console.error(`[sighting] ${what} failed:`, err);
-  const note = $('#edit-err', root);
-  if (note !== null) note.textContent = err.message;
+  showError(`Could not ${what}: ${err.message}`);
 }
 
 function wire(s, cat) {
@@ -344,7 +343,7 @@ async function save(s, cat) {
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'Save changes';
-    fail(err, 'save');
+    fail(err, 'save that');
   } finally {
     saving = false;
   }
@@ -408,7 +407,7 @@ async function merge(s, cat, otherId) {
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'I’ve seen this cat before';
-    fail(err, 'merge');
+    fail(err, 'join those cats');
   }
 }
 
@@ -426,7 +425,7 @@ async function split(s, cat) {
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'This photo is a different cat';
-    fail(err, 'split');
+    fail(err, 'move this photo to a new cat');
   }
 }
 
@@ -453,7 +452,7 @@ async function remove(id) {
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'Delete this photo';
-    fail(err, 'delete');
+    fail(err, 'delete this photo');
   }
 }
 

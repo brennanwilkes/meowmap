@@ -96,6 +96,13 @@ view and blow the D1 budget to protect the R2 one.
   log naming the indexes deliberately *not* created and why — keep it current.
 - Migrations are `worker/migrations/NNN_snake_case.sql`, applied in CI by
   `scripts/ensure-bindings.mjs`. Drop a new numbered file in and push.
+- **Cat names are NOT unique** (006 dropped `cats.slug` and its unique index; 001's
+  comments about it are history). A cat is its id. The constraint only ever failed: a
+  merge renames the older survivor to the absorbed cat's name while that cat still holds
+  it, and an upload named like an existing cat 500'd into an outbox that retries forever.
+- **`audit_log` is the first place to look when "it just didn't work"** —
+  `bash scripts/db-sql "SELECT … FROM audit_log ORDER BY id DESC LIMIT 40"`. Internal
+  errors store the real D1 message in `detail`; the client only ever sees "Internal error".
 
 ## Design
 
@@ -438,7 +445,9 @@ finished filling it in.
 save bar and the update bar, and a message under her own thumb is a message she does not
 read), last-one-wins, self-dismissing. `main.js` wires `unhandledrejection` and `error`
 to it, which is the backstop that matters here: half this app's work happens in async
-handlers nobody awaits, so a throw used to reach the console and nothing else.
+handlers nobody awaits, so a throw used to reach the console and nothing else. A
+CAUGHT error must also go through `showError` — the sighting editor's `fail()` wrote to
+an inline line below the buttons, and a failed merge looked like nothing happening.
 
 **The save button appeared to do nothing, and it was two faults of its own on top of
 that.** The no-location guard's only feedback was a line of text in the middle of a
