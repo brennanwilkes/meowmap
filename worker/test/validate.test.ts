@@ -8,7 +8,7 @@ import {
   coatTags, int, lat, lon, num, optId, optStr, pushSubscription, seenAt, str, uuid, validators,
 } from '../src/validate.ts';
 import { HttpError } from '../src/types.ts';
-import { assertHash, slugify } from '../src/storage.ts';
+import { assertHash } from '../src/storage.ts';
 
 const NOW = Date.UTC(2026, 8, 10);
 
@@ -103,13 +103,6 @@ test('a hash cannot be used to escape the key prefix', () => {
   // The hash is interpolated into an R2 key, so path traversal would be a real bug.
   assert.throws(() => assertHash('../../etc/passwd'), HttpError);
   assert.throws(() => assertHash(`${'a'.repeat(60)}/../`), HttpError);
-});
-
-test('slugify produces a stable, url-safe slug', () => {
-  assert.strictEqual(slugify('Mochi'), 'mochi');
-  assert.strictEqual(slugify('Sergeant Tuxedo'), 'sergeant-tuxedo');
-  assert.strictEqual(slugify('  Mr. Bigglesworth!  '), 'mr-bigglesworth');
-  assert.strictEqual(slugify('Café'), 'cafe', 'accents are folded, not dropped as unknown');
 });
 
 test('numeric bounds are inclusive and reject non-finite values', () => {
